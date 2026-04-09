@@ -1,69 +1,103 @@
 import Link from 'next/link'
+import SponsorLogo from '@/components/SponsorLogo'
 
-const tiers = [
+type Tier = 'Platinum' | 'Gold' | 'Silver' | 'Bronze'
+
+const sponsors: {
+  name: string
+  tier: Tier
+  website?: string
+  logo?: string
+}[] = [
+  // ── Platinum ──────────────────────────────────────────
   {
-    name: 'Platinum',
-    amount: '$5,000+',
-    color: 'border-gray-300 bg-gray-50',
-    badge: 'bg-gray-200 text-gray-700',
-    logoSize: 'w-52 h-28',
-    count: 2,
-    benefits: [
-      'Premier logo placement on website, banners, and all printed materials',
-      'Exclusive 30-minute company presentation at a chapter meeting',
-      'Reserved table at the Annual Networking Banquet (4 seats)',
-      'Direct access to member resume book',
-      'Company spotlight in email newsletter (2×/year)',
-      'Social media features (4 posts)',
-      'Recognition at all chapter events',
-    ],
+    name: 'Placeholder Platinum Co.',
+    tier: 'Platinum',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-platinum.png',
   },
   {
-    name: 'Gold',
-    amount: '$2,500+',
-    color: 'border-shpe-gold bg-yellow-50',
-    badge: 'bg-shpe-gold text-cmu-maroon',
-    logoSize: 'w-40 h-24',
-    count: 3,
-    benefits: [
-      'Logo placement on website and event banners',
-      'Access to member resume book',
-      'Seats at the Annual Networking Banquet (2 seats)',
-      'Company spotlight in email newsletter (1×/year)',
-      'Social media features (2 posts)',
-      'Recognition at chapter events',
-    ],
+    name: 'Placeholder Platinum Co.',
+    tier: 'Platinum',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-platinum-2.png',
+  },
+
+  // ── Gold ──────────────────────────────────────────────
+  {
+    name: 'Placeholder Gold Co.',
+    tier: 'Gold',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-gold.png',
   },
   {
-    name: 'Silver',
-    amount: '$1,000+',
-    color: 'border-gray-300 bg-white',
-    badge: 'bg-gray-400 text-white',
-    logoSize: 'w-32 h-20',
-    count: 3,
-    benefits: [
-      'Logo placement on website',
-      'Recognition at chapter events',
-      'Social media feature (1 post)',
-      'Access to member resume book',
-    ],
+    name: 'Placeholder Gold Co.',
+    tier: 'Gold',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-gold-2.png',
   },
   {
-    name: 'Bronze',
-    amount: '$500+',
-    color: 'border-orange-200 bg-orange-50',
-    badge: 'bg-orange-300 text-orange-900',
-    logoSize: 'w-28 h-16',
-    count: 3,
-    benefits: [
-      'Logo placement on website',
-      'Verbal recognition at chapter events',
-      'Social media mention',
-    ],
+    name: 'Placeholder Gold Co.',
+    tier: 'Gold',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-gold-3.png',
+  },
+
+  // ── Silver ────────────────────────────────────────────
+  {
+    name: 'Placeholder Silver Co.',
+    tier: 'Silver',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-silver.png',
+  },
+  {
+    name: 'Placeholder Silver Co.',
+    tier: 'Silver',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-silver-2.png',
+  },
+  {
+    name: 'Placeholder Silver Co.',
+    tier: 'Silver',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-silver-3.png',
+  },
+
+  // ── Bronze ────────────────────────────────────────────
+  {
+    name: 'Placeholder Bronze Co.',
+    tier: 'Bronze',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-bronze.png',
+  },
+  {
+    name: 'Placeholder Bronze Co.',
+    tier: 'Bronze',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-bronze-2.png',
+  },
+  {
+    name: 'Placeholder Bronze Co.',
+    tier: 'Bronze',
+    // website: 'https://example.com',
+    // logo: '/sponsors/placeholder-bronze-3.png',
   },
 ]
 
+const tierMeta: {
+  name: Tier
+  amount: string
+  badge: string
+}[] = [
+  { name: 'Platinum', amount: '$5,000+', badge: 'bg-gray-200 text-gray-700' },
+  { name: 'Gold',     amount: '$2,500+', badge: 'bg-shpe-gold text-cmu-maroon' },
+  { name: 'Silver',   amount: '$1,000+', badge: 'bg-gray-400 text-white' },
+  { name: 'Bronze',   amount: '$500+',   badge: 'bg-orange-300 text-orange-900' },
+]
+
 export default function Sponsors() {
+  const byTier = (tier: Tier) => sponsors.filter((s) => s.tier === tier)
+
   return (
     <div>
       {/* ── Page Header ── */}
@@ -84,28 +118,33 @@ export default function Sponsors() {
       </section>
 
       {/* ── Current Sponsors ── */}
-      {tiers.map((tier) => (
-        <section key={tier.name} className="py-16 border-b border-gray-100 last:border-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3 mb-8">
-              <span className={`px-3 py-1 rounded-full text-sm font-bold ${tier.badge}`}>
-                {tier.name}
-              </span>
-              <span className="text-gray-400 text-sm">{tier.amount}</span>
+      {tierMeta.map((tier) => {
+        const tierSponsors = byTier(tier.name)
+        if (tierSponsors.length === 0) return null
+        return (
+          <section key={tier.name} className="py-16 border-b border-gray-100 last:border-0">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center gap-3 mb-8">
+                <span className={`px-3 py-1 rounded-full text-sm font-bold ${tier.badge}`}>
+                  {tier.name}
+                </span>
+                <span className="text-gray-400 text-sm">{tier.amount}</span>
+              </div>
+              <div className="flex flex-wrap gap-5">
+                {tierSponsors.map((sponsor) => (
+                  <SponsorLogo
+                    key={sponsor.name + sponsor.logo}
+                    name={sponsor.name}
+                    logo={sponsor.logo}
+                    tier={sponsor.tier}
+                    website={sponsor.website}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-5">
-              {Array.from({ length: tier.count }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`${tier.logoSize} flex items-center justify-center rounded-xl border-2 border-dashed ${tier.color} text-gray-400 text-xs font-medium`}
-                >
-                  {tier.name} Sponsor
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      ))}
+          </section>
+        )
+      })}
 
       {/* ── Become a Sponsor ── */}
       <section className="bg-gray-50 py-20">
@@ -132,7 +171,7 @@ export default function Sponsors() {
               <thead>
                 <tr className="bg-cmu-maroon text-white">
                   <th className="text-left px-6 py-4 font-semibold">Benefit</th>
-                  {tiers.map((t) => (
+                  {tierMeta.map((t) => (
                     <th key={t.name} className="px-4 py-4 font-semibold text-center">
                       <div>{t.name}</div>
                       <div className="text-gray-300 font-normal text-xs mt-0.5">{t.amount}</div>
@@ -152,19 +191,13 @@ export default function Sponsors() {
                 ].map((benefit, i) => (
                   <tr key={benefit} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-6 py-3.5 text-gray-700 font-medium">{benefit}</td>
-                    {/* Platinum */}
-                    <td className="px-4 py-3.5 text-center">
-                      <Check />
-                    </td>
-                    {/* Gold */}
+                    <td className="px-4 py-3.5 text-center"><Check /></td>
                     <td className="px-4 py-3.5 text-center">
                       {i < 4 ? <Check /> : i === 4 ? <Check /> : i === 5 ? <Partial text="2" /> : <X />}
                     </td>
-                    {/* Silver */}
                     <td className="px-4 py-3.5 text-center">
-                      {i < 2 ? (i === 0 ? <Check /> : <X />) : i === 2 ? <Check /> : i === 3 ? <Partial text="1" /> : <X />}
+                      {i === 0 ? <Check /> : i === 2 ? <Check /> : i === 3 ? <Partial text="1" /> : <X />}
                     </td>
-                    {/* Bronze */}
                     <td className="px-4 py-3.5 text-center">
                       {i === 0 ? <Check /> : <X />}
                     </td>

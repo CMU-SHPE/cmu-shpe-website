@@ -53,8 +53,8 @@ export default function Footer() {
             <h3 className="text-shpe-gold font-semibold text-xs uppercase tracking-widest mb-4">
               Connect With Us
             </h3>
-            <p className="text-gray-300 text-sm mb-1">shpe@coloradomesa.edu</p>
-            <p className="text-gray-400 text-sm mb-5">Meetings: Thursdays 6 PM — Engineering 101</p>
+            <p className="text-gray-300 text-sm mb-1">shpecmu9@gmail.com</p>
+            <p className="text-gray-400 text-sm mb-5">Meetings: Thursdays 5 PM — Confluence 305</p>
             <div className="flex space-x-4">
               {/* Instagram */}
               <a

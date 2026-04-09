@@ -1,82 +1,89 @@
 const officers = [
   {
-    name: 'Alex Martinez',
+    name: 'Jeff Torres Navarrete',
     role: 'President',
-    major: 'Computer Science',
-    year: 'Senior',
+    major: 'Mechanical Engineering',
+    year: 'Sophomore',
     bio: 'Leading our chapter with a passion for increasing Hispanic representation in tech and engineering.',
+    email: 'jytorresnavarr@mavs.coloradomesa.edu',
+    // photo: '/officers/jeff-torres-navarrete.jpg',
   },
   {
-    name: 'Sofia Rodriguez',
+    name: 'Magaly Luna',
+    role: 'Outgoing President',
+    major: 'Electrical Engineering',
+    year: 'Senior',
+    bio: 'Served as chapter President. Now mentoring incoming leadership to ensure a seamless transition.',
+    email: 'mluna2@mavs.coloradomesa.edu',
+    // photo: '/officers/magaly-luna.jpg',
+  },
+  {
+    name: 'Sergio Zazueta',
     role: 'Vice President',
-    major: 'Mechanical Engineering',
+    major: 'Mechanical Engineering Technology',
     year: 'Junior',
     bio: "Coordinates events and supports the President in executing our chapter's vision.",
+    email: 'szazueta@mavs.coloradomesa.edu',
+    // photo: '/officers/sergio-zazueta.jpg',
   },
+  // {
+  //   name: 'Adrien',
+  //   role: 'Secretary',
+  //   major: 'Civil Engineering',
+  //   year: 'Sophomore',
+  //   bio: 'Keeps our chapter organized through meeting notes, communications, and member records.',
+  // },
   {
-    name: 'Diego Hernandez',
-    role: 'Secretary',
-    major: 'Civil Engineering',
-    year: 'Sophomore',
-    bio: 'Keeps our chapter organized through meeting notes, communications, and member records.',
-  },
-  {
-    name: 'Isabella Torres',
+    name: 'Jayden Alonzo-Estrada',
     role: 'Treasurer',
     major: 'Electrical Engineering',
     year: 'Junior',
     bio: 'Manages chapter finances and ensures our funds are used effectively for member programming.',
+    email: 'jjalonzo-estra@mavs.coloradomesa.edu',
+    photo: '/officers/jayden-alonzo-estrada.jpg',
   },
-  {
-    name: 'Carlos Ramirez',
-    role: 'Webmaster',
-    major: 'Computer Science',
-    year: 'Sophomore',
-    bio: 'Maintains our digital presence and helps members stay informed about opportunities.',
-  },
-  {
-    name: 'Maria Lopez',
-    role: 'Professional Development Chair',
-    major: 'Chemical Engineering',
-    year: 'Senior',
-    bio: 'Plans workshops, industry visits, and professional development events for our members.',
-  },
-  {
-    name: 'Luis Garcia',
-    role: 'Community Service Chair',
-    major: 'Mechanical Engineering',
-    year: 'Junior',
-    bio: 'Organizes STEM outreach initiatives and community service opportunities for our chapter.',
-  },
-  {
-    name: 'Ana Flores',
-    role: 'Historian',
-    major: 'Computer Science',
-    year: 'Freshman',
-    bio: 'Documents chapter events through photography, social media, and our chapter archive.',
-  },
+  // {
+  //   name: 'Carlos Ramirez',
+  //   role: 'Webmaster',
+  //   major: 'Computer Science',
+  //   year: 'Sophomore',
+  //   bio: 'Maintains our digital presence and helps members stay informed about opportunities.',
+  // },
+  // {
+  //   name: 'Maria Lopez',
+  //   role: 'Professional Development Chair',
+  //   major: 'Chemical Engineering',
+  //   year: 'Senior',
+  //   bio: 'Plans workshops, industry visits, and professional development events for our members.',
+  // },
+  // {
+  //   name: 'Luis Garcia',
+  //   role: 'Community Service Chair',
+  //   major: 'Mechanical Engineering',
+  //   year: 'Junior',
+  //   bio: 'Organizes STEM outreach initiatives and community service opportunities for our chapter.',
+  // },
+  // {
+  //   name: 'Ana Flores',
+  //   role: 'Historian',
+  //   major: 'Computer Science',
+  //   year: 'Freshman',
+  //   bio: 'Documents chapter events through photography, social media, and our chapter archive.',
+  // },
 ]
 
 const advisor = {
-  name: 'Dr. Patricia Reyes',
-  role: 'Faculty Advisor',
-  department: 'Department of Engineering & Computer Science',
-  bio: 'Dr. Reyes has been advising the CMU SHPE chapter since its founding. Her mentorship and support have been instrumental to our growth.',
-  email: 'preyes@coloradomesa.edu',
+  name: 'Ulises Techera',
+  role: 'Instructor',
+  department: 'CMU/CU Boulder Civil Engineering',
+  bio: 'Dr. Techera has been advising the CMU SHPE chapter for many years. His mentorship and support have been instrumental to our growth.',
+  email: 'utechera@coloradomesa.edu',
+  photo: undefined as string | undefined,
+  // Uncomment and set when photo is ready:
+  // photo: '/officers/ulises-techera.jpg',
 }
 
-function AvatarPlaceholder({ name }: { name: string }) {
-  const initials = name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-  return (
-    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-shpe-red to-cmu-maroon flex items-center justify-center mx-auto mb-4">
-      <span className="text-white font-bold text-2xl">{initials}</span>
-    </div>
-  )
-}
+import OfficerAvatar from '@/components/OfficerAvatar'
 
 export default function Officers() {
   return (
@@ -112,12 +119,20 @@ export default function Officers() {
                 key={officer.name}
                 className="bg-gray-50 rounded-xl p-6 text-center border border-gray-100 hover:border-shpe-red/30 hover:shadow-md transition-all duration-200"
               >
-                <AvatarPlaceholder name={officer.name} />
+                <OfficerAvatar name={officer.name} photo={officer.photo} />
                 <h3 className="font-bold text-gray-900 text-base mb-0.5">{officer.name}</h3>
                 <p className="text-shpe-red font-semibold text-sm mb-2">{officer.role}</p>
                 <p className="text-gray-500 text-xs mb-1">{officer.major}</p>
                 <p className="text-gray-400 text-xs mb-4">{officer.year}</p>
-                <p className="text-gray-500 text-xs leading-relaxed">{officer.bio}</p>
+                <p className="text-gray-500 text-xs leading-relaxed mb-4">{officer.bio}</p>
+                {officer.email && (
+                  <a
+                    href={`mailto:${officer.email}`}
+                    className="text-shpe-red hover:text-red-700 text-xs font-medium transition-colors break-all"
+                  >
+                    {officer.email}
+                  </a>
+                )}
               </div>
             ))}
           </div>
@@ -133,8 +148,8 @@ export default function Officers() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 max-w-2xl flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-shpe-gold to-shpe-red flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-xl">PR</span>
+            <div className="flex-shrink-0">
+              <OfficerAvatar name={advisor.name} photo={advisor.photo} size="lg" />
             </div>
             <div>
               <h3 className="font-bold text-gray-900 text-xl mb-0.5">{advisor.name}</h3>
