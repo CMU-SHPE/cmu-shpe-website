@@ -27,7 +27,7 @@ export default function Contact() {
     try {
       // Replace YOUR_FORM_ID with your Formspree form ID.
       // Sign up for free at https://formspree.io to get one.
-      const res = await fetch('https://formspree.io/f/YOUR_FORM_ID', {
+      const res = await fetch('https://formspree.io/f/mwvwddro', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, subject, message }),
