@@ -84,6 +84,7 @@ const advisor = {
 }
 
 import OfficerAvatar from '@/components/OfficerAvatar'
+import config from '@/lib/config'
 
 export default function Officers() {
   return (
@@ -179,10 +180,10 @@ export default function Officers() {
           <p className="text-red-200 text-sm">
             Contact us at{' '}
             <a
-              href="mailto:shpe@coloradomesa.edu"
+              href={`mailto:${config.email}`}
               className="text-white underline hover:text-red-100"
             >
-              shpe@coloradomesa.edu
+              {config.email}
             </a>{' '}
             to learn more.
           </p>

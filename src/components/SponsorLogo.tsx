@@ -36,13 +36,14 @@ export default function SponsorLogo({
 
   if (!showLogo) return placeholder
 
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
   const logoEl = (
     <div
       className={`${size} rounded-xl border border-gray-200 bg-white overflow-hidden flex items-center justify-center`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={logo}
+        src={`${base}${logo}`}
         alt={`${name} logo`}
         onError={() => setImgError(true)}
         className="w-full h-full object-contain p-3"

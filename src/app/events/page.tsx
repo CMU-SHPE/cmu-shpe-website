@@ -1,3 +1,5 @@
+import config from '@/lib/config'
+
 const typeColors: Record<string, string> = {
   Networking: 'bg-blue-100 text-blue-800',
   Workshop: 'bg-green-100 text-green-800',
@@ -231,10 +233,10 @@ export default function Events() {
             Follow us on social media or reach out to be added to our mailing list.
           </p>
           <a
-            href="mailto:shpe@coloradomesa.edu"
+            href={`mailto:${config.email}`}
             className="inline-flex items-center justify-center bg-white text-shpe-red hover:bg-gray-100 px-6 py-3 rounded-lg font-semibold transition-all duration-200"
           >
-            shpe@coloradomesa.edu
+            {config.email}
           </a>
         </div>
       </section>
