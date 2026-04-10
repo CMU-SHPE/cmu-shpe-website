@@ -16,7 +16,7 @@ const config: {
     location: 'Confluence 305',
   },
   social: {
-    // instagram: 'https://instagram.com/cmu_shpe',
+    instagram: 'https://www.instagram.com/shpecmu.mavs',
     linkedin: 'https://www.linkedin.com/in/cmu-shpe-8019013b6/',
     // x: 'https://x.com/cmu_shpe',
     // youtube: 'https://youtube.com/@cmu_shpe',
