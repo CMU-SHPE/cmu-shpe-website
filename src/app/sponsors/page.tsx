@@ -8,91 +8,125 @@ const sponsors: {
   tier: Tier
   website?: string
   logo?: string
+  bgColor?: string
+  size?: string
 }[] = [
   // ── Platinum ──────────────────────────────────────────
   {
-    name: 'Placeholder Platinum Co.',
+    name: 'JGMS',
     tier: 'Platinum',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-platinum.png',
+    website: 'https://www.jgmsinc.com/',
+    logo: '/sponsors/jgms.png',
+    // size: 'w-52 h-28',
   },
-  {
-    name: 'Placeholder Platinum Co.',
-    tier: 'Platinum',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-platinum-2.png',
-  },
+  // {
+  //   name: 'Placeholder Platinum Co.',
+  //   tier: 'Platinum',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-platinum-2.png',
+  // },
 
   // ── Gold ──────────────────────────────────────────────
   {
-    name: 'Placeholder Gold Co.',
-    tier: 'Gold',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-gold.png',
+    name: 'SGM',
+    tier: 'Platinum',
+    website: 'https://sgm-inc.com/',
+    logo: '/sponsors/sgm-inc-logo.svg',
+    bgColor: 'bg-sgm-bg',
   },
-  {
-    name: 'Placeholder Gold Co.',
-    tier: 'Gold',
+  // {
+    // name: 'Placeholder Gold Co.',
+    // tier: 'Gold',
     // website: 'https://example.com',
     // logo: '/sponsors/placeholder-gold-2.png',
-  },
-  {
-    name: 'Placeholder Gold Co.',
-    tier: 'Gold',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-gold-3.png',
-  },
+  // },
+  // {
+  //   name: 'Placeholder Gold Co.',
+  //   tier: 'Gold',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-gold-3.png',
+  // },
 
   // ── Silver ────────────────────────────────────────────
-  {
-    name: 'Placeholder Silver Co.',
-    tier: 'Silver',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-silver.png',
-  },
-  {
-    name: 'Placeholder Silver Co.',
-    tier: 'Silver',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-silver-2.png',
-  },
-  {
-    name: 'Placeholder Silver Co.',
-    tier: 'Silver',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-silver-3.png',
-  },
+  // {
+  //   name: 'Placeholder Silver Co.',
+  //   tier: 'Silver',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-silver.png',
+  // },
+  // {
+  //   name: 'Placeholder Silver Co.',
+  //   tier: 'Silver',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-silver-2.png',
+  // },
+  // {
+  //   name: 'Placeholder Silver Co.',
+  //   tier: 'Silver',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-silver-3.png',
+  // },
 
   // ── Bronze ────────────────────────────────────────────
-  {
-    name: 'Placeholder Bronze Co.',
-    tier: 'Bronze',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-bronze.png',
-  },
-  {
-    name: 'Placeholder Bronze Co.',
-    tier: 'Bronze',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-bronze-2.png',
-  },
-  {
-    name: 'Placeholder Bronze Co.',
-    tier: 'Bronze',
-    // website: 'https://example.com',
-    // logo: '/sponsors/placeholder-bronze-3.png',
-  },
+  // {
+  //   name: 'Placeholder Bronze Co.',
+  //   tier: 'Bronze',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-bronze.png',
+  // },
+  // {
+  //   name: 'Placeholder Bronze Co.',
+  //   tier: 'Bronze',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-bronze-2.png',
+  // },
+  // {
+  //   name: 'Placeholder Bronze Co.',
+  //   tier: 'Bronze',
+  //   // website: 'https://example.com',
+  //   // logo: '/sponsors/placeholder-bronze-3.png',
+  // },
 ]
 
 const tierMeta: {
   name: Tier
-  amount: string
+  amount?: string
   badge: string
 }[] = [
-  { name: 'Platinum', amount: '$5,000+', badge: 'bg-gray-200 text-gray-700' },
-  { name: 'Gold',     amount: '$2,500+', badge: 'bg-shpe-gold text-cmu-maroon' },
-  { name: 'Silver',   amount: '$1,000+', badge: 'bg-gray-400 text-white' },
-  { name: 'Bronze',   amount: '$500+',   badge: 'bg-orange-300 text-orange-900' },
+  { 
+    name: 'Platinum', 
+    // amount: 'This is the description', 
+    badge: 'bg-gray-200 text-gray-700' 
+  },
+  { 
+    name: 'Gold',     
+    // amount: '$2,500+', 
+    badge: 'bg-shpe-gold text-cmu-maroon' 
+  },
+  { 
+    name: 'Silver',   
+    // amount: '$1,000+', 
+    badge: 'bg-gray-400 text-white' 
+  },
+  { 
+    name: 'Bronze',   
+    // amount: '$500+',   
+    badge: 'bg-orange-300 text-orange-900' 
+  },
+]
+
+// true = ✓, false = ✗, number = partial count
+type Cell = boolean | number
+
+const benefits: { label: string; tiers: [Cell, Cell, Cell, Cell] }[] = [
+  //                                       Platinum  Gold     Silver   Bronze
+  { label: 'Logo on website',              tiers: [true,  true,  true,  true]  },
+  // { label: 'Access to resume book',        tiers: [true,  true,  true,  false] },
+  { label: 'Social media features',        tiers: [true,  true,  1,     false] },
+  // { label: 'Networking banquet seats',     tiers: [true,  2,     false, false] },
+  { label: 'Logo on event banners',        tiers: [true,  true,  false, false] },
+  { label: 'Newsletter spotlight',         tiers: [true,  true,  false, false] },
+  { label: 'Company presentation',         tiers: [true,  false, false, false] },
 ]
 
 export default function Sponsors() {
@@ -138,6 +172,8 @@ export default function Sponsors() {
                     logo={sponsor.logo}
                     tier={sponsor.tier}
                     website={sponsor.website}
+                    bgColor={sponsor.bgColor}
+                    size={sponsor.size}
                   />
                 ))}
               </div>
@@ -180,27 +216,14 @@ export default function Sponsors() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {[
-                  'Logo on website',
-                  'Logo on event banners',
-                  'Access to resume book',
-                  'Social media features',
-                  'Newsletter spotlight',
-                  'Networking banquet seats',
-                  'Company presentation',
-                ].map((benefit, i) => (
-                  <tr key={benefit} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-6 py-3.5 text-gray-700 font-medium">{benefit}</td>
-                    <td className="px-4 py-3.5 text-center"><Check /></td>
-                    <td className="px-4 py-3.5 text-center">
-                      {i < 4 ? <Check /> : i === 4 ? <Check /> : i === 5 ? <Partial text="2" /> : <X />}
-                    </td>
-                    <td className="px-4 py-3.5 text-center">
-                      {i === 0 ? <Check /> : i === 2 ? <Check /> : i === 3 ? <Partial text="1" /> : <X />}
-                    </td>
-                    <td className="px-4 py-3.5 text-center">
-                      {i === 0 ? <Check /> : <X />}
-                    </td>
+                {benefits.map((benefit, i) => (
+                  <tr key={benefit.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-6 py-3.5 text-gray-700 font-medium">{benefit.label}</td>
+                    {benefit.tiers.map((cell, j) => (
+                      <td key={j} className="px-4 py-3.5 text-center">
+                        {cell === true ? <Check /> : cell === false ? <X /> : <Partial text={String(cell)} />}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

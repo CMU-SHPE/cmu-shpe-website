@@ -16,14 +16,18 @@ export default function SponsorLogo({
   logo,
   tier,
   website,
+  bgColor = 'bg-white',
+  size: sizeProp,
 }: {
   name: string
   logo?: string
   tier: Tier
   website?: string
+  bgColor?: string
+  size?: string
 }) {
   const [imgError, setImgError] = useState(false)
-  const size = tierSizes[tier]
+  const size = sizeProp ?? tierSizes[tier]
   const showLogo = logo && !imgError
 
   const placeholder = (
@@ -39,7 +43,7 @@ export default function SponsorLogo({
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
   const logoEl = (
     <div
-      className={`${size} rounded-xl border border-gray-200 bg-white overflow-hidden flex items-center justify-center`}
+      className={`${size} rounded-xl border border-gray-200 ${bgColor} overflow-hidden flex items-center justify-center`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
