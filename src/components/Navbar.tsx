@@ -2,15 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-
-const navLinks = [
-  { href: '/', label: 'Home' },
-  { href: '/about', label: 'About' },
-  { href: '/events', label: 'Events' },
-  { href: '/sponsors', label: 'Sponsors' },
-  { href: '/officers', label: 'Officers' },
-  { href: '/contact', label: 'Contact' },
-]
+import { navLinks } from '@/lib/nav'
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)

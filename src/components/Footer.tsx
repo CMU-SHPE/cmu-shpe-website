@@ -1,14 +1,6 @@
 import Link from 'next/link'
 import config from '@/lib/config'
-
-const quickLinks = [
-  { href: '/', label: 'Home' },
-  { href: '/about', label: 'About Us' },
-  { href: '/events', label: 'Events' },
-  { href: '/sponsors', label: 'Sponsors' },
-  { href: '/officers', label: 'Officers' },
-  { href: '/contact', label: 'Contact' },
-]
+import { navLinks } from '@/lib/nav'
 
 export default function Footer() {
   return (
@@ -36,7 +28,7 @@ export default function Footer() {
               Quick Links
             </h3>
             <ul className="space-y-2">
-              {quickLinks.map((link) => (
+              {navLinks.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}

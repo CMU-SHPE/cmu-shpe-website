@@ -2,36 +2,7 @@ import Link from 'next/link'
 import SponsorLogo from '@/components/SponsorLogo'
 import { sponsors, tierOrder } from '@/lib/sponsors'
 import { events, typeColors } from '@/lib/events'
-
-const stats = [
-  { value: '10+', label: 'Active Members' },
-  { value: '5+', label: 'Events Per Year' },
-  { value: '5+', label: 'Years Active' },
-  // { value: '+', label: 'Industry Partners' },
-]
-
-const pillars = [
-  {
-    icon: '🎓',
-    title: 'Academic Excellence',
-    desc: 'Tutoring, study groups, and academic resources for STEM students.',
-  },
-  {
-    icon: '💼',
-    title: 'Career Development',
-    desc: 'Resume workshops, mock interviews, and career fair prep.',
-  },
-  {
-    icon: '🤝',
-    title: 'Networking',
-    desc: 'Connections to professionals, alumni, and industry partners.',
-  },
-  {
-    icon: '🌎',
-    title: 'Community Service',
-    desc: 'STEM outreach and service to the Grand Junction community.',
-  },
-]
+import { stats, pillars } from '@/lib/home'
 
 export default function Home() {
   return (
