@@ -69,34 +69,16 @@ export const officers: Officer[] = [
     email: 'jlopez-rodrig@mavs.coloradomesa.edu',
     linkedin: 'https://www.linkedin.com/in/jesus-lopez-134673389/',
   },
-  // {
-  //   name: 'Carlos Ramirez',
-  //   role: 'Webmaster',
-  //   major: 'Computer Science',
-  //   year: 'Sophomore',
-  //   bio: 'Maintains our digital presence and helps members stay informed about opportunities.',
-  // },
-  // {
-  //   name: 'Maria Lopez',
-  //   role: 'Professional Development Chair',
-  //   major: 'Chemical Engineering',
-  //   year: 'Senior',
-  //   bio: 'Plans workshops, industry visits, and professional development events for our members.',
-  // },
-  // {
-  //   name: 'Luis Garcia',
-  //   role: 'Community Service Chair',
-  //   major: 'Mechanical Engineering',
-  //   year: 'Junior',
-  //   bio: 'Organizes STEM outreach initiatives and community service opportunities for our chapter.',
-  // },
-  // {
-  //   name: 'Ana Flores',
-  //   role: 'Historian',
-  //   major: 'Computer Science',
-  //   year: 'Freshman',
-  //   bio: 'Documents chapter events through photography, social media, and our chapter archive.',
-  // },
+  {
+    name: 'Daniel Hernandez',
+    role: 'CAB Representative',
+    major: 'Civil Engineering',
+    year: 'Sophomore',
+    bio: 'Manages our chapter\'s relationship with the Club Advisory Board and helps coordinate campus-wide events.',
+    email: 'dhernandez5@mavs.coloradomesa.edu',
+    // photo: '/officers/daniel.jpg',
+    linkedin: 'https://www.linkedin.com/in/daniel-hernandez-4b1872405/',
+  },
 ]
 
 export const advisor: Advisor = {
