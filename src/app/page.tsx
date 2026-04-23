@@ -1,46 +1,14 @@
 import Link from 'next/link'
+import SponsorLogo from '@/components/SponsorLogo'
+import { sponsors, tierOrder } from '@/lib/sponsors'
+import { events, typeColors } from '@/lib/events'
 
 const stats = [
-  { value: '50+', label: 'Active Members' },
-  { value: '20+', label: 'Events Per Year' },
+  { value: '10+', label: 'Active Members' },
+  { value: '5+', label: 'Events Per Year' },
   { value: '5+', label: 'Years Active' },
-  { value: '10+', label: 'Industry Partners' },
+  // { value: '+', label: 'Industry Partners' },
 ]
-
-const upcomingEvents = [
-  {
-    date: 'April 15, 2026',
-    title: 'Spring Networking Night',
-    description:
-      'Connect with local industry professionals and alumni over dinner and conversation. Business casual dress.',
-    location: 'CMU Student Union, Room 214',
-    type: 'Networking',
-  },
-  {
-    date: 'April 22, 2026',
-    title: 'Resume Workshop',
-    description:
-      'Get your resume reviewed by professionals and learn tips to stand out to STEM recruiters.',
-    location: 'CMU Engineering Building, Room 105',
-    type: 'Workshop',
-  },
-  {
-    date: 'May 3, 2026',
-    title: 'End of Year Banquet',
-    description:
-      "Celebrate the year's achievements, recognize outstanding members, and enjoy a formal dinner.",
-    location: 'Avalon Theatre, Grand Junction',
-    type: 'Social',
-  },
-]
-
-const typeColors: Record<string, string> = {
-  Networking: 'bg-blue-100 text-blue-800',
-  Workshop: 'bg-green-100 text-green-800',
-  Social: 'bg-purple-100 text-purple-800',
-  Academic: 'bg-yellow-100 text-yellow-800',
-  Community: 'bg-orange-100 text-orange-800',
-}
 
 const pillars = [
   {
@@ -193,9 +161,9 @@ export default function Home() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 mb-10">
-            {upcomingEvents.map((event) => (
+            {events.slice(0, 3).map((event) => (
               <div
-                key={event.title}
+                key={event.id}
                 className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200"
               >
                 <div className="h-1.5 bg-shpe-red" />
@@ -266,24 +234,20 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Placeholder logo grid */}
-          <div className="flex flex-wrap justify-center gap-5 mb-10">
-            {[
-              { label: 'Platinum Sponsor', w: 'w-48 h-24' },
-              { label: 'Platinum Sponsor', w: 'w-48 h-24' },
-              { label: 'Gold Sponsor', w: 'w-36 h-20' },
-              { label: 'Gold Sponsor', w: 'w-36 h-20' },
-              { label: 'Gold Sponsor', w: 'w-36 h-20' },
-              { label: 'Silver Sponsor', w: 'w-28 h-16' },
-              { label: 'Silver Sponsor', w: 'w-28 h-16' },
-            ].map((s, i) => (
-              <div
-                key={i}
-                className={`${s.w} flex items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-gray-400 text-xs font-medium`}
-              >
-                {s.label}
-              </div>
-            ))}
+          <div className="flex flex-wrap justify-center items-center gap-5 mb-10">
+            {[...sponsors]
+              .sort((a, b) => tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier))
+              .map((sponsor) => (
+                <SponsorLogo
+                  key={sponsor.name + sponsor.logo}
+                  name={sponsor.name}
+                  logo={sponsor.logo}
+                  tier={sponsor.tier}
+                  website={sponsor.website}
+                  bgColor={sponsor.bgColor}
+                  size={sponsor.size}
+                />
+              ))}
           </div>
 
           <div className="text-center">

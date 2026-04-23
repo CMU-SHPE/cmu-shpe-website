@@ -7,6 +7,7 @@ const config: {
     x?: string
     youtube?: string
     tiktok?: string
+    presence?: string
   }
 } = {
   email: 'shpecmu9@gmail.com',
@@ -21,6 +22,7 @@ const config: {
     // x: 'https://x.com/cmu_shpe',
     // youtube: 'https://youtube.com/@cmu_shpe',
     tiktok: 'https://www.tiktok.com/@shpecmu.mavs',
+    presence: 'https://coloradomesa.presence.io/organization/shpe-cmu-society-of-hispanic-professional-engineers',
   },
 }
 

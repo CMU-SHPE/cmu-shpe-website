@@ -1,21 +1,23 @@
 const officers = [
   {
     name: 'Jeff Torres Navarrete',
-    role: 'President',
+    role: 'Co-President',
     major: 'Mechanical Engineering',
     year: 'Sophomore',
     bio: 'Leading our chapter with a passion for increasing Hispanic representation in tech and engineering.',
     email: 'jytorresnavarr@mavs.coloradomesa.edu',
-    // photo: '/officers/jeff-torres-navarrete.jpg',
+    photo: '/officers/jeff.jpg',
+    linkedin: 'https://www.linkedin.com/in/jtorresn/',
   },
   {
     name: 'Magaly Luna',
-    role: 'Outgoing President',
-    major: 'Electrical Engineering',
+    role: 'Co-President',
+    major: 'Electrical and Computer Engineering',
     year: 'Senior',
     bio: 'Served as chapter President. Now mentoring incoming leadership to ensure a seamless transition.',
     email: 'mluna2@mavs.coloradomesa.edu',
-    // photo: '/officers/magaly-luna.jpg',
+    photo: '/officers/magaly.jpg',
+    linkedin: 'https://www.linkedin.com/in/luna05/',
   },
   {
     name: 'Sergio Zazueta',
@@ -24,23 +26,27 @@ const officers = [
     year: 'Junior',
     bio: "Coordinates events and supports the President in executing our chapter's vision.",
     email: 'szazueta@mavs.coloradomesa.edu',
-    // photo: '/officers/sergio-zazueta.jpg',
+    photo: '/officers/sergio.jpg',
+    linkedin: 'https://www.linkedin.com/in/sergio-zazueta-486719330/',
   },
-  // {
-  //   name: 'Adrien',
-  //   role: 'Secretary',
-  //   major: 'Civil Engineering',
-  //   year: 'Sophomore',
-  //   bio: 'Keeps our chapter organized through meeting notes, communications, and member records.',
-  // },
   {
     name: 'Jayden Alonzo-Estrada',
     role: 'Treasurer',
-    major: 'Electrical Engineering',
-    year: 'Junior',
+    major: 'Computer Science and Cybersecurity',
+    year: 'Senior',
     bio: 'Manages chapter finances and ensures our funds are used effectively for member programming.',
     email: 'jjalonzo-estra@mavs.coloradomesa.edu',
-    photo: '/officers/jayden-alonzo-estrada.jpg',
+    photo: '/officers/jayden.jpg',
+    linkedin: 'https://www.linkedin.com/in/jayae/',
+  },
+  {
+    name: 'Jesus Lopez',
+    role: 'Secretary',
+    major: 'Mechanical Engineering',
+    year: 'Sophomore',
+    bio: 'Keeps our chapter organized through meeting notes, communications, and member records.',
+    email: 'jlopez-rodrig@mavs.coloradomesa.edu',
+    linkedin: 'https://www.linkedin.com/in/jesus-lopez-134673389/',
   },
   // {
   //   name: 'Carlos Ramirez',
@@ -78,9 +84,8 @@ const advisor = {
   department: 'CMU/CU Boulder Civil Engineering',
   bio: 'Dr. Techera has been advising the CMU SHPE chapter for many years. His mentorship and support have been instrumental to our growth.',
   email: 'utechera@coloradomesa.edu',
-  photo: undefined as string | undefined,
-  // Uncomment and set when photo is ready:
-  // photo: '/officers/ulises-techera.jpg',
+  photo: '/officers/ulises.jpg',
+  linkedin: 'https://www.linkedin.com/in/ulises-d-techera-ph-d-172a85b9/',
 }
 
 import OfficerAvatar from '@/components/OfficerAvatar'
@@ -132,6 +137,19 @@ export default function Officers() {
                     className="text-shpe-red hover:text-red-700 text-xs font-medium transition-colors break-all"
                   >
                     {officer.email}
+                  </a>
+                )}
+                {officer.linkedin && (
+                  <a
+                    href={officer.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 flex items-center justify-center gap-1 text-blue-600 hover:text-blue-800 text-xs font-medium transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                    LinkedIn
                   </a>
                 )}
               </div>
