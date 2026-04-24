@@ -31,10 +31,11 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Change this to match your repository name.
-          # e.g. if your site is at https://username.github.io/cmu-shpe-website
-          # set this to /cmu-shpe-website
-          NEXT_PUBLIC_BASE_PATH: /cmu-shpe-website
+          # Site is served at the root of the custom domain shpecmu.com,
+          # so no base path is needed. If you ever revert to
+          # https://username.github.io/cmu-shpe-website, set this to
+          # /cmu-shpe-website.
+          NEXT_PUBLIC_BASE_PATH: ''
 
       - uses: actions/upload-pages-artifact@v3
         with:

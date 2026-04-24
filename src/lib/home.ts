@@ -4,7 +4,7 @@ export type Stat = {
 }
 
 export const stats: Stat[] = [
-  { value: '10+', label: 'Active Members' },
+  { value: '25+', label: 'Members' },
   { value: '5+', label: 'Events Per Year' },
   { value: '5+', label: 'Years Active' },
   // { value: '+', label: 'Industry Partners' },
