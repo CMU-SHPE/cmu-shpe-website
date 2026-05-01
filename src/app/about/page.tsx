@@ -22,51 +22,51 @@ export default function About() {
       </section>
 
       {/* ── Chapter Info ── */}
-      <section className="bg-white py-20">
+      <section className="bg-white dark:bg-gray-900 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-16 items-start">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">
                 Colorado Mesa University Chapter
               </h2>
-              <p className="text-gray-600 leading-relaxed mb-4">
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
                 The SHPE chapter at Colorado Mesa University was founded to bring together
                 Hispanic and underrepresented students in STEM disciplines and provide them
                 with the tools, resources, and network they need to succeed.
               </p>
-              <p className="text-gray-600 leading-relaxed mb-4">
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
                 Located in Grand Junction, Colorado, our chapter serves students from CMU&apos;s
                 engineering, computer science, mathematics, and physical sciences programs.
                 We are proud to be one of the active SHPE collegiate chapters in the state
                 of Colorado.
               </p>
-              <p className="text-gray-600 leading-relaxed mb-8">
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-8">
                 Our members gain access to national SHPE resources, including the annual
                 SHPE National Convention — one of the largest gatherings of Hispanic STEM
                 professionals and students in the country.
               </p>
 
               <blockquote className="border-l-4 border-shpe-red pl-6 py-1 mb-8">
-                <p className="text-gray-700 italic text-lg leading-relaxed">
+                <p className="text-gray-700 dark:text-gray-300 italic text-lg leading-relaxed">
                   &ldquo;Changing lives by empowering the Hispanic community to realize its fullest
                   potential and to impact the world through STEM awareness, access, support,
                   and development.&rdquo;
                 </p>
-                <cite className="text-gray-400 text-sm mt-3 block not-italic">
+                <cite className="text-gray-400 dark:text-gray-500 text-sm mt-3 block not-italic">
                   — SHPE National Mission
                 </cite>
               </blockquote>
             </div>
 
             <div className="space-y-6">
-              <div className="bg-gray-50 rounded-xl p-6 border border-gray-100">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-100 dark:border-gray-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                   <span className="w-1.5 h-6 bg-shpe-red rounded mr-3 flex-shrink-0" />
                   Our Values
                 </h3>
                 <ul className="space-y-3">
                   {values.map((v) => (
-                    <li key={v} className="flex items-start text-gray-600 text-sm">
+                    <li key={v} className="flex items-start text-gray-600 dark:text-gray-300 text-sm">
                       <svg
                         className="w-4 h-4 text-shpe-red mt-0.5 mr-2 flex-shrink-0"
                         fill="currentColor"
@@ -111,7 +111,7 @@ export default function About() {
       </section>
 
       {/* ── SHPE National ── */}
-      <section className="bg-gray-50 py-20">
+      <section className="bg-gray-50 dark:bg-gray-800 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <div className="flex items-center justify-center mb-4">
@@ -121,8 +121,8 @@ export default function About() {
               </span>
               <div className="h-0.5 w-8 bg-shpe-red ml-3" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">About SHPE National</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto">
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">About SHPE National</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
               As a collegiate chapter, we are part of the Society of Hispanic Professional
               Engineers — a national organization with chapters across the United States.
             </p>
@@ -132,11 +132,11 @@ export default function About() {
             {nationalStats.map((s) => (
               <div
                 key={s.label}
-                className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center"
+                className="bg-white dark:bg-gray-900 rounded-xl p-8 shadow-sm border border-gray-100 dark:border-gray-700 text-center"
               >
                 <div className="text-4xl font-black text-shpe-red mb-2">{s.value}</div>
-                <div className="font-bold text-gray-900 mb-2">{s.label}</div>
-                <p className="text-gray-500 text-sm">{s.desc}</p>
+                <div className="font-bold text-gray-900 dark:text-white mb-2">{s.label}</div>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">{s.desc}</p>
               </div>
             ))}
           </div>

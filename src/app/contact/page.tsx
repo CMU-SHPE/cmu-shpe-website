@@ -58,18 +58,18 @@ export default function Contact() {
       </section>
 
       {/* ── Form + Info ── */}
-      <section className="bg-gray-50 py-20">
+      <section className="bg-gray-50 dark:bg-gray-800 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-14">
             {/* Contact Form */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Send Us a Message</h2>
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-8">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Send Us a Message</h2>
 
               {status === 'success' ? (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-6 text-center">
                   <div className="text-4xl mb-3">✅</div>
-                  <h3 className="font-bold text-green-800 text-lg mb-1">Message Sent!</h3>
-                  <p className="text-green-700 text-sm">
+                  <h3 className="font-bold text-green-800 dark:text-green-400 text-lg mb-1">Message Sent!</h3>
+                  <p className="text-green-700 dark:text-green-500 text-sm">
                     Thanks for reaching out. We will get back to you within a few days.
                   </p>
                   <button
@@ -80,7 +80,7 @@ export default function Contact() {
                       setSubject(subjects[0])
                       setMessage('')
                     }}
-                    className="mt-4 text-green-700 text-sm underline hover:text-green-900"
+                    className="mt-4 text-green-700 dark:text-green-400 text-sm underline hover:text-green-900 dark:hover:text-green-300"
                   >
                     Send another message
                   </button>
@@ -88,7 +88,7 @@ export default function Contact() {
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="name">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5" htmlFor="name">
                       Full Name <span className="text-shpe-red">*</span>
                     </label>
                     <input
@@ -98,12 +98,12 @@ export default function Contact() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Jane Doe"
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition placeholder:text-gray-400 dark:placeholder:text-gray-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="email">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5" htmlFor="email">
                       Email Address <span className="text-shpe-red">*</span>
                     </label>
                     <input
@@ -113,19 +113,19 @@ export default function Contact() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="jane@example.com"
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition placeholder:text-gray-400 dark:placeholder:text-gray-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="subject">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5" htmlFor="subject">
                       Subject
                     </label>
                     <select
                       id="subject"
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition bg-white"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition"
                     >
                       {subjects.map((s) => (
                         <option key={s} value={s}>
@@ -136,7 +136,7 @@ export default function Contact() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="message">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5" htmlFor="message">
                       Message <span className="text-shpe-red">*</span>
                     </label>
                     <textarea
@@ -146,12 +146,12 @@ export default function Contact() {
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder="Write your message here..."
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition resize-none"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition resize-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
                     />
                   </div>
 
                   {status === 'error' && (
-                    <p className="text-shpe-red text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    <p className="text-shpe-red text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
                       Something went wrong. Please try emailing us directly at {config.email}.
                     </p>
                   )}
@@ -170,7 +170,7 @@ export default function Contact() {
             {/* Contact Info */}
             <div className="space-y-8">
               <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Other Ways to Reach Us</h2>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Other Ways to Reach Us</h2>
                 <div className="space-y-5">
                   <InfoRow
                     icon={
@@ -206,7 +206,7 @@ export default function Contact() {
 
               {/* Social */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-4">
                   Follow Us
                 </h3>
                 <div className="flex gap-4">
@@ -291,13 +291,13 @@ function InfoRow({
         {icon}
       </div>
       <div>
-        <div className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-0.5">{label}</div>
+        <div className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wider mb-0.5">{label}</div>
         {href ? (
-          <a href={href} className="text-gray-700 text-sm hover:text-shpe-red transition-colors">
+          <a href={href} className="text-gray-700 dark:text-gray-300 text-sm hover:text-shpe-red transition-colors">
             {value}
           </a>
         ) : (
-          <div className="text-gray-700 text-sm">{value}</div>
+          <div className="text-gray-700 dark:text-gray-300 text-sm">{value}</div>
         )}
       </div>
     </div>
@@ -317,7 +317,7 @@ function SocialLink({
     <a
       href={href}
       aria-label={label}
-      className="w-10 h-10 rounded-lg bg-gray-100 hover:bg-shpe-red hover:text-white text-gray-600 flex items-center justify-center transition-all duration-200"
+      className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-shpe-red hover:text-white text-gray-600 dark:text-gray-300 flex items-center justify-center transition-all duration-200"
     >
       {icon}
     </a>

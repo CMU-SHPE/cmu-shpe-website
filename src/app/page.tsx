@@ -68,7 +68,7 @@ export default function Home() {
       </section>
 
       {/* ── Mission ── */}
-      <section className="bg-white py-20">
+      <section className="bg-white dark:bg-gray-900 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-16 items-center">
             <div>
@@ -78,15 +78,15 @@ export default function Home() {
                   Our Mission
                 </span>
               </div>
-              <h2 className="text-4xl font-bold text-gray-900 mb-6 leading-tight">
+              <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-6 leading-tight">
                 Building the Future of Hispanic Engineering
               </h2>
-              <p className="text-gray-600 leading-relaxed mb-4">
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
                 The CMU SHPE chapter brings together Hispanic and underrepresented STEM students
                 in Grand Junction, providing the tools, resources, and network needed to thrive
                 in engineering and science careers.
               </p>
-              <p className="text-gray-600 leading-relaxed mb-8">
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-8">
                 Through professional development events, industry networking, and community
                 service, our members grow into the engineers and scientists who will shape
                 tomorrow&apos;s world.
@@ -105,11 +105,11 @@ export default function Home() {
               {pillars.map((p) => (
                 <div
                   key={p.title}
-                  className="bg-gray-50 rounded-xl p-6 border border-gray-100 hover:border-shpe-red/30 transition-colors duration-200"
+                  className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-100 dark:border-gray-700 hover:border-shpe-red/30 transition-colors duration-200"
                 >
                   <div className="text-3xl mb-3">{p.icon}</div>
-                  <h3 className="font-bold text-gray-900 mb-2 text-sm">{p.title}</h3>
-                  <p className="text-gray-500 text-xs leading-relaxed">{p.desc}</p>
+                  <h3 className="font-bold text-gray-900 dark:text-white mb-2 text-sm">{p.title}</h3>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs leading-relaxed">{p.desc}</p>
                 </div>
               ))}
             </div>
@@ -118,7 +118,7 @@ export default function Home() {
       </section>
 
       {/* ── Upcoming Events ── */}
-      <section className="bg-gray-50 py-20">
+      <section className="bg-gray-50 dark:bg-gray-800 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <div className="flex items-center justify-center mb-4">
@@ -128,14 +128,14 @@ export default function Home() {
               </span>
               <div className="h-0.5 w-8 bg-shpe-red ml-3" />
             </div>
-            <h2 className="text-4xl font-bold text-gray-900">Upcoming Events</h2>
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-white">Upcoming Events</h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 mb-10">
             {events.slice(0, 3).map((event) => (
               <div
                 key={event.id}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200"
+                className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200"
               >
                 <div className="h-1.5 bg-shpe-red" />
                 <div className="p-6">
@@ -145,11 +145,11 @@ export default function Home() {
                     >
                       {event.type}
                     </span>
-                    <span className="text-gray-400 text-xs">{event.date}</span>
+                    <span className="text-gray-400 dark:text-gray-500 text-xs">{event.date}</span>
                   </div>
-                  <h3 className="font-bold text-gray-900 text-lg mb-2">{event.title}</h3>
-                  <p className="text-gray-500 text-sm leading-relaxed mb-5">{event.description}</p>
-                  <div className="flex items-center text-gray-400 text-xs">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-5">{event.description}</p>
+                  <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
                     <svg
                       className="w-3.5 h-3.5 mr-1.5 flex-shrink-0"
                       fill="none"
@@ -188,7 +188,7 @@ export default function Home() {
       </section>
 
       {/* ── Sponsors Preview ── */}
-      <section className="bg-white py-20">
+      <section className="bg-white dark:bg-gray-900 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <div className="flex items-center justify-center mb-4">
@@ -198,8 +198,8 @@ export default function Home() {
               </span>
               <div className="h-0.5 w-8 bg-shpe-gold ml-3" />
             </div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-3">Sponsors & Partners</h2>
-            <p className="text-gray-500 max-w-md mx-auto text-sm">
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">Sponsors & Partners</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
               Our generous sponsors make our programs and events possible. We are grateful for
               their commitment to developing Hispanic STEM talent.
             </p>

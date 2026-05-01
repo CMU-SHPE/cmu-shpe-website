@@ -22,18 +22,18 @@ export default function Events() {
       </section>
 
       {/* ── Events ── */}
-      <section className="bg-white py-20">
+      <section className="bg-white dark:bg-gray-900 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-10">
             <div className="h-0.5 w-8 bg-shpe-red mr-3" />
-            <h2 className="text-2xl font-bold text-gray-900">All Events</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">All Events</h2>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
             {events.map((event) => (
               <div
                 key={event.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200 flex"
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200 flex"
               >
                 {/* Left accent bar */}
                 <div className="w-1.5 bg-shpe-red flex-shrink-0" />
@@ -45,13 +45,13 @@ export default function Events() {
                       {event.type}
                     </span>
                     <div className="text-right">
-                      <div className="text-gray-700 text-sm font-medium">{event.date}</div>
-                      {event.time && <div className="text-gray-400 text-xs">{event.time}</div>}
+                      <div className="text-gray-700 dark:text-gray-300 text-sm font-medium">{event.date}</div>
+                      {event.time && <div className="text-gray-400 dark:text-gray-500 text-xs">{event.time}</div>}
                     </div>
                   </div>
-                  <h3 className="font-bold text-gray-900 text-lg mb-2">{event.title}</h3>
-                  <p className="text-gray-500 text-sm leading-relaxed mb-4">{event.description}</p>
-                  <div className="flex items-center text-gray-400 text-xs">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-4">{event.description}</p>
+                  <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
                     <svg
                       className="w-3.5 h-3.5 mr-1.5 flex-shrink-0"
                       fill="none"

@@ -7,25 +7,25 @@ const tierMeta: {
   amount?: string
   badge: string
 }[] = [
-  { 
-    name: 'Platinum', 
-    // amount: 'This is the description', 
-    badge: 'bg-gray-200 text-gray-700' 
+  {
+    name: 'Platinum',
+    // amount: 'This is the description',
+    badge: 'bg-gray-200 text-gray-700'
   },
-  { 
-    name: 'Gold',     
-    // amount: '$2,500+', 
-    badge: 'bg-shpe-gold text-cmu-maroon' 
+  {
+    name: 'Gold',
+    // amount: '$2,500+',
+    badge: 'bg-shpe-gold text-cmu-maroon'
   },
-  { 
-    name: 'Silver',   
-    // amount: '$1,000+', 
-    badge: 'bg-gray-400 text-white' 
+  {
+    name: 'Silver',
+    // amount: '$1,000+',
+    badge: 'bg-gray-400 text-white'
   },
-  { 
-    name: 'Bronze',   
-    // amount: '$500+',   
-    badge: 'bg-orange-300 text-orange-900' 
+  {
+    name: 'Bronze',
+    // amount: '$500+',
+    badge: 'bg-orange-300 text-orange-900'
   },
 ]
 
@@ -70,13 +70,13 @@ export default function Sponsors() {
         const tierSponsors = byTier(tier.name)
         if (tierSponsors.length === 0) return null
         return (
-          <section key={tier.name} className="py-16 border-b border-gray-100 last:border-0">
+          <section key={tier.name} className="py-16 border-b border-gray-100 dark:border-gray-800 last:border-0 bg-white dark:bg-gray-900">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center gap-3 mb-8">
                 <span className={`px-3 py-1 rounded-full text-sm font-bold ${tier.badge}`}>
                   {tier.name}
                 </span>
-                <span className="text-gray-400 text-sm">{tier.amount}</span>
+                <span className="text-gray-400 dark:text-gray-500 text-sm">{tier.amount}</span>
               </div>
               <div className="flex flex-wrap gap-5">
                 {tierSponsors.map((sponsor) => (
@@ -97,7 +97,7 @@ export default function Sponsors() {
       })}
 
       {/* ── Become a Sponsor ── */}
-      <section className="bg-gray-50 py-20">
+      <section className="bg-gray-50 dark:bg-gray-800 py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <div className="flex items-center justify-center mb-4">
@@ -107,8 +107,8 @@ export default function Sponsors() {
               </span>
               <div className="h-0.5 w-8 bg-shpe-red ml-3" />
             </div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">Become a Sponsor</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto">
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">Become a Sponsor</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
               Investing in CMU SHPE means investing in the next generation of Hispanic
               engineering talent. Our members are driven, ambitious, and ready to make
               an impact in your organization.
@@ -116,7 +116,7 @@ export default function Sponsors() {
           </div>
 
           {/* Tier comparison table */}
-          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm mb-14">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm mb-14">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-cmu-maroon text-white">
@@ -129,10 +129,10 @@ export default function Sponsors() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {benefits.map((benefit, i) => (
-                  <tr key={benefit.label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-6 py-3.5 text-gray-700 font-medium">{benefit.label}</td>
+                  <tr key={benefit.label} className={i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}>
+                    <td className="px-6 py-3.5 text-gray-700 dark:text-gray-300 font-medium">{benefit.label}</td>
                     {benefit.tiers.map((cell, j) => (
                       <td key={j} className="px-4 py-3.5 text-center">
                         {cell === true ? <Check /> : cell === false ? <X /> : <Partial text={String(cell)} />}
@@ -166,8 +166,8 @@ export default function Sponsors() {
 
 function Check() {
   return (
-    <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 rounded-full">
-      <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+    <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 dark:bg-green-900/40 rounded-full">
+      <svg className="w-3.5 h-3.5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
         <path
           fillRule="evenodd"
           d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -180,7 +180,7 @@ function Check() {
 
 function Partial({ text }: { text: string }) {
   return (
-    <span className="inline-flex items-center justify-center w-6 h-6 bg-yellow-100 rounded-full text-yellow-700 text-xs font-bold">
+    <span className="inline-flex items-center justify-center w-6 h-6 bg-yellow-100 dark:bg-yellow-900/40 rounded-full text-yellow-700 dark:text-yellow-400 text-xs font-bold">
       {text}
     </span>
   )
@@ -189,7 +189,7 @@ function Partial({ text }: { text: string }) {
 function X() {
   return (
     <span className="inline-flex items-center justify-center w-6 h-6">
-      <svg className="w-3.5 h-3.5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+      <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="currentColor" viewBox="0 0 20 20">
         <path
           fillRule="evenodd"
           d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
