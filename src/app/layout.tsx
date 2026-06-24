@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="websitelaunches-verification" content="b6a2583caccd14a46aef1d20effe4c93" />
         {/* Runs synchronously before paint to avoid flash of wrong theme */}
         <script
           dangerouslySetInnerHTML={{
