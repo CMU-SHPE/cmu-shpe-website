@@ -94,10 +94,8 @@ export const officers: Officer[] = [
     role: 'Outreach Chair',
     major: 'Electrical and Computer Engineering',
     year: 'Junior',
-    bio: 'Documenting our chapter\'s events and activities through photography to share with our members and the community.',
+    bio: 'Leads outreach efforts to connect CMU SHPE with local STEM programs and the broader Grand Junction community.',
     email: 'avalencia2@mavs.coloradomesa.edu',
-    // photo: '/officers/randy.jpg',
-    // linkedin: 'https://www.linkedin.com/in/randy-martinez-4b1872405/',
   },
 ]
 
