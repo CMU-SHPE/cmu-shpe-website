@@ -1,5 +1,6 @@
 const config: {
   email: string
+  formspreeEndpoint: string
   meeting: { day: string; time: string; location: string }
   social: {
     instagram?: string
@@ -11,6 +12,7 @@ const config: {
   }
 } = {
   email: 'shpecmu9@gmail.com',
+  formspreeEndpoint: 'https://formspree.io/f/mwvwddro',
   meeting: {
     day: 'Thursdays',
     time: '5:00 PM',
