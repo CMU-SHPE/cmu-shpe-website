@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { values, joinReasons, nationalStats } from '@/lib/about'
+import { CheckIcon } from '@/components/icons'
 
 export default function About() {
   return (
@@ -67,17 +68,7 @@ export default function About() {
                 <ul className="space-y-3">
                   {values.map((v) => (
                     <li key={v} className="flex items-start text-gray-600 dark:text-gray-300 text-sm">
-                      <svg
-                        className="w-4 h-4 text-shpe-red mt-0.5 mr-2 flex-shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
+                      <CheckIcon className="w-4 h-4 text-shpe-red mt-0.5 mr-2 flex-shrink-0" />
                       {v}
                     </li>
                   ))}
