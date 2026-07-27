@@ -4,11 +4,11 @@ The public website for the Society of Hispanic Professional Engineers (SHPE) cha
 Colorado Mesa University, served at [shpecmu.com](https://shpecmu.com).
 
 Built with [Next.js](https://nextjs.org) 14 (App Router), React 18, TypeScript, and
-[Tailwind CSS](https://tailwindcss.com), and statically exported to GitHub Pages.
+[Tailwind CSS](https://tailwindcss.com), and deployed on [Vercel](https://vercel.com).
 
 ## Getting started
 
-Requires Node.js (CI runs on Node 24 — see `.github/workflows/deploy.yml`).
+Requires Node.js (CI runs on Node 24 — see `.github/workflows/ci.yml`).
 
 ```bash
 npm install
@@ -22,8 +22,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | Command | Description |
 |---|---|
 | `npm run dev` | Start the local dev server |
-| `npm run build` | Static-export the site into `out/` |
-| `npm start` | Serve a production build locally (`next start`) |
+| `npm run build` | Build the site for production (`.next/`) |
+| `npm start` | Serve the production build locally (`next start`) |
 | `npm run lint` | Run ESLint (`next lint`) |
 | `npm test` | Run the test suite ([Vitest](https://vitest.dev) + React Testing Library) |
 
@@ -63,15 +63,13 @@ load, so a new entry doesn't need a photo to ship.
 npm test
 ```
 
-Runs on every push to `main` via `.github/workflows/deploy.yml`, before the site is
-built — a failing test blocks the deploy.
+Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
+(lint, test, build).
 
 ## Deployment
 
-Pushing to `main` triggers `.github/workflows/deploy.yml`, which installs, tests,
-statically exports the site (`next build` with `output: 'export'` in
-`next.config.js`), and publishes `out/` to GitHub Pages. The custom domain
-(`public/CNAME`) is `shpecmu.com`, so `NEXT_PUBLIC_BASE_PATH` is set to an empty string
-in CI. If the site ever moves back to the default
-`https://<org>.github.io/cmu-shpe-website` path, set `NEXT_PUBLIC_BASE_PATH` to
-`/cmu-shpe-website` instead (see the comment in `next.config.js`).
+The site is deployed on Vercel, connected to this GitHub repository: every push to
+`main` deploys to production, and every pull request gets its own preview URL. The
+custom domain `shpecmu.com` is configured in the Vercel project settings rather than a
+`CNAME` file. `.github/workflows/ci.yml` only runs checks (lint/test/build) — it does
+not deploy anything.
