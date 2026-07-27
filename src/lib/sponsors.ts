@@ -18,6 +18,13 @@ export const sponsors: Sponsor[] = [
     logo: '/sponsors/jgms.png',
     // size: 'w-52 h-28',
   },
+  {
+    name: 'SGM',
+    tier: 'Platinum',
+    website: 'https://sgm-inc.com/',
+    logo: '/sponsors/sgm-inc-logo.svg',
+    bgColor: 'bg-sgm-bg',
+  },
   // {
   //   name: 'Placeholder Platinum Co.',
   //   tier: 'Platinum',
@@ -26,13 +33,6 @@ export const sponsors: Sponsor[] = [
   // },
 
   // ── Gold ──────────────────────────────────────────────
-  {
-    name: 'SGM',
-    tier: 'Platinum',
-    website: 'https://sgm-inc.com/',
-    logo: '/sponsors/sgm-inc-logo.svg',
-    bgColor: 'bg-sgm-bg',
-  },
   // {
     // name: 'Placeholder Gold Co.',
     // tier: 'Gold',
