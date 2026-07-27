@@ -3,6 +3,7 @@ import SponsorLogo from '@/components/SponsorLogo'
 import { sponsors, tierOrder } from '@/lib/sponsors'
 import { events, typeColors } from '@/lib/events'
 import { stats, pillars } from '@/lib/home'
+import { LocationIcon } from '@/components/icons'
 
 export default function Home() {
   return (
@@ -150,25 +151,7 @@ export default function Home() {
                   <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
                   <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-5">{event.description}</p>
                   <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
-                    <svg
-                      className="w-3.5 h-3.5 mr-1.5 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
+                    <LocationIcon className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
                     {event.location}
                   </div>
                 </div>
