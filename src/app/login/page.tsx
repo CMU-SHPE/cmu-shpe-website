@@ -2,13 +2,12 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AuthError } from 'next-auth'
 import { signIn } from '@/auth'
-import { currentSession } from '@/lib/admin'
+import { currentAdmin } from '@/lib/admin'
 import SubmitButton from '@/components/submit-button'
 import { cardClass, inputClass, labelClass, primaryButtonClass } from '@/components/admin/styles'
 
 export default async function LoginPage(props: { searchParams: Promise<{ error?: string }> }) {
-  const session = await currentSession()
-  if (session) redirect('/admin')
+  if (await currentAdmin()) redirect('/admin')
 
   const { error } = await props.searchParams
 
