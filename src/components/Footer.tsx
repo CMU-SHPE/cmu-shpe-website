@@ -90,14 +90,22 @@ export default function Footer() {
           <p className="text-gray-400 text-sm">
             © 2026 SHPE @ Colorado Mesa University. All rights reserved.
           </p>
-          <a
-            href="https://shpe.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
-          >
-            SHPE National →
-          </a>
+          <div className="flex items-center gap-6">
+            <Link
+              href="/login"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              Admin sign in
+            </Link>
+            <a
+              href="https://shpe.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              SHPE National →
+            </a>
+          </div>
         </div>
       </div>
     </footer>
