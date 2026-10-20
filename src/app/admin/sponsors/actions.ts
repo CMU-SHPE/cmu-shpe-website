@@ -7,7 +7,7 @@ import { sponsors } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { cleanupBlobs } from '@/lib/blob-cleanup'
 import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
-import { NO_UPLOAD, UPLOAD_FAILED, resolveCroppedUpload } from '@/lib/crop-upload'
+import { NO_UPLOAD, UPLOAD_FAILED, UPLOAD_UNAVAILABLE, resolveCroppedUpload } from '@/lib/crop-upload'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
 import { LOGO_FIELD_NAMES, parseSponsorForm } from '@/lib/sponsor-schema'
@@ -42,6 +42,7 @@ async function resolveLogo(
     existing,
   })
   if (uploaded === UPLOAD_FAILED) redirect('/admin/sponsors?error=upload')
+  if (uploaded === UPLOAD_UNAVAILABLE) redirect('/admin/sponsors?error=storage')
   if (uploaded !== NO_UPLOAD) return uploaded
 
   if (existing?.imageUrl && logoPath === existing.imageUrl) return existing

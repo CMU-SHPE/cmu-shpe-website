@@ -32,6 +32,7 @@ const errorMessages: Record<string, string> = {
     'Please check the fields — name, role and the other required fields must be filled in, the email must be valid, LinkedIn must start with http:// or https://, and a photo path must start with / or http(s)://.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
   missing: 'That person no longer exists.',
+  storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
 }
 
 function OfficerFields({ officer }: { officer?: Officer }) {

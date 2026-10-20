@@ -7,7 +7,7 @@ import { advisors, officers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { cleanupBlobs } from '@/lib/blob-cleanup'
 import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
-import { NO_UPLOAD, UPLOAD_FAILED, resolveCroppedUpload } from '@/lib/crop-upload'
+import { NO_UPLOAD, UPLOAD_FAILED, UPLOAD_UNAVAILABLE, resolveCroppedUpload } from '@/lib/crop-upload'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { PHOTO_FIELD_NAMES, parseAdvisorForm, parseOfficerForm } from '@/lib/person-schema'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
@@ -18,6 +18,7 @@ const SAVED = '/admin/officers?saved=1'
 const INVALID = '/admin/officers?error=invalid'
 const MISSING = '/admin/officers?error=missing'
 const UPLOAD = '/admin/officers?error=upload'
+const STORAGE = '/admin/officers?error=storage'
 
 function photoColumns(table: PersonTable) {
   return {
@@ -39,6 +40,7 @@ async function resolvePhoto(
 ): Promise<CroppedImage> {
   const uploaded = await resolveCroppedUpload({ formData, names: PHOTO_FIELD_NAMES, folder, existing })
   if (uploaded === UPLOAD_FAILED) redirect(UPLOAD)
+  if (uploaded === UPLOAD_UNAVAILABLE) redirect(STORAGE)
   if (uploaded !== NO_UPLOAD) return uploaded
 
   if (existing?.imageUrl && photoPath === existing.imageUrl) return existing

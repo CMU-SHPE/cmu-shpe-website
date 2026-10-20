@@ -28,6 +28,7 @@ const errorMessages: Record<string, string> = {
     'Please check the fields — the name is required, the website must start with http:// or https://, and a logo path must start with / or http(s)://.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
   missing: 'That sponsor no longer exists.',
+  storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
 }
 
 const logoHelp =
