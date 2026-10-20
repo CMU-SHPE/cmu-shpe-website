@@ -13,7 +13,14 @@ const credentialsSchema = z.object({
 /** Unknown emails are checked against this so they take as long as a wrong password. */
 const UNKNOWN_EMAIL_HASH = '$2b$12$zmxgyTFMPHMuQfXgqQ4z/.te.HtdD2kHyLthiKMDYsIYpN4nn1hZ2'
 
-export type AuthorizedAdmin = { id: string; email: string; name: string; role: AdminRole }
+export type AuthorizedAdmin = {
+  id: string
+  email: string
+  name: string
+  role: AdminRole
+  /** Taken before the row is read, so a reset committing during the check still ends this session. */
+  authTime: number
+}
 
 /**
  * Records a password attempt and reports whether the email or IP is over its
@@ -61,6 +68,7 @@ export async function authorizeAdmin(
     return null
   }
 
+  const checkedAt = Date.now()
   const [admin] = await getDb()
     .select({
       id: admins.id,
@@ -80,5 +88,5 @@ export async function authorizeAdmin(
   }
 
   await clearLoginAttempts(email)
-  return { id: String(admin.id), email: admin.email, name: admin.name, role: admin.role }
+  return { id: String(admin.id), email: admin.email, name: admin.name, role: admin.role, authTime: checkedAt }
 }

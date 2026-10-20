@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type AdminRow = { id: number; email: string; name: string; role: 'admin' | 'master'; passwordHash: string }
 
@@ -7,6 +7,7 @@ const fake = vi.hoisted(() => {
     ops: [] as string[],
     counts: { emailAttempts: 1, ipAttempts: 1 } as Record<string, number>,
     admin: null as AdminRow | null,
+    limitDelayMs: 0,
   }
   const db = {
     insert: () => ({
@@ -32,6 +33,7 @@ const fake = vi.hoisted(() => {
         },
         limit: async () => {
           state.ops.push('find admin')
+          if (state.limitDelayMs) vi.setSystemTime(Date.now() + state.limitDelayMs)
           return state.admin ? [state.admin] : []
         },
       }
@@ -57,9 +59,14 @@ beforeEach(() => {
   fake.state.ops = []
   fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
   fake.state.admin = null
+  fake.state.limitDelayMs = 0
   fake.compare.mockReset()
   fake.compare.mockResolvedValue(false)
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('authorizeAdmin', () => {
@@ -121,8 +128,23 @@ describe('authorizeAdmin', () => {
       email: 'ana@example.com',
       name: 'Ana',
       role: 'admin',
+      authTime: expect.any(Number),
     })
     expect(fake.state.ops.at(-1)).toBe('clear email attempts')
+  })
+
+  it('takes authTime before reading the admin row, not after the slow password check', async () => {
+    const start = 1_792_000_000_000
+    vi.useFakeTimers({ now: start })
+    fake.state.admin = ana
+    fake.state.limitDelayMs = 40
+    fake.compare.mockImplementation(async () => {
+      vi.setSystemTime(Date.now() + 250)
+      return true
+    })
+    const result = await authorizeAdmin(credentials, null)
+    expect(result?.authTime).toBe(start)
+    expect(Date.now()).toBe(start + 40 + 250)
   })
 
   it('lets the 5th attempt with the right password through after 4 failures', async () => {

@@ -135,7 +135,13 @@ describe('changePassword', () => {
   })
 
   it('re-issues the session with the new password so this device stays signed in', async () => {
+    let updatesWhenSigningIn = -1
+    mocks.signIn.mockImplementationOnce(async (_provider, options) => {
+      updatesWhenSigningIn = mocks.state.updates.length
+      throw new mocks.Redirect(String(options.redirectTo))
+    })
     await redirectOf(changePassword(form()))
+    expect(updatesWhenSigningIn).toBe(1)
     expect(mocks.signIn).toHaveBeenCalledWith('credentials', {
       email: 'ana@example.com',
       password: NEW,

@@ -17,13 +17,17 @@ afterEach(() => {
 })
 
 describe('jwtCallback', () => {
-  it('stamps authTime and the role when a password sign-in produces a user', async () => {
-    vi.useFakeTimers({ now: SIGN_IN })
-    expect(await jwt({ token: { sub: '2' } as JwtParams['token'], user, trigger: 'signIn' })).toMatchObject({
-      sub: '2',
-      role: 'admin',
-      authTime: SIGN_IN,
-    })
+  it('copies the role and the password-check time when a sign-in produces a user', async () => {
+    vi.useFakeTimers({ now: LATER })
+    expect(
+      await jwt({ token: { sub: '2' } as JwtParams['token'], user: { ...user, authTime: SIGN_IN }, trigger: 'signIn' }),
+    ).toMatchObject({ sub: '2', role: 'admin', authTime: SIGN_IN })
+  })
+
+  it('does not invent an authTime when the user has none', async () => {
+    vi.useFakeTimers({ now: LATER })
+    const token = await jwt({ token: { sub: '2' } as JwtParams['token'], user, trigger: 'signIn' })
+    expect(token?.authTime).toBeUndefined()
   })
 
   it('keeps authTime unchanged when the token is re-encoded without a user', async () => {

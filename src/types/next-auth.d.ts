@@ -4,6 +4,7 @@ import type { AdminRole } from '@/db/schema'
 declare module 'next-auth' {
   interface User {
     role: AdminRole
+    authTime?: number
   }
 
   interface Session {
