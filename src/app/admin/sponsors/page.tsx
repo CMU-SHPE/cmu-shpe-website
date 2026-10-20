@@ -1,12 +1,12 @@
 import ImageCropField from '@/components/image-crop-field'
 import SponsorLogo from '@/components/SponsorLogo'
 import SubmitButton from '@/components/submit-button'
+import DeleteButton from '@/components/admin/delete-button'
 import MoveButtons from '@/components/admin/move-buttons'
 import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  dangerButtonClass,
   focusRingClass,
   inputClass,
   labelClass,
@@ -164,9 +164,7 @@ export default async function AdminSponsorsPage(props: {
                         }
                       />
                       <form action={deleteSponsor.bind(null, sponsor.id)}>
-                        <SubmitButton pendingLabel="Deleting…" className={dangerButtonClass}>
-                          Delete<span className="sr-only"> {sponsor.name}</span>
-                        </SubmitButton>
+                        <DeleteButton name={sponsor.name} />
                       </form>
                     </div>
                     <EditDetails name={sponsor.name}>

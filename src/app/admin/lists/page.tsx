@@ -1,9 +1,9 @@
 import SubmitButton from '@/components/submit-button'
+import DeleteButton from '@/components/admin/delete-button'
 import MoveButtons from '@/components/admin/move-buttons'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  dangerButtonClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -88,9 +88,7 @@ function ListEditor<T extends { id: number }>({
                     }
                   />
                   <form action={deleteListItem.bind(null, list, item.id)}>
-                    <SubmitButton pendingLabel="Deleting…" className={dangerButtonClass}>
-                      Delete<span className="sr-only"> {name}</span>
-                    </SubmitButton>
+                    <DeleteButton name={name} />
                   </form>
                 </div>
               </li>

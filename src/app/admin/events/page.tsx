@@ -1,9 +1,9 @@
 import SubmitButton from '@/components/submit-button'
+import DeleteButton from '@/components/admin/delete-button'
 import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  dangerButtonClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -97,9 +97,7 @@ function EventList({ events, emptyText }: { events: ClubEvent[]; emptyText: stri
               </p>
             </div>
             <form action={deleteEvent.bind(null, event.id)}>
-              <SubmitButton pendingLabel="Deleting…" className={dangerButtonClass}>
-                Delete<span className="sr-only"> {event.title}</span>
-              </SubmitButton>
+              <DeleteButton name={event.title} />
             </form>
           </div>
           <EditDetails name={event.title}>

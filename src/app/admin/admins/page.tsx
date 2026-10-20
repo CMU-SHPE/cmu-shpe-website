@@ -2,10 +2,10 @@ import { asc } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins } from '@/db/schema'
 import SubmitButton from '@/components/submit-button'
+import DeleteButton from '@/components/admin/delete-button'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  dangerButtonClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -125,9 +125,7 @@ export default async function AdminAccountsPage(props: {
                 <td className="py-3 text-right">
                   {admin.role !== 'master' && (
                     <form action={deleteAdmin.bind(null, admin.id)}>
-                      <SubmitButton pendingLabel="Deleting…" className={dangerButtonClass}>
-                        Delete<span className="sr-only"> {admin.name}</span>
-                      </SubmitButton>
+                      <DeleteButton name={admin.name} />
                     </form>
                   )}
                 </td>

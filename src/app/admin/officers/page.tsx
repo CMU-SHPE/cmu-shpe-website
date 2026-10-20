@@ -1,11 +1,11 @@
 import SubmitButton from '@/components/submit-button'
+import DeleteButton from '@/components/admin/delete-button'
 import MoveButtons from '@/components/admin/move-buttons'
 import PersonFields from '@/components/admin/person-fields'
 import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  dangerButtonClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -100,9 +100,7 @@ function PersonItem({
         </div>
         <MoveButtons name={person.name} moveUp={moveUp} moveDown={moveDown} />
         <form action={remove}>
-          <SubmitButton pendingLabel="Deleting…" className={dangerButtonClass}>
-            Delete<span className="sr-only"> {person.name}</span>
-          </SubmitButton>
+          <DeleteButton name={person.name} />
         </form>
       </div>
       <EditDetails name={person.name}>
