@@ -6,6 +6,10 @@ describe('contentTextSchema', () => {
     expect(contentTextSchema.safeParse({ key: 'admin.password', value: 'x' }).success).toBe(false)
   })
 
+  it('rejects the contact subjects, which bypass the settings form limits', () => {
+    expect(contentTextSchema.safeParse({ key: 'contact.subjects', value: 'Spam' }).success).toBe(false)
+  })
+
   it('trims and collapses whitespace in single-line keys', () => {
     const parsed = contentTextSchema.parse({ key: 'home.hero.intro', value: '  Hello\r\n   world  ' })
     expect(parsed).toEqual({ key: 'home.hero.intro', value: 'Hello world' })

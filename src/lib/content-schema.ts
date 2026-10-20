@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import { CONTENT_KEYS, type ContentKey, contentKeyDefinition } from './content-keys'
+import { INLINE_CONTENT_KEYS, type InlineContentKey, contentKeyDefinition } from './content-keys'
 import { normalizeNewlines } from './text'
 
 export const MAX_CONTENT_LENGTH = 2000
 
-const contentKey = z.enum(CONTENT_KEYS.map((entry) => entry.key) as [ContentKey, ...ContentKey[]])
+const contentKey = z.enum(INLINE_CONTENT_KEYS as [InlineContentKey, ...InlineContentKey[]])
 
-export function normalizeContentValue(key: ContentKey, value: string): string {
+export function normalizeContentValue(key: InlineContentKey, value: string): string {
   const text = normalizeNewlines(value).trim()
   return contentKeyDefinition(key).multiline ? text : text.replace(/\s+/g, ' ')
 }

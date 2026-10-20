@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import EditableText from '@/components/editable-text'
-import { type ContentKey, contentKeyDefinition } from '@/lib/content-keys'
+import { type InlineContentKey, contentKeyDefinition } from '@/lib/content-keys'
 import { toLines } from '@/lib/lines'
 
 type EditableTag = 'h1' | 'h2' | 'h3' | 'p' | 'span' | 'cite' | 'div'
@@ -22,7 +22,7 @@ export default function Editable({
   leading,
 }: {
   as: EditableTag
-  contentKey: ContentKey
+  contentKey: InlineContentKey
   value: string
   editable: boolean
   className: string
@@ -77,7 +77,7 @@ export function EditableList({
   editorClassName,
   renderItem,
 }: {
-  contentKey: ContentKey
+  contentKey: InlineContentKey
   value: string
   editable: boolean
   className: string

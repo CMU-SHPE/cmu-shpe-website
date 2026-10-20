@@ -2,6 +2,7 @@ export type ContentKeyDefinition = {
   key: string
   label: string
   multiline: boolean
+  inline?: false
 }
 
 export const CONTENT_KEYS = [
@@ -78,7 +79,7 @@ export const CONTENT_KEYS = [
   { key: 'contact.social.heading', label: 'Contact: social links heading', multiline: false },
   { key: 'contact.join.heading', label: 'Contact: join heading', multiline: false },
   { key: 'contact.join.paragraph', label: 'Contact: join paragraph', multiline: false },
-  { key: 'contact.subjects', label: 'Contact form subject options', multiline: true },
+  { key: 'contact.subjects', label: 'Contact form subject options', multiline: true, inline: false },
 
   { key: 'footer.tagline', label: 'Footer: chapter name, one line each', multiline: true },
   { key: 'footer.location', label: 'Footer: location', multiline: false },
@@ -89,6 +90,8 @@ export const CONTENT_KEYS = [
 
 export type ContentKey = (typeof CONTENT_KEYS)[number]['key']
 
+export type InlineContentKey = Exclude<ContentKey, Extract<(typeof CONTENT_KEYS)[number], { inline: false }>['key']>
+
 export type ContentKeyWithPrefix<P extends string> = Extract<ContentKey, `${P}.${string}`>
 
 const definitions = new Map<string, ContentKeyDefinition>(
@@ -98,6 +101,13 @@ const definitions = new Map<string, ContentKeyDefinition>(
 export function isContentKey(key: string): key is ContentKey {
   return definitions.has(key)
 }
+
+export function isInlineContentKey(key: string): key is InlineContentKey {
+  const definition = definitions.get(key)
+  return definition !== undefined && definition.inline !== false
+}
+
+export const INLINE_CONTENT_KEYS = CONTENT_KEYS.map((entry) => entry.key).filter(isInlineContentKey)
 
 export function contentKeyDefinition(key: ContentKey): ContentKeyDefinition {
   return definitions.get(key)!

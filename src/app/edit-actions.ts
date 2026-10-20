@@ -3,7 +3,7 @@
 import { getDb } from '@/db'
 import { siteContent } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { isContentKey } from '@/lib/content-keys'
+import { isInlineContentKey } from '@/lib/content-keys'
 import { MAX_CONTENT_LENGTH, contentTextSchema } from '@/lib/content-schema'
 
 export async function saveContentText(
@@ -12,7 +12,7 @@ export async function saveContentText(
 ): Promise<{ ok: true } | { error: string }> {
   await requireAdmin()
 
-  if (typeof key !== 'string' || !isContentKey(key)) return { error: 'This text is not editable.' }
+  if (typeof key !== 'string' || !isInlineContentKey(key)) return { error: 'This text is not editable.' }
 
   const parsed = contentTextSchema.safeParse({ key, value })
   if (!parsed.success) {

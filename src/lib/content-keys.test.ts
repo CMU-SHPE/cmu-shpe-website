@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { CONTENT_KEYS, contentKeyDefinition, contentKeysFor, isContentKey } from './content-keys'
+import {
+  CONTENT_KEYS,
+  INLINE_CONTENT_KEYS,
+  contentKeyDefinition,
+  contentKeysFor,
+  isContentKey,
+  isInlineContentKey,
+} from './content-keys'
 
 describe('CONTENT_KEYS', () => {
   it('has unique keys, each with a label', () => {
@@ -42,5 +49,18 @@ describe('contentKeysFor', () => {
 
   it('does not match a prefix that is only the start of another word', () => {
     expect(contentKeysFor('event')).toEqual([])
+  })
+})
+
+describe('inline-editable keys', () => {
+  it('excludes the contact subjects, which only the settings form may write', () => {
+    expect(isInlineContentKey('contact.subjects')).toBe(false)
+    expect(INLINE_CONTENT_KEYS).not.toContain('contact.subjects')
+    expect(INLINE_CONTENT_KEYS).toHaveLength(CONTENT_KEYS.length - 1)
+  })
+
+  it('accepts page text and rejects unknown keys', () => {
+    expect(isInlineContentKey('footer.tagline')).toBe(true)
+    expect(isInlineContentKey('nope')).toBe(false)
   })
 })
