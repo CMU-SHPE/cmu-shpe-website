@@ -28,19 +28,23 @@ export function blobPathname(folder: UploadFolder, fileName: string, type: Allow
   return `${folder}/${base}.${IMAGE_EXTENSIONS[type]}`
 }
 
-export async function uploadImage(file: File, folder: UploadFolder): Promise<string | null> {
+export type UploadResult =
+  | { ok: true; url: string }
+  | { ok: false; reason: 'rejected' | 'unavailable' }
+
+export async function uploadImage(file: File, folder: UploadFolder): Promise<UploadResult> {
   const type = file.type
-  if (!isAllowedImageType(type) || validateImageFile(file)) return null
+  if (!isAllowedImageType(type) || validateImageFile(file)) return { ok: false, reason: 'rejected' }
   try {
     const blob = await put(blobPathname(folder, file.name, type), file, {
       access: 'public',
       addRandomSuffix: true,
       contentType: type,
     })
-    return blob.url
+    return { ok: true, url: blob.url }
   } catch (error) {
     console.error(`Blob upload to ${folder} failed`, error)
-    return null
+    return { ok: false, reason: 'unavailable' }
   }
 }
 

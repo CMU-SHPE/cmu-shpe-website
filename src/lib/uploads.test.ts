@@ -44,19 +44,25 @@ describe('blobPathname', () => {
 
 describe('uploadImage', () => {
   it('uploads under the sanitised path with the validated content type', async () => {
-    const url = await uploadImage(makeFile('image/jpeg', 10, 'My Photo.jpeg'), 'officers')
-    expect(url).toBe('https://abc123.public.blob.vercel-storage.com/officers/my-photo.jpg')
+    await expect(uploadImage(makeFile('image/jpeg', 10, 'My Photo.jpeg'), 'officers')).resolves.toEqual({
+      ok: true,
+      url: 'https://abc123.public.blob.vercel-storage.com/officers/my-photo.jpg',
+    })
     expect(blob.put.mock.calls[0][2]).toMatchObject({ access: 'public', addRandomSuffix: true, contentType: 'image/jpeg' })
   })
 
-  it('refuses files outside the allowlist without calling Blob', async () => {
-    await expect(uploadImage(makeFile('text/html', 10), 'officers')).resolves.toBeNull()
+  it('rejects files outside the allowlist or over the size cap without calling Blob', async () => {
+    await expect(uploadImage(makeFile('text/html', 10), 'officers')).resolves.toEqual({ ok: false, reason: 'rejected' })
+    await expect(uploadImage(makeFile('image/png', MAX_IMAGE_BYTES + 1), 'officers')).resolves.toEqual({
+      ok: false,
+      reason: 'rejected',
+    })
     expect(blob.put).not.toHaveBeenCalled()
   })
 
-  it('returns null instead of throwing when Blob fails', async () => {
+  it('reports storage as unavailable instead of throwing when Blob fails', async () => {
     blob.put.mockRejectedValueOnce(new Error('No token found'))
-    await expect(uploadImage(makeFile('image/png', 10), 'sponsors')).resolves.toBeNull()
+    await expect(uploadImage(makeFile('image/png', 10), 'sponsors')).resolves.toEqual({ ok: false, reason: 'unavailable' })
   })
 })
 

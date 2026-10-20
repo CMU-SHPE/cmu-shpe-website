@@ -8,7 +8,7 @@ const blob = vi.hoisted(() => ({
 }))
 vi.mock('@vercel/blob', () => blob)
 
-import { NO_UPLOAD, UPLOAD_FAILED, resolveCroppedUpload } from './crop-upload'
+import { NO_UPLOAD, UPLOAD_FAILED, UPLOAD_UNAVAILABLE, resolveCroppedUpload } from './crop-upload'
 
 const names = { file: 'photoFile', original: 'photoOriginal', crop: 'photoCrop' }
 const crop = JSON.stringify({ x: 0, y: 0, width: 100, height: 100, rotation: 0 })
@@ -42,7 +42,7 @@ describe('resolveCroppedUpload', () => {
     })
   })
 
-  it('reports a failed upload instead of throwing when Blob is misconfigured', async () => {
+  it('reports storage as unavailable instead of throwing when Blob is misconfigured', async () => {
     blob.put.mockRejectedValueOnce(new Error('No token found'))
     const result = await resolveCroppedUpload({
       formData: form({ photoOriginal: image('full.jpg') }),
@@ -50,15 +50,37 @@ describe('resolveCroppedUpload', () => {
       folder: 'officers',
       existing: null,
     })
-    expect(result).toBe(UPLOAD_FAILED)
+    expect(result).toBe(UPLOAD_UNAVAILABLE)
   })
 
-  it('deletes the uploaded crop when the original then fails', async () => {
+  it('reports a rejected file separately from unavailable storage', async () => {
+    const result = await resolveCroppedUpload({
+      formData: form({ photoOriginal: image('notes.html', 'text/html') }),
+      names,
+      folder: 'officers',
+      existing: null,
+    })
+    expect(result).toBe(UPLOAD_FAILED)
+    expect(blob.put).not.toHaveBeenCalled()
+  })
+
+  it('deletes the uploaded crop and reports unavailable when storing the original fails', async () => {
     blob.put
       .mockResolvedValueOnce({ url: 'https://abc123.public.blob.vercel-storage.com/officers/crop.jpg' })
       .mockRejectedValueOnce(new Error('network'))
     const result = await resolveCroppedUpload({
       formData: form({ photoFile: image('crop.jpg'), photoOriginal: image('full.jpg'), photoCrop: crop }),
+      names,
+      folder: 'officers',
+      existing: null,
+    })
+    expect(result).toBe(UPLOAD_UNAVAILABLE)
+    expect(blob.del).toHaveBeenCalledWith('https://abc123.public.blob.vercel-storage.com/officers/crop.jpg')
+  })
+
+  it('deletes the uploaded crop and reports a rejected file when the original is not allowed', async () => {
+    const result = await resolveCroppedUpload({
+      formData: form({ photoFile: image('crop.jpg'), photoOriginal: image('full.tiff', 'image/tiff'), photoCrop: crop }),
       names,
       folder: 'officers',
       existing: null,
