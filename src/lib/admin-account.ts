@@ -66,3 +66,25 @@ export function parsePasswordChange(
   if (newPassword === currentPassword) return { success: false, code: 'same' }
   return { success: true, data: { currentPassword, newPassword } }
 }
+
+const passwordResetSchema = z.object({
+  id: adminId,
+  newPassword: adminPassword,
+  confirmPassword: z.string().max(200),
+})
+
+export type PasswordResetError = 'missing' | 'password' | 'mismatch'
+
+export function parsePasswordReset(
+  input: Record<string, unknown>,
+): { success: true; data: { id: number; newPassword: string } } | { success: false; code: PasswordResetError } {
+  const parsed = passwordResetSchema.safeParse(input)
+  if (!parsed.success) {
+    const failed = (field: string) => parsed.error.issues.some((issue) => issue.path[0] === field)
+    if (failed('id')) return { success: false, code: 'missing' }
+    return { success: false, code: failed('newPassword') ? 'password' : 'mismatch' }
+  }
+  const { id, newPassword, confirmPassword } = parsed.data
+  if (newPassword !== confirmPassword) return { success: false, code: 'mismatch' }
+  return { success: true, data: { id, newPassword } }
+}

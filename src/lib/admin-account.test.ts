@@ -4,6 +4,7 @@ import {
   adminId,
   parseAdminAccount,
   parsePasswordChange,
+  parsePasswordReset,
   sessionPredatesPasswordChange,
 } from './admin-account'
 
@@ -103,5 +104,31 @@ describe('parsePasswordChange', () => {
   it('requires the current password', () => {
     expect(change({ currentPassword: '' })).toEqual({ success: false, code: 'invalid' })
     expect(change({ currentPassword: null })).toEqual({ success: false, code: 'invalid' })
+  })
+})
+
+describe('parsePasswordReset', () => {
+  const fresh = 'new password 456'
+  const reset = (overrides: Record<string, unknown> = {}) =>
+    parsePasswordReset({ id: 2, newPassword: fresh, confirmPassword: fresh, ...overrides })
+
+  it('accepts a valid reset', () => {
+    expect(reset()).toEqual({ success: true, data: { id: 2, newPassword: fresh } })
+  })
+
+  it('rejects a confirmation that does not match', () => {
+    expect(reset({ confirmPassword: 'new password 457' })).toEqual({ success: false, code: 'mismatch' })
+  })
+
+  it('rejects passwords that are too short or over 72 bytes', () => {
+    expect(reset({ newPassword: 'short', confirmPassword: 'short' })).toEqual({ success: false, code: 'password' })
+    const long = '🔒'.repeat(19)
+    expect(reset({ newPassword: long, confirmPassword: long })).toEqual({ success: false, code: 'password' })
+  })
+
+  it('treats an out-of-range id as a missing account', () => {
+    for (const id of [0, -1, 1.5, MAX_ADMIN_ID + 1, Number.NaN]) {
+      expect(reset({ id })).toEqual({ success: false, code: 'missing' })
+    }
   })
 })

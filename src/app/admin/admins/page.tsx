@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { asc } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins } from '@/db/schema'
@@ -6,6 +7,7 @@ import DeleteButton from '@/components/admin/delete-button'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
+  focusRingClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -18,14 +20,58 @@ import {
 } from '@/components/admin/styles'
 import { requireMaster } from '@/lib/admin'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
-import { createAdmin, deleteAdmin } from './actions'
+import { createAdmin, deleteAdmin, resetAdminPassword } from './actions'
 
 const errorMessages: Record<string, string> = {
   invalid: 'Please check the name and email.',
   password: `Passwords must be at least ${MIN_PASSWORD_LENGTH} characters and at most ${MAX_PASSWORD_BYTES} bytes. Accented letters and emoji count as 2 to 4 bytes each.`,
   duplicate: 'An account with that email already exists.',
-  self: 'You cannot delete your own account.',
-  master: 'Master accounts cannot be deleted.',
+  mismatch: 'The new password and its confirmation do not match.',
+  missing: 'That admin account no longer exists.',
+  self: 'You cannot delete or reset your own account here. Use Change password for your own password.',
+  master: 'Master accounts cannot be deleted or reset here.',
+}
+
+const linkClass = `rounded text-sm font-medium text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`
+
+function ResetPassword({ id, name }: { id: number; name: string }) {
+  return (
+    <details className="text-left">
+      <summary className={`cursor-pointer ${linkClass}`}>
+        Reset password<span className="sr-only"> for {name}</span>
+      </summary>
+      <form action={resetAdminPassword.bind(null, id)} className="mt-3 w-64 space-y-3">
+        <p className={mutedTextClass}>Share the new password with them directly — there is no email.</p>
+        <label className={labelClass}>
+          New password ({MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_BYTES} characters)
+          <input
+            name="newPassword"
+            type="password"
+            required
+            minLength={MIN_PASSWORD_LENGTH}
+            maxLength={MAX_PASSWORD_BYTES}
+            autoComplete="new-password"
+            className={inputClass}
+          />
+        </label>
+        <label className={labelClass}>
+          Confirm new password
+          <input
+            name="confirmPassword"
+            type="password"
+            required
+            minLength={MIN_PASSWORD_LENGTH}
+            maxLength={MAX_PASSWORD_BYTES}
+            autoComplete="new-password"
+            className={inputClass}
+          />
+        </label>
+        <SubmitButton pendingLabel="Resetting…" className={primaryButtonClass}>
+          Reset password<span className="sr-only"> for {name}</span>
+        </SubmitButton>
+      </form>
+    </details>
+  )
 }
 
 const roleLabels = { admin: 'Admin', master: 'Master' } as const
@@ -46,7 +92,16 @@ export default async function AdminAccountsPage(props: {
     <div className="space-y-6">
       <h1 className={pageHeadingClass}>Admin accounts</h1>
 
-      <StatusBanner saved={saved} error={error} errorMessages={errorMessages} />
+      <StatusBanner
+        saved={saved}
+        error={error}
+        errorMessages={errorMessages}
+        savedMessage={
+          saved === 'reset'
+            ? 'Password reset. Share it with them directly; they have been signed out everywhere.'
+            : 'Saved.'
+        }
+      />
 
       <section className={cardClass} aria-labelledby="create-admin-heading">
         <h2 id="create-admin-heading" className={sectionHeadingClass}>
@@ -112,25 +167,35 @@ export default async function AdminAccountsPage(props: {
             </tr>
           </thead>
           <tbody>
-            {rows.map((admin) => (
-              <tr key={admin.id} className={tableRowClass}>
-                <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white">
-                  {admin.name}
-                  {String(admin.id) === session.user.id && (
-                    <span className={`ml-2 ${mutedTextClass}`}>(you)</span>
-                  )}
-                </td>
-                <td className="py-3 pr-4 break-all">{admin.email}</td>
-                <td className="py-3 pr-4">{roleLabels[admin.role]}</td>
-                <td className="py-3 text-right">
-                  {admin.role !== 'master' && (
-                    <form action={deleteAdmin.bind(null, admin.id)}>
-                      <DeleteButton name={admin.name} />
-                    </form>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {rows.map((admin) => {
+              const isSelf = String(admin.id) === session.user.id
+              return (
+                <tr key={admin.id} className={tableRowClass}>
+                  <td className="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                    {admin.name}
+                    {isSelf && <span className={`ml-2 ${mutedTextClass}`}>(you)</span>}
+                  </td>
+                  <td className="py-3 pr-4 break-all">{admin.email}</td>
+                  <td className="py-3 pr-4">{roleLabels[admin.role]}</td>
+                  <td className="py-3 text-right align-top">
+                    {isSelf ? (
+                      <Link href="/admin/account" className={linkClass}>
+                        Change your password
+                      </Link>
+                    ) : (
+                      admin.role === 'admin' && (
+                        <div className="flex flex-col items-end gap-2">
+                          <form action={deleteAdmin.bind(null, admin.id)}>
+                            <DeleteButton name={admin.name} />
+                          </form>
+                          <ResetPassword id={admin.id} name={admin.name} />
+                        </div>
+                      )
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </section>

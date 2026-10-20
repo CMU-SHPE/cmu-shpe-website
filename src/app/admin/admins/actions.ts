@@ -6,7 +6,8 @@ import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins } from '@/db/schema'
 import { requireMaster } from '@/lib/admin'
-import { adminId, parseAdminAccount } from '@/lib/admin-account'
+import { adminId, parseAdminAccount, parsePasswordReset } from '@/lib/admin-account'
+import { clearLoginAttempts } from '@/lib/authorize'
 
 export async function createAdmin(formData: FormData) {
   await requireMaster()
@@ -58,4 +59,34 @@ export async function deleteAdmin(id: number) {
   }
 
   redirect('/admin/admins?saved=1')
+}
+
+export async function resetAdminPassword(id: number, formData: FormData) {
+  const session = await requireMaster()
+  const parsed = parsePasswordReset({
+    id,
+    newPassword: formData.get('newPassword'),
+    confirmPassword: formData.get('confirmPassword'),
+  })
+  if (!parsed.success) redirect(`/admin/admins?error=${parsed.code}`)
+  if (Number(session.user.id) === parsed.data.id) redirect('/admin/admins?error=self')
+
+  const db = getDb()
+  const [target] = await db
+    .select({ role: admins.role })
+    .from(admins)
+    .where(eq(admins.id, parsed.data.id))
+    .limit(1)
+  if (!target) redirect('/admin/admins?error=missing')
+  if (target.role === 'master') redirect('/admin/admins?error=master')
+
+  const [updated] = await db
+    .update(admins)
+    .set({ passwordHash: await bcrypt.hash(parsed.data.newPassword, 12), passwordChangedAt: new Date() })
+    .where(and(eq(admins.id, parsed.data.id), eq(admins.role, 'admin')))
+    .returning({ email: admins.email })
+  if (!updated) redirect('/admin/admins?error=missing')
+  await clearLoginAttempts(updated.email)
+
+  redirect('/admin/admins?saved=reset')
 }

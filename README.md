@@ -76,6 +76,9 @@ Open [http://localhost:3000](http://localhost:3000) and sign in at
    per line.
 3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
    lists and site settings.
+4. Choose **Change password** in the admin sidebar to change your own password. The master
+   admin can reset another admin's password from **Admin accounts** and share it with them
+   directly. Either change signs that account out on every other device.
 
 Images uploaded in the admin are stored in Vercel Blob. Fields that take an image also
 accept a path to a file in `public/` (for example `/officers/jeff.jpg`) or an `https://`
