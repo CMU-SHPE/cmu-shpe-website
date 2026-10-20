@@ -182,6 +182,34 @@ describe('Editable signed in', () => {
     expect(container.querySelector('h2')).toBeNull()
   })
 
+  it('keeps the heading level around the editor for h1 to h3', () => {
+    render(
+      <>
+        <Editable as="h1" contentKey="about.header.heading" value="About Our Chapter" editable className="title" />
+        <Editable as="h2" contentKey="about.chapter.heading" value="Chapter" editable className="section" />
+        <Editable
+          as="h3"
+          contentKey="about.values.heading"
+          value="Our Values"
+          editable
+          className="flex items-center"
+          leading={<span className="bar" />}
+        />
+      </>,
+    )
+    const [h1, h2, h3] = [1, 2, 3].map((level) => screen.getByRole('heading', { level }))
+    expect(h1).toContainElement(screen.getByRole('textbox', { name: 'About: page title' }))
+    expect(h2).toContainElement(screen.getByRole('textbox', { name: 'About: chapter heading' }))
+    expect(h3).toContainElement(screen.getByRole('textbox', { name: 'About: values heading' }))
+    expect(h3).toHaveClass('flex', 'items-center')
+    expect(h1).toHaveAccessibleName('About Our Chapter')
+  })
+
+  it('does not add a heading role around paragraph editors', () => {
+    render(<Editable as="p" contentKey="home.hero.intro" value="Intro" editable className="intro" />)
+    expect(screen.queryByRole('heading')).toBeNull()
+  })
+
   it('server-renders the saved text, escaped, so it shows before hydration', () => {
     const html = renderToString(
       <Editable as="p" contentKey="home.hero.intro" value="Fish & <b>chips</b>" editable className="intro" />,
