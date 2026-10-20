@@ -29,7 +29,9 @@ export const optionalEmail = optional(emailAddress)
 
 export const hexColor = z.string().trim().regex(HEX_COLOR)
 
-export const recordId = z.coerce.number().int().positive()
+export const MAX_RECORD_ID = 2147483647
+
+export const recordId = z.coerce.number().int().positive().max(MAX_RECORD_ID)
 
 export const MOVE_DIRECTIONS = ['up', 'down'] as const
 

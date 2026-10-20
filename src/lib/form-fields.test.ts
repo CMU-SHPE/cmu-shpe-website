@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_RECORD_ID,
   emailAddress,
   hexColor,
   httpUrl,
@@ -102,6 +103,13 @@ describe('recordId and moveDirection', () => {
     for (const value of ['1.5', '0', '-3', 'abc', '']) {
       expect(recordId.safeParse(value).success).toBe(false)
     }
+  })
+
+  it('rejects ids beyond the Postgres integer range', () => {
+    expect(recordId.parse(MAX_RECORD_ID)).toBe(MAX_RECORD_ID)
+    expect(recordId.safeParse(MAX_RECORD_ID + 1).success).toBe(false)
+    expect(recordId.safeParse(1e20).success).toBe(false)
+    expect(recordId.safeParse('1e20').success).toBe(false)
   })
 
   it('only allows up and down', () => {
