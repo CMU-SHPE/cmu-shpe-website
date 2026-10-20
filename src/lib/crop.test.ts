@@ -1,12 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { cropSourceUrl, orphanedBlobs, parseCrop, pickOutputFormat } from './crop'
+import {
+  canHaveTransparency,
+  cropSourceUrl,
+  isSvgSource,
+  orphanedBlobs,
+  parseCrop,
+  pickOutputFormat,
+} from './crop'
 
 describe('pickOutputFormat', () => {
-  it('keeps PNG for sources that can carry transparency', () => {
+  it('keeps PNG for sources that can carry transparency when pixels were not checked', () => {
     expect(pickOutputFormat('blob:abc', 'image/png').mime).toBe('image/png')
     expect(pickOutputFormat('blob:abc', 'image/webp').mime).toBe('image/png')
     expect(pickOutputFormat('https://x/logo.png').mime).toBe('image/png')
     expect(pickOutputFormat('https://x/logo.PNG?v=2').mime).toBe('image/png')
+  })
+
+  it('always keeps PNG and SVG logos as PNG', () => {
+    expect(pickOutputFormat('blob:abc', 'image/png', false).mime).toBe('image/png')
+    expect(pickOutputFormat('blob:abc', 'image/svg+xml', false).mime).toBe('image/png')
+    expect(pickOutputFormat('/sponsors/sgm-inc-logo.svg').mime).toBe('image/png')
+  })
+
+  it('uses JPEG for opaque WebP, AVIF and GIF photos and PNG when they are transparent', () => {
+    for (const type of ['image/webp', 'image/avif', 'image/gif']) {
+      expect(pickOutputFormat('blob:abc', type, false).mime).toBe('image/jpeg')
+      expect(pickOutputFormat('blob:abc', type, true).mime).toBe('image/png')
+    }
+    expect(pickOutputFormat('https://x/photo.webp', null, false).mime).toBe('image/jpeg')
   })
 
   it('uses JPEG for photographic sources', () => {
@@ -19,6 +40,21 @@ describe('pickOutputFormat', () => {
 
   it('falls back to JPEG when nothing indicates transparency', () => {
     expect(pickOutputFormat('blob:abc').mime).toBe('image/jpeg')
+    expect(pickOutputFormat('blob:abc', 'image/heic', false).mime).toBe('image/jpeg')
+  })
+})
+
+describe('source sniffing', () => {
+  it('recognises SVG by type or extension', () => {
+    expect(isSvgSource('blob:abc', 'image/svg+xml')).toBe(true)
+    expect(isSvgSource('https://x/logo.SVG?v=1')).toBe(true)
+    expect(isSvgSource('https://x/logo.png')).toBe(false)
+  })
+
+  it('knows which formats can carry an alpha channel', () => {
+    expect(canHaveTransparency('blob:abc', 'image/svg+xml')).toBe(true)
+    expect(canHaveTransparency('https://x/a.webp')).toBe(true)
+    expect(canHaveTransparency('blob:abc', 'image/jpeg')).toBe(false)
   })
 })
 

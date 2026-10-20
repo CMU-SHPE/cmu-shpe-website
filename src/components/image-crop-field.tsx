@@ -1,14 +1,29 @@
 'use client'
 
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import ImageCropDialog, { type AppliedCrop } from '@/components/image-crop-dialog'
-import { labelClass } from '@/components/admin/styles'
+import { focusRingClass, labelClass } from '@/components/admin/styles'
 import { type CroppedImage, type ImageCrop, cropSourceUrl, parseCrop } from '@/lib/crop'
-import { MAX_IMAGE_BYTES, downscaleForUpload } from '@/lib/image-files'
+import { setInputFile } from '@/lib/file-input'
+import { ImageTooLargeError, prepareOriginalForUpload } from '@/lib/image-canvas'
+import {
+  TARGET_ORIGINAL_BYTES,
+  checkPickedFile,
+  cropByteBudget,
+  fitsRequestBudget,
+  formatMegabytes,
+  isAllowedImageType,
+} from '@/lib/image-files'
 
-function formatMegabytes(bytes: number) {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+const SUPPORTED_FORMATS = 'JPEG, PNG, WebP, GIF, AVIF or SVG'
+
+type Editor = { src: string; sourceType: string | null; fromPick: boolean }
+
+function unreadableMessage(file: File) {
+  return isAllowedImageType(file.type)
+    ? 'That image could not be read. Please choose a different file.'
+    : `This browser cannot convert that image format. Please choose a ${SUPPORTED_FORMATS} file.`
 }
 
 export default function ImageCropField({
@@ -33,70 +48,127 @@ export default function ImageCropField({
 }) {
   const savedCrop: ImageCrop | null = existing?.crop ? parseCrop(existing.crop) : null
   const savedSource = existing ? cropSourceUrl(existing) : null
-  const isSaved = Boolean(existing?.imageUrl)
+  const savedImage = existing?.imageUrl ?? null
+  const isSaved = Boolean(savedImage)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const croppedInputRef = useRef<HTMLInputElement>(null)
   const originalInputRef = useRef<HTMLInputElement>(null)
   const latestPick = useRef(0)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(existing?.imageUrl ?? null)
+  const ownedUrls = useRef(new Set<string>())
+  const [previewUrl, setPreviewUrl] = useState<string | null>(savedImage)
   const [cropJson, setCropJson] = useState(existing?.crop ?? '')
-  const [editorSrc, setEditorSrc] = useState<string | null>(null)
-  const [pickedType, setPickedType] = useState<string | null>(null)
+  const [originalBytes, setOriginalBytes] = useState(0)
+  const [editor, setEditor] = useState<Editor | null>(null)
   const [pickError, setPickError] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
   const pickErrorId = useId()
 
+  useEffect(() => {
+    const urls = ownedUrls.current
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url))
+      urls.clear()
+    }
+  }, [])
+
+  const ownUrl = (blob: Blob) => {
+    const url = URL.createObjectURL(blob)
+    ownedUrls.current.add(url)
+    return url
+  }
+
+  const releaseUrl = (url: string | null | undefined) => {
+    if (url && ownedUrls.current.delete(url)) URL.revokeObjectURL(url)
+  }
+
+  const discardPendingUpload = () => {
+    setInputFile(originalInputRef.current, null)
+    setInputFile(croppedInputRef.current, null)
+    setCropJson('')
+    setOriginalBytes(0)
+    releaseUrl(previewUrl)
+    setPreviewUrl(savedImage)
+  }
+
+  const closeEditor = () => {
+    releaseUrl(editor?.src)
+    setEditor(null)
+  }
+
   const onPickFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
-    const file = input.files?.[0]
+    const file = input.files?.[0] ?? null
     const pick = ++latestPick.current
-    if (croppedInputRef.current) croppedInputRef.current.value = ''
-    setCropJson('')
+    discardPendingUpload()
     setPickError(null)
     setPreparing(false)
-    if (!file || !file.type.startsWith('image/')) return
+    if (!file) return
 
-    if (file.size > MAX_IMAGE_BYTES) {
-      input.value = ''
+    const problem = checkPickedFile(file)
+    if (problem === 'not-image') {
+      setPickError(`That file is not an image. Please choose a ${SUPPORTED_FORMATS} file.`)
+      return
+    }
+    if (problem === 'too-large') {
       setPickError(`That image is ${formatMegabytes(file.size)}. Please choose one under 8 MB.`)
       return
     }
 
-    input.value = ''
     setPreparing(true)
-    const prepared = await downscaleForUpload(file).catch(() => file)
+    let prepared: File
+    try {
+      prepared = await prepareOriginalForUpload(file)
+    } catch (error) {
+      if (pick !== latestPick.current) return
+      setPreparing(false)
+      setPickError(error instanceof ImageTooLargeError ? error.message : unreadableMessage(file))
+      return
+    }
     if (pick !== latestPick.current) return
     setPreparing(false)
 
-    const transfer = new DataTransfer()
-    transfer.items.add(prepared)
-    input.files = transfer.files
-    setPickedType(prepared.type)
-    setEditorSrc(URL.createObjectURL(prepared))
+    if (prepared.size > TARGET_ORIGINAL_BYTES) {
+      setPickError(
+        `That image is ${formatMegabytes(prepared.size)}. Please choose one under ${formatMegabytes(TARGET_ORIGINAL_BYTES)}.`,
+      )
+      return
+    }
+
+    setInputFile(input, prepared)
+    setOriginalBytes(prepared.size)
+    setEditor({ src: ownUrl(prepared), sourceType: prepared.type, fromPick: true })
   }
 
   const onEditExisting = () => {
     const file = originalInputRef.current?.files?.[0]
     if (file) {
-      setPickedType(file.type)
-      setEditorSrc(URL.createObjectURL(file))
+      setEditor({ src: ownUrl(file), sourceType: file.type, fromPick: false })
       return
     }
     const source = savedSource ?? previewUrl
     if (!source) return
-    setPickedType(null)
-    setEditorSrc(source)
+    setEditor({ src: source, sourceType: null, fromPick: false })
   }
 
-  const onApply = ({ file, crop, previewUrl: preview }: AppliedCrop) => {
-    const transfer = new DataTransfer()
-    transfer.items.add(file)
-    if (croppedInputRef.current) croppedInputRef.current.files = transfer.files
+  const onCancel = () => {
+    const fromPick = editor?.fromPick
+    closeEditor()
+    if (fromPick) discardPendingUpload()
+  }
+
+  const onApply = ({ file, crop }: AppliedCrop) => {
+    if (!fitsRequestBudget(originalBytes, file.size)) {
+      throw new ImageTooLargeError('This image is too large to save. Please choose a smaller file.')
+    }
+    setInputFile(croppedInputRef.current, file)
+    const nextPreview = ownUrl(file)
+    releaseUrl(previewUrl)
+    releaseUrl(editor?.src)
     flushSync(() => {
       setCropJson(JSON.stringify(crop))
-      setPreviewUrl(preview)
-      setEditorSrc(null)
+      setPreviewUrl(nextPreview)
+      setEditor(null)
     })
     if (isSaved) rootRef.current?.closest('form')?.requestSubmit()
   }
@@ -107,7 +179,7 @@ export default function ImageCropField({
         <button
           type="button"
           onClick={onEditExisting}
-          className="group relative block w-full max-w-md overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold"
+          className={`group relative block w-full max-w-md overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 ${focusRingClass}`}
           title={`Adjust how this ${subject} is framed`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -128,7 +200,7 @@ export default function ImageCropField({
           onChange={onPickFile}
           aria-describedby={pickError ? pickErrorId : undefined}
           aria-invalid={pickError ? true : undefined}
-          className="mt-1 block w-full rounded-lg text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-gray-200 dark:file:bg-gray-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-800 dark:file:text-gray-100 hover:file:bg-gray-300 dark:hover:file:bg-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold"
+          className={`mt-1 block w-full rounded-lg text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-gray-200 dark:file:bg-gray-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-800 dark:file:text-gray-100 hover:file:bg-gray-300 dark:hover:file:bg-gray-600 ${focusRingClass}`}
         />
       </label>
 
@@ -148,16 +220,17 @@ export default function ImageCropField({
       <input ref={croppedInputRef} name={names.file} type="file" hidden />
       <input name={names.crop} type="hidden" value={cropJson} readOnly />
 
-      {editorSrc && (
+      {editor && (
         <ImageCropDialog
-          src={editorSrc}
+          src={editor.src}
           subject={subject}
           helpText={helpText}
           aspect={aspect}
-          initialCrop={editorSrc === savedSource ? savedCrop : null}
-          sourceType={pickedType}
+          initialCrop={editor.src === savedSource ? savedCrop : null}
+          sourceType={editor.sourceType}
           confirmLabel={isSaved ? 'Use this framing & save' : 'Use this framing'}
-          onCancel={() => setEditorSrc(null)}
+          maxBytes={cropByteBudget(originalBytes)}
+          onCancel={onCancel}
           onApply={onApply}
         />
       )}

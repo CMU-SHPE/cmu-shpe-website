@@ -1,5 +1,3 @@
-import { pickOutputFormat } from './crop'
-
 export const IMAGE_EXTENSIONS = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -15,23 +13,25 @@ export function isAllowedImageType(type: string): type is AllowedImageType {
   return Object.hasOwn(IMAGE_EXTENSIONS, type)
 }
 
-export const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+const MB = 1024 * 1024
+
+export const MAX_IMAGE_BYTES = 8 * MB
 export const MAX_ORIGINAL_EDGE = 2560
-export const TARGET_ORIGINAL_BYTES = 2 * 1024 * 1024
-export const MIN_ORIGINAL_EDGE = 640
+export const TARGET_ORIGINAL_BYTES = 2 * MB
+export const MAX_CROP_EDGE = 1920
+export const MIN_RESIZE_EDGE = 640
+export const SVG_RASTER_EDGE = 1200
 const STEP_DOWN_FACTOR = 0.8
 
-export type ResizePlan = {
-  width: number
-  height: number
-  mime: 'image/png' | 'image/jpeg'
-  extension: 'png' | 'jpg'
-}
+/**
+ * Vercel rejects server action requests over 4.5 MB, and the crop field submits
+ * the original and the crop together; this leaves room for the other fields.
+ */
+export const REQUEST_BUDGET_BYTES = Math.floor(4.2 * MB)
 
-type PickedFile = { name: string; size: number; type: string }
-type Dimensions = { width: number; height: number }
+export type Dimensions = { width: number; height: number }
 
-function scaleTo(dimensions: Dimensions, longEdge: number): Dimensions {
+export function scaleToLongEdge(dimensions: Dimensions, longEdge: number): Dimensions {
   const scale = Math.min(1, longEdge / Math.max(dimensions.width, dimensions.height))
   return {
     width: Math.max(1, Math.round(dimensions.width * scale)),
@@ -39,23 +39,51 @@ function scaleTo(dimensions: Dimensions, longEdge: number): Dimensions {
   }
 }
 
-/**
- * Vercel caps a server action request at 4.5 MB and the crop field submits the
- * original and the cropped file together, so large originals are re-encoded in
- * the browser first. Returns null when the file can be uploaded as picked.
- */
-export function planOriginalResize(file: PickedFile, natural: Dimensions): ResizePlan | null {
-  if (file.type === 'image/svg+xml') return null
-  const longEdge = Math.max(natural.width, natural.height)
-  if (file.size <= TARGET_ORIGINAL_BYTES && longEdge <= MAX_ORIGINAL_EDGE) return null
-  return { ...scaleTo(natural, MAX_ORIGINAL_EDGE), ...pickOutputFormat(file.name, file.type) }
+export type PickProblem = 'not-image' | 'too-large'
+
+export function checkPickedFile(file: { type: string; size: number }): PickProblem | null {
+  if (!file.type.startsWith('image/')) return 'not-image'
+  if (file.size > MAX_IMAGE_BYTES) return 'too-large'
+  return null
 }
 
-export function nextResizeStep(plan: ResizePlan): ResizePlan | null {
-  const longEdge = Math.max(plan.width, plan.height)
-  if (longEdge <= MIN_ORIGINAL_EDGE) return null
-  const target = Math.max(MIN_ORIGINAL_EDGE, Math.floor(longEdge * STEP_DOWN_FACTOR))
-  return { ...plan, ...scaleTo(plan, target) }
+/**
+ * Returns the size to re-encode a picked original at, or null to upload it as
+ * picked. Formats outside the upload allowlist (HEIC, for example) are always
+ * re-encoded; SVG is never rasterised.
+ */
+export function planOriginalResize(
+  file: { size: number; type: string },
+  natural: Dimensions,
+): Dimensions | null {
+  if (file.type === 'image/svg+xml') return null
+  const longEdge = Math.max(natural.width, natural.height)
+  const uploadable = isAllowedImageType(file.type)
+  if (uploadable && file.size <= TARGET_ORIGINAL_BYTES && longEdge <= MAX_ORIGINAL_EDGE) return null
+  return scaleToLongEdge(natural, MAX_ORIGINAL_EDGE)
+}
+
+export function nextResizeStep(size: Dimensions): Dimensions | null {
+  const longEdge = Math.max(size.width, size.height)
+  if (longEdge <= MIN_RESIZE_EDGE) return null
+  return scaleToLongEdge(size, Math.max(MIN_RESIZE_EDGE, Math.floor(longEdge * STEP_DOWN_FACTOR)))
+}
+
+export function planCropOutput(region: Dimensions): Dimensions {
+  return scaleToLongEdge(region, MAX_CROP_EDGE)
+}
+
+export function svgRasterScale(natural: Dimensions): number {
+  const longEdge = Math.max(natural.width, natural.height)
+  return longEdge > 0 ? Math.max(1, SVG_RASTER_EDGE / longEdge) : 1
+}
+
+export function cropByteBudget(originalBytes: number): number {
+  return REQUEST_BUDGET_BYTES - originalBytes
+}
+
+export function fitsRequestBudget(originalBytes: number, cropBytes: number): boolean {
+  return originalBytes + cropBytes <= REQUEST_BUDGET_BYTES
 }
 
 export function renamedForFormat(name: string, extension: string): string {
@@ -63,51 +91,6 @@ export function renamedForFormat(name: string, extension: string): string {
   return `${base}.${extension}`
 }
 
-function decodeImage(file: File): Promise<HTMLImageElement> {
-  const url = URL.createObjectURL(file)
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('The image could not be read.'))
-    img.src = url
-  }).finally(() => URL.revokeObjectURL(url))
-}
-
-function encodeImage(img: HTMLImageElement, plan: ResizePlan): Promise<Blob> {
-  const canvas = document.createElement('canvas')
-  canvas.width = plan.width
-  canvas.height = plan.height
-  const context = canvas.getContext('2d')
-  if (!context) return Promise.reject(new Error('Canvas is not available in this browser.'))
-  if (plan.mime === 'image/jpeg') {
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, plan.width, plan.height)
-  }
-  context.drawImage(img, 0, 0, plan.width, plan.height)
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('The image could not be resized.'))),
-      plan.mime,
-      plan.mime === 'image/jpeg' ? 0.9 : undefined,
-    ),
-  )
-}
-
-export async function downscaleForUpload(file: File): Promise<File> {
-  const img = await decodeImage(file)
-  const natural = { width: img.naturalWidth, height: img.naturalHeight }
-  let plan = planOriginalResize(file, natural)
-  if (!plan) return file
-
-  let blob = await encodeImage(img, plan)
-  while (blob.size > TARGET_ORIGINAL_BYTES) {
-    const next = nextResizeStep(plan)
-    if (!next) break
-    plan = next
-    blob = await encodeImage(img, plan)
-  }
-
-  const withinEdge = Math.max(natural.width, natural.height) <= MAX_ORIGINAL_EDGE
-  if (withinEdge && blob.size >= file.size) return file
-  return new File([blob], renamedForFormat(file.name, plan.extension), { type: plan.mime })
+export function formatMegabytes(bytes: number): string {
+  return `${(bytes / MB).toFixed(1)} MB`
 }

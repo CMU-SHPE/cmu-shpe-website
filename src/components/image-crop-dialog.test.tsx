@@ -110,7 +110,9 @@ describe('ImageCropDialog', () => {
     const saving = screen.getByRole('button', { name: 'Saving…' })
     expect(saving).toBeDisabled()
     expect(saving).toHaveAttribute('aria-busy', 'true')
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('aria-busy', 'true')
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeDisabled()
+    expect(cancel).not.toHaveAttribute('aria-busy')
     expect(dialog).toHaveFocus()
 
     await user.keyboard('{Escape}')

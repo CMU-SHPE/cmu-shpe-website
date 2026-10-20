@@ -4,10 +4,10 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Cropper, { type Area, type MediaSize } from 'react-easy-crop'
 import { Spinner } from '@/components/submit-button'
-import { primaryButtonClass, secondaryButtonClass } from '@/components/admin/styles'
-import { type ImageCrop, pickOutputFormat } from '@/lib/crop'
-
-const MAX_OUTPUT_WIDTH = 1920
+import { focusRingClass, primaryButtonClass, secondaryButtonClass } from '@/components/admin/styles'
+import type { ImageCrop } from '@/lib/crop'
+import { ImageTooLargeError, renderCropToFile } from '@/lib/image-canvas'
+import { REQUEST_BUDGET_BYTES } from '@/lib/image-files'
 
 const SHAPE_PRESETS: { label: string; aspect: number | 'source' }[] = [
   { label: 'Original shape', aspect: 'source' },
@@ -19,56 +19,7 @@ const SHAPE_PRESETS: { label: string; aspect: number | 'source' }[] = [
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-export type AppliedCrop = { file: File; crop: ImageCrop; previewUrl: string }
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('The image could not be loaded for editing.'))
-    img.src = src
-  })
-}
-
-async function renderCrop(
-  src: string,
-  area: Area,
-  rotation: number,
-  mime: 'image/png' | 'image/jpeg',
-): Promise<Blob> {
-  const img = await loadImage(src)
-  const rad = (rotation * Math.PI) / 180
-  const sin = Math.abs(Math.sin(rad))
-  const cos = Math.abs(Math.cos(rad))
-  const stage = document.createElement('canvas')
-  stage.width = Math.round(img.naturalWidth * cos + img.naturalHeight * sin)
-  stage.height = Math.round(img.naturalWidth * sin + img.naturalHeight * cos)
-  const stageCtx = stage.getContext('2d')
-  if (!stageCtx) throw new Error('Canvas is not available in this browser.')
-  stageCtx.translate(stage.width / 2, stage.height / 2)
-  stageCtx.rotate(rad)
-  stageCtx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2)
-
-  const scale = Math.min(1, MAX_OUTPUT_WIDTH / area.width)
-  const out = document.createElement('canvas')
-  out.width = Math.round(area.width * scale)
-  out.height = Math.round(area.height * scale)
-  const outCtx = out.getContext('2d')
-  if (!outCtx) throw new Error('Canvas is not available in this browser.')
-  if (mime === 'image/jpeg') {
-    outCtx.fillStyle = '#ffffff'
-    outCtx.fillRect(0, 0, out.width, out.height)
-  }
-  outCtx.drawImage(stage, area.x, area.y, area.width, area.height, 0, 0, out.width, out.height)
-  return new Promise((resolve, reject) =>
-    out.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('The crop could not be saved.'))),
-      mime,
-      mime === 'image/jpeg' ? 0.9 : undefined,
-    ),
-  )
-}
+export type AppliedCrop = { file: File; crop: ImageCrop }
 
 export default function ImageCropDialog({
   src,
@@ -78,6 +29,7 @@ export default function ImageCropDialog({
   initialCrop,
   sourceType,
   confirmLabel,
+  maxBytes = REQUEST_BUDGET_BYTES,
   onCancel,
   onApply,
 }: {
@@ -89,6 +41,8 @@ export default function ImageCropDialog({
   initialCrop?: ImageCrop | null
   sourceType?: string | null
   confirmLabel: string
+  /** Bytes left for the crop in the upload request. */
+  maxBytes?: number
   onCancel: () => void
   onApply: (applied: AppliedCrop) => void | Promise<void>
 }) {
@@ -130,20 +84,17 @@ export default function ImageCropDialog({
     setError(null)
     dialogRef.current?.focus()
     try {
-      const format = pickOutputFormat(src, sourceType)
-      const blob = await renderCrop(src, pixels, rotation, format.mime)
-      const file = new File([blob], `${subject}-crop.${format.extension}`, { type: format.mime })
-      await onApply({
-        file,
-        crop: { ...pixels, rotation },
-        previewUrl: URL.createObjectURL(blob),
-      })
+      const crop = { ...pixels, rotation }
+      const file = await renderCropToFile({ src, sourceType, crop, name: `${subject}-crop`, maxBytes })
+      await onApply({ file, crop })
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message} If the image comes from an external site, that site may not allow editing — upload the file instead.`
-          : 'The crop could not be saved.',
-      )
+      if (err instanceof ImageTooLargeError) setError(err.message)
+      else
+        setError(
+          err instanceof Error
+            ? `${err.message} If the image comes from an external site, that site may not allow editing — upload the file instead.`
+            : 'The crop could not be saved.',
+        )
     } finally {
       setSaving(false)
     }
@@ -218,6 +169,7 @@ export default function ImageCropDialog({
             onRotationChange={setRotation}
             onCropComplete={onCropComplete}
             onMediaLoaded={onMediaLoaded}
+            mediaProps={{ crossOrigin: 'anonymous' }}
             cropperProps={{ role: 'group', 'aria-label': 'Crop area: drag or use the arrow keys to move the image' }}
           />
         </div>
@@ -234,7 +186,7 @@ export default function ImageCropDialog({
                   type="button"
                   onClick={() => setShape(preset.aspect)}
                   aria-pressed={shape === preset.aspect}
-                  className={`rounded-lg border px-3 py-1 text-xs font-medium transition active:scale-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold ${
+                  className={`rounded-lg border px-3 py-1 text-xs font-medium transition active:scale-[0.97] ${focusRingClass} ${
                     shape === preset.aspect
                       ? 'border-shpe-red bg-shpe-red text-white'
                       : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -281,7 +233,7 @@ export default function ImageCropDialog({
               <button
                 type="button"
                 onClick={() => setRotation((r) => (r + 90 > 180 ? r - 270 : r + 90))}
-                className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold"
+                className={`mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 ${focusRingClass}`}
               >
                 +90°
               </button>
@@ -303,7 +255,6 @@ export default function ImageCropDialog({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            aria-busy={saving}
             className={secondaryButtonClass}
           >
             Cancel

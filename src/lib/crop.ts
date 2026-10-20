@@ -28,22 +28,44 @@ export function orphanedBlobs(existing: CroppedImage, next: CroppedImage): strin
   )
 }
 
-const ALPHA_CAPABLE = /^image\/(png|webp|avif|gif)$/i
+export type OutputFormat = { mime: 'image/png' | 'image/jpeg'; extension: 'png' | 'jpg' }
+
+const PNG: OutputFormat = { mime: 'image/png', extension: 'png' }
+const JPEG: OutputFormat = { mime: 'image/jpeg', extension: 'jpg' }
+
+type SourcePattern = { type: RegExp; extension: RegExp }
+
+const SVG: SourcePattern = { type: /^image\/svg\+xml$/i, extension: /\.svg(\?|#|$)/i }
+const LOGO: SourcePattern = { type: /^image\/(png|svg\+xml)$/i, extension: /\.(png|svg)(\?|#|$)/i }
+const ALPHA_CAPABLE: SourcePattern = {
+  type: /^image\/(png|webp|avif|gif|svg\+xml)$/i,
+  extension: /\.(png|webp|avif|gif|svg)(\?|#|$)/i,
+}
+
+function matches(pattern: SourcePattern, source: string, sourceType?: string | null) {
+  return Boolean(sourceType && pattern.type.test(sourceType)) || pattern.extension.test(source)
+}
+
+export function isSvgSource(source: string, sourceType?: string | null): boolean {
+  return matches(SVG, source, sourceType)
+}
+
+export function canHaveTransparency(source: string, sourceType?: string | null): boolean {
+  return matches(ALPHA_CAPABLE, source, sourceType)
+}
 
 /**
- * Cropping re-encodes the image, and JPEG has no alpha channel — a transparent
- * logo would come back with a black background. Keep PNG for sources that can
- * carry transparency.
+ * Canvas re-encoding only produces PNG or JPEG, and JPEG has no alpha channel.
+ * PNG and SVG logos stay PNG; other formats become PNG only when they contain
+ * transparency. `hasTransparency` is undefined when the pixels were not checked.
  */
 export function pickOutputFormat(
   source: string,
   sourceType?: string | null,
-): { mime: 'image/png' | 'image/jpeg'; extension: 'png' | 'jpg' } {
-  const byType = sourceType ? ALPHA_CAPABLE.test(sourceType) : false
-  const byExtension = /\.(png|webp|avif|gif)(\?|#|$)/i.test(source)
-  return byType || byExtension
-    ? { mime: 'image/png', extension: 'png' }
-    : { mime: 'image/jpeg', extension: 'jpg' }
+  hasTransparency?: boolean,
+): OutputFormat {
+  if (matches(LOGO, source, sourceType)) return PNG
+  return (hasTransparency ?? canHaveTransparency(source, sourceType)) ? PNG : JPEG
 }
 
 export function parseCrop(value: unknown): ImageCrop | null {
