@@ -218,3 +218,61 @@ describe('EditableList', () => {
     )
   })
 })
+
+describe('multiline editor', () => {
+  function renderValuesEditor(value: string) {
+    render(
+      <EditableList
+        contentKey="about.values.items"
+        value={value}
+        editable
+        className="space-y-3"
+        editorClassName="editor"
+        renderItem={(item) => <li>{item}</li>}
+      />,
+    )
+    return screen.getByRole('textbox', { name: 'About: values, one per line' })
+  }
+
+  async function saveEdit(editor: HTMLElement, html: string) {
+    mocks.saveContentText.mockResolvedValue({ ok: true })
+    editor.innerHTML = html
+    fireEvent.input(editor)
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
+    return mocks.saveContentText.mock.calls[0]
+  }
+
+  it('does not report unsaved changes when stored lines and paragraphs are left as they are', () => {
+    const editor = renderValuesEditor('First\nSecond\n\nThird')
+    fireEvent.input(editor)
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+  })
+
+  it('shows markup in a stored line as text', () => {
+    const editor = renderValuesEditor('Safe\n<img src=x onerror=alert(1)>')
+    expect(editor.querySelector('img')).toBeNull()
+    expect(editor).toHaveTextContent('Safe<img src=x onerror=alert(1)>')
+  })
+
+  it('saves a paragraph the browser adds on Enter as a new item after a blank line', async () => {
+    const editor = renderValuesEditor('First\nSecond')
+    expect(await saveEdit(editor, '<p>First<br>Second</p><p>Third</p>')).toEqual([
+      'about.values.items',
+      'First\nSecond\n\nThird',
+    ])
+  })
+
+  it('saves text before a browser-inserted <div> line as its own item', async () => {
+    const editor = renderValuesEditor('First')
+    expect(await saveEdit(editor, 'First<div>Second</div>')).toEqual(['about.values.items', 'First\n\nSecond'])
+  })
+
+  it('drops empty paragraphs and collapses runs of spaces within a line', async () => {
+    const editor = renderValuesEditor('First')
+    expect(await saveEdit(editor, '<p>  First   item </p><p><br></p><p>Second</p>')).toEqual([
+      'about.values.items',
+      'First item\n\nSecond',
+    ])
+  })
+})
