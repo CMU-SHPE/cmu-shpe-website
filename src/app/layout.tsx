@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { signOut } from '@/auth'
-import { currentSession } from '@/lib/admin'
+import { currentAdmin } from '@/lib/admin'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import ThemeProvider from '@/components/ThemeProvider'
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const session = await currentSession()
+  const admin = await currentAdmin()
 
   async function signOutAction() {
     'use server'
@@ -39,7 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={inter.className}>
         <ThemeProvider>
           <Navbar
-            user={session ? { name: session.user.name ?? 'Admin' } : null}
+            user={admin ? { name: admin.user.name ?? 'Admin' } : null}
             signOutAction={signOutAction}
           />
           <main className="min-h-screen">{children}</main>
