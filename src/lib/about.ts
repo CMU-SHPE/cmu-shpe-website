@@ -14,27 +14,3 @@ export const joinReasons: string[] = [
   'Leadership and officer positions to build your resume',
   'A community of peers who understand your experience',
 ]
-
-export type NationalStat = {
-  value: string
-  label: string
-  desc: string
-}
-
-export const nationalStats: NationalStat[] = [
-  {
-    value: '55,000+',
-    label: 'Members Nationwide',
-    desc: 'Students and professionals across the U.S. and internationally.',
-  },
-  {
-    value: '250+',
-    label: 'Collegiate Chapters',
-    desc: 'Active chapters at universities across the country.',
-  },
-  {
-    value: 'Est. 1974',
-    label: 'Over 50 Years',
-    desc: 'A legacy of empowering Hispanic STEM professionals.',
-  },
-]

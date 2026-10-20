@@ -1,6 +1,17 @@
 import { asc, inArray } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { advisors, events, officers, siteContent, siteSettings, sponsors } from '@/db/schema'
+import {
+  advisors,
+  events,
+  homePillars,
+  homeStats,
+  nationalStats,
+  officers,
+  siteContent,
+  siteSettings,
+  sponsorBenefits,
+  sponsors,
+} from '@/db/schema'
 import type { ContentKey } from '@/lib/content-keys'
 import { compareSponsors } from '@/lib/sponsor-tiers'
 
@@ -38,4 +49,23 @@ export async function getAdvisors() {
 
 export async function getEvents() {
   return getDb().select().from(events).orderBy(asc(events.date), asc(events.id))
+}
+
+export async function getHomeStats() {
+  return getDb().select().from(homeStats).orderBy(asc(homeStats.sortOrder), asc(homeStats.id))
+}
+
+export async function getHomePillars() {
+  return getDb().select().from(homePillars).orderBy(asc(homePillars.sortOrder), asc(homePillars.id))
+}
+
+export async function getNationalStats() {
+  return getDb().select().from(nationalStats).orderBy(asc(nationalStats.sortOrder), asc(nationalStats.id))
+}
+
+export async function getSponsorBenefits() {
+  return getDb()
+    .select()
+    .from(sponsorBenefits)
+    .orderBy(asc(sponsorBenefits.sortOrder), asc(sponsorBenefits.id))
 }

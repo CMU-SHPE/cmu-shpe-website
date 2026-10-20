@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import SponsorLogo from '@/components/SponsorLogo'
 import { CheckIcon } from '@/components/icons'
-import { getSponsors } from '@/lib/queries'
+import { BENEFIT_COLUMNS, parseBenefitCell } from '@/lib/benefit-cells'
+import { getSponsorBenefits, getSponsors } from '@/lib/queries'
 import type { Tier } from '@/lib/sponsor-tiers'
 
 const tierMeta: {
@@ -31,22 +32,8 @@ const tierMeta: {
   },
 ]
 
-// true = ✓, false = ✗, number = partial count
-type Cell = boolean | number
-
-const benefits: { label: string; tiers: [Cell, Cell, Cell, Cell] }[] = [
-  //                                       Platinum  Gold     Silver   Bronze
-  { label: 'Logo on website',              tiers: [true,  true,  true,  true]  },
-  // { label: 'Access to resume book',        tiers: [true,  true,  true,  false] },
-  { label: 'Social media features',        tiers: [true,  true,  1,     false] },
-  // { label: 'Networking banquet seats',     tiers: [true,  2,     false, false] },
-  { label: 'Logo on event banners',        tiers: [true,  true,  false, false] },
-  { label: 'Newsletter spotlight',         tiers: [true,  true,  false, false] },
-  { label: 'Company presentation',         tiers: [true,  false, false, false] },
-]
-
 export default async function Sponsors() {
-  const sponsors = await getSponsors()
+  const [sponsors, benefits] = await Promise.all([getSponsors(), getSponsorBenefits()])
   const byTier = (tier: Tier) => sponsors.filter((s) => s.tier === tier)
 
   return (
@@ -133,11 +120,11 @@ export default async function Sponsors() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {benefits.map((benefit, i) => (
-                  <tr key={benefit.label} className={i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}>
+                  <tr key={benefit.id} className={i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}>
                     <td className="px-6 py-3.5 text-gray-700 dark:text-gray-300 font-medium">{benefit.label}</td>
-                    {benefit.tiers.map((cell, j) => (
-                      <td key={j} className="px-4 py-3.5 text-center">
-                        {cell === true ? <Check /> : cell === false ? <X /> : <Partial text={String(cell)} />}
+                    {tierMeta.map((t) => (
+                      <td key={t.name} className="px-4 py-3.5 text-center">
+                        <BenefitCell value={benefit[BENEFIT_COLUMNS[t.name]]} />
                       </td>
                     ))}
                   </tr>
@@ -164,6 +151,13 @@ export default async function Sponsors() {
       </section>
     </div>
   )
+}
+
+function BenefitCell({ value }: { value: string }) {
+  const cell = parseBenefitCell(value)
+  if (cell.kind === 'yes') return <Check />
+  if (cell.kind === 'no') return <X />
+  return <Partial text={cell.text} />
 }
 
 function Check() {

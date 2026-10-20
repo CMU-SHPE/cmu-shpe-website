@@ -1,8 +1,11 @@
 import Link from 'next/link'
-import { values, joinReasons, nationalStats } from '@/lib/about'
+import { values, joinReasons } from '@/lib/about'
 import { CheckIcon } from '@/components/icons'
+import { getNationalStats } from '@/lib/queries'
 
-export default function About() {
+export default async function About() {
+  const nationalStats = await getNationalStats()
+
   return (
     <div>
       {/* ── Page Header ── */}
@@ -122,12 +125,12 @@ export default function About() {
           <div className="grid md:grid-cols-3 gap-8">
             {nationalStats.map((s) => (
               <div
-                key={s.label}
+                key={s.id}
                 className="bg-white dark:bg-gray-900 rounded-xl p-8 shadow-sm border border-gray-100 dark:border-gray-700 text-center"
               >
                 <div className="text-4xl font-black text-shpe-red mb-2">{s.value}</div>
                 <div className="font-bold text-gray-900 dark:text-white mb-2">{s.label}</div>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">{s.desc}</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">{s.description}</p>
               </div>
             ))}
           </div>

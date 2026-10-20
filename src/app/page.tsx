@@ -1,13 +1,14 @@
 import Link from 'next/link'
 import SponsorLogo from '@/components/SponsorLogo'
-import { stats, pillars } from '@/lib/home'
 import { LocationIcon } from '@/components/icons'
 import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
-import { getEvents, getSiteContent, getSponsors } from '@/lib/queries'
+import { getEvents, getHomePillars, getHomeStats, getSiteContent, getSponsors } from '@/lib/queries'
 
 export default async function Home() {
-  const [sponsors, events, content] = await Promise.all([
+  const [stats, pillars, sponsors, events, content] = await Promise.all([
+    getHomeStats(),
+    getHomePillars(),
     getSponsors(),
     getEvents(),
     getSiteContent(['events.upcoming.empty']),
@@ -67,7 +68,7 @@ export default async function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             {stats.map((s) => (
-              <div key={s.label}>
+              <div key={s.id}>
                 <div className="text-4xl font-black text-white">{s.value}</div>
                 <div className="text-red-200 text-sm font-medium mt-1">{s.label}</div>
               </div>
@@ -113,12 +114,12 @@ export default async function Home() {
             <div className="grid grid-cols-2 gap-5">
               {pillars.map((p) => (
                 <div
-                  key={p.title}
+                  key={p.id}
                   className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-100 dark:border-gray-700 hover:border-shpe-red/30 transition-colors duration-200"
                 >
                   <div className="text-3xl mb-3">{p.icon}</div>
                   <h3 className="font-bold text-gray-900 dark:text-white mb-2 text-sm">{p.title}</h3>
-                  <p className="text-gray-500 dark:text-gray-400 text-xs leading-relaxed">{p.desc}</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs leading-relaxed">{p.description}</p>
                 </div>
               ))}
             </div>
