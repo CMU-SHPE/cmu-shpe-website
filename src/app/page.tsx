@@ -1,12 +1,18 @@
 import Link from 'next/link'
 import SponsorLogo from '@/components/SponsorLogo'
-import { events, typeColors } from '@/lib/events'
 import { stats, pillars } from '@/lib/home'
 import { LocationIcon } from '@/components/icons'
-import { getSponsors } from '@/lib/queries'
+import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { eventTypeColor } from '@/lib/event-types'
+import { getEvents, getSiteContent, getSponsors } from '@/lib/queries'
 
 export default async function Home() {
-  const sponsors = await getSponsors()
+  const [sponsors, events, content] = await Promise.all([
+    getSponsors(),
+    getEvents(),
+    getSiteContent(['events.upcoming.empty']),
+  ])
+  const upcomingEvents = splitEvents(events, todayInDenver(new Date())).upcoming.slice(0, 3)
 
   return (
     <div>
@@ -134,32 +140,36 @@ export default async function Home() {
             <h2 className="text-4xl font-bold text-gray-900 dark:text-white">Upcoming Events</h2>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 mb-10">
-            {events.slice(0, 3).map((event) => (
-              <div
-                key={event.id}
-                className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200"
-              >
-                <div className="h-1.5 bg-shpe-red" />
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span
-                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${typeColors[event.type]}`}
-                    >
-                      {event.type}
-                    </span>
-                    <span className="text-gray-400 dark:text-gray-500 text-xs">{event.date}</span>
-                  </div>
-                  <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-5">{event.description}</p>
-                  <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
-                    <LocationIcon className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
-                    {event.location}
+          {upcomingEvents.length === 0 ? (
+            <p className="text-center text-gray-500 dark:text-gray-400 mb-10">{content['events.upcoming.empty']}</p>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-8 mb-10">
+              {upcomingEvents.map((event) => (
+                <div
+                  key={event.id}
+                  className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200"
+                >
+                  <div className="h-1.5 bg-shpe-red" />
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <span
+                        className={`text-xs font-semibold px-2.5 py-1 rounded-full ${eventTypeColor(event.type)}`}
+                      >
+                        {event.type}
+                      </span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">{formatEventDate(event.date)}</span>
+                    </div>
+                    <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-5">{event.description}</p>
+                    <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
+                      <LocationIcon className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                      {event.location}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           <div className="text-center">
             <Link
