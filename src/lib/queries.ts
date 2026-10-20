@@ -1,6 +1,6 @@
 import { asc, inArray } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { siteContent, siteSettings, sponsors } from '@/db/schema'
+import { advisors, officers, siteContent, siteSettings, sponsors } from '@/db/schema'
 import type { ContentKey } from '@/lib/content-keys'
 import { compareSponsors } from '@/lib/sponsor-tiers'
 
@@ -26,4 +26,12 @@ export async function getSiteContent<K extends ContentKey>(
 export async function getSponsors() {
   const rows = await getDb().select().from(sponsors)
   return rows.sort(compareSponsors)
+}
+
+export async function getOfficers() {
+  return getDb().select().from(officers).orderBy(asc(officers.sortOrder), asc(officers.id))
+}
+
+export async function getAdvisors() {
+  return getDb().select().from(advisors).orderBy(asc(advisors.sortOrder), asc(advisors.id))
 }

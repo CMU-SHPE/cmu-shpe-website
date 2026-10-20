@@ -1,10 +1,14 @@
 import OfficerAvatar from '@/components/OfficerAvatar'
-import { officers, advisor } from '@/lib/officers'
 import { LinkedInIcon } from '@/components/icons'
-import { getSiteSettings } from '@/lib/queries'
+import type { Advisor } from '@/db/schema'
+import { getAdvisors, getOfficers, getSiteSettings } from '@/lib/queries'
 
 export default async function Officers() {
-  const settings = await getSiteSettings()
+  const [settings, officers, advisors] = await Promise.all([
+    getSiteSettings(),
+    getOfficers(),
+    getAdvisors(),
+  ])
 
   return (
     <div>
@@ -36,10 +40,10 @@ export default async function Officers() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {officers.map((officer) => (
               <div
-                key={officer.name}
+                key={officer.id}
                 className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 text-center border border-gray-100 dark:border-gray-700 hover:border-shpe-red/30 hover:shadow-md transition-all duration-200"
               >
-                <OfficerAvatar name={officer.name} photo={officer.photo} />
+                <OfficerAvatar name={officer.name} photo={officer.photoUrl} />
                 <h3 className="font-bold text-gray-900 dark:text-white text-base mb-0.5">{officer.name}</h3>
                 <p className="text-shpe-red font-semibold text-sm mb-2">{officer.role}</p>
                 <p className="text-gray-500 dark:text-gray-400 text-xs mb-1">{officer.major}</p>
@@ -71,32 +75,26 @@ export default async function Officers() {
       </section>
 
       {/* ── Faculty Advisor ── */}
-      <section className="bg-gray-50 dark:bg-gray-800 py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center mb-10">
-            <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Faculty Advisor</h2>
-          </div>
+      {advisors.length > 0 && (
+        <section className="bg-gray-50 dark:bg-gray-800 py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center mb-10">
+              <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Faculty Advisor</h2>
+            </div>
 
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-8 max-w-2xl flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <div className="flex-shrink-0">
-              <OfficerAvatar name={advisor.name} photo={advisor.photo} size="lg" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900 dark:text-white text-xl mb-0.5">{advisor.name}</h3>
-              <p className="text-shpe-red font-semibold text-sm mb-1">{advisor.role}</p>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{advisor.department}</p>
-              <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed mb-4">{advisor.bio}</p>
-              <a
-                href={`mailto:${advisor.email}`}
-                className="text-shpe-red hover:text-red-700 text-sm font-medium transition-colors"
-              >
-                {advisor.email}
-              </a>
-            </div>
+            {advisors.length === 1 ? (
+              <AdvisorCard advisor={advisors[0]} />
+            ) : (
+              <div className="space-y-6">
+                {advisors.map((advisor) => (
+                  <AdvisorCard key={advisor.id} advisor={advisor} />
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── Elections Info ── */}
       <section className="bg-shpe-red py-14">
@@ -121,6 +119,30 @@ export default async function Officers() {
           )}
         </div>
       </section>
+    </div>
+  )
+}
+
+function AdvisorCard({ advisor }: { advisor: Advisor }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-8 max-w-2xl flex flex-col sm:flex-row items-center sm:items-start gap-6">
+      <div className="flex-shrink-0">
+        <OfficerAvatar name={advisor.name} photo={advisor.photoUrl} size="lg" />
+      </div>
+      <div>
+        <h3 className="font-bold text-gray-900 dark:text-white text-xl mb-0.5">{advisor.name}</h3>
+        <p className="text-shpe-red font-semibold text-sm mb-1">{advisor.role}</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{advisor.department}</p>
+        <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed mb-4">{advisor.bio}</p>
+        {advisor.email && (
+          <a
+            href={`mailto:${advisor.email}`}
+            className="text-shpe-red hover:text-red-700 text-sm font-medium transition-colors"
+          >
+            {advisor.email}
+          </a>
+        )}
+      </div>
     </div>
   )
 }

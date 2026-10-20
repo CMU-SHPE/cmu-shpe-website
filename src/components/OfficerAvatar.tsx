@@ -8,7 +8,7 @@ export default function OfficerAvatar({
   size = 'md',
 }: {
   name: string
-  photo?: string
+  photo?: string | null
   size?: 'md' | 'lg'
 }) {
   const [imgError, setImgError] = useState(false)
