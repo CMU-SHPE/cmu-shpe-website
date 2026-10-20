@@ -21,6 +21,8 @@ const FOCUSABLE =
 
 export type AppliedCrop = { file: File; crop: ImageCrop }
 
+const MEDIA_ERROR = "This image can't be edited here — upload the file instead."
+
 export default function ImageCropDialog({
   src,
   subject,
@@ -54,6 +56,7 @@ export default function ImageCropDialog({
   const [sourceAspect, setSourceAspect] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mediaStatus, setMediaStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
 
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
@@ -61,6 +64,7 @@ export default function ImageCropDialog({
   const shapeId = useId()
   const zoomId = useId()
   const rotateId = useId()
+  const applyReasonId = useId()
 
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -76,10 +80,15 @@ export default function ImageCropDialog({
 
   const onMediaLoaded = useCallback((media: MediaSize) => {
     setSourceAspect(media.naturalWidth / media.naturalHeight)
+    setMediaStatus('ready')
   }, [])
 
+  const onMediaError = useCallback(() => setMediaStatus('failed'), [])
+
+  const applyBlocked = mediaStatus !== 'ready'
+
   const apply = async () => {
-    if (!pixels) return
+    if (applyBlocked || !pixels) return
     setSaving(true)
     setError(null)
     dialogRef.current?.focus()
@@ -169,7 +178,7 @@ export default function ImageCropDialog({
             onRotationChange={setRotation}
             onCropComplete={onCropComplete}
             onMediaLoaded={onMediaLoaded}
-            mediaProps={{ crossOrigin: 'anonymous' }}
+            mediaProps={{ crossOrigin: 'anonymous', onError: onMediaError }}
             cropperProps={{ role: 'group', 'aria-label': 'Crop area: drag or use the arrow keys to move the image' }}
           />
         </div>
@@ -241,6 +250,20 @@ export default function ImageCropDialog({
           </div>
         </div>
 
+        {mediaStatus === 'loading' && (
+          <p id={applyReasonId} className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+            Loading the image…
+          </p>
+        )}
+        {mediaStatus === 'failed' && (
+          <p
+            id={applyReasonId}
+            role="alert"
+            className="mt-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-400"
+          >
+            {MEDIA_ERROR}
+          </p>
+        )}
         {error && (
           <p
             role="alert"
@@ -263,8 +286,10 @@ export default function ImageCropDialog({
             type="button"
             onClick={apply}
             disabled={saving}
+            aria-disabled={applyBlocked || undefined}
+            aria-describedby={applyBlocked ? applyReasonId : undefined}
             aria-busy={saving}
-            className={`${primaryButtonClass} inline-flex items-center gap-2`}
+            className={`${primaryButtonClass} inline-flex items-center gap-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60`}
           >
             {saving && <Spinner />}
             {saving ? 'Saving…' : confirmLabel}

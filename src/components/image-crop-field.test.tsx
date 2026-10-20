@@ -21,13 +21,16 @@ vi.mock('@/lib/image-canvas', async (importOriginal) => ({
 vi.mock('react-easy-crop', () => ({
   default: function MockCropper({
     onCropComplete,
+    onMediaLoaded,
   }: {
     onCropComplete: (area: object, areaPixels: object) => void
+    onMediaLoaded: (size: object) => void
   }) {
     useEffect(() => {
+      onMediaLoaded({ width: 100, height: 100, naturalWidth: 100, naturalHeight: 100 })
       const area = { x: 0, y: 0, width: 100, height: 100 }
       onCropComplete(area, area)
-    }, [onCropComplete])
+    }, [onCropComplete, onMediaLoaded])
     return <div data-testid="cropper" />
   },
 }))

@@ -1,24 +1,38 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { useEffect, useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ImageCropDialog from './image-crop-dialog'
 
+const media = vi.hoisted(() => ({ outcome: 'load' as 'load' | 'error' | 'pending' }))
+
 vi.mock('react-easy-crop', () => ({
   default: function MockCropper({
     onCropComplete,
+    onMediaLoaded,
+    mediaProps,
   }: {
     onCropComplete: (area: object, areaPixels: object) => void
+    onMediaLoaded: (size: object) => void
+    mediaProps: { onError?: () => void }
   }) {
+    const onError = mediaProps.onError
     useEffect(() => {
+      if (media.outcome === 'error') onError?.()
+      if (media.outcome !== 'load') return
+      onMediaLoaded({ width: 100, height: 100, naturalWidth: 100, naturalHeight: 100 })
       const area = { x: 0, y: 0, width: 100, height: 100 }
       onCropComplete(area, area)
-    }, [onCropComplete])
+    }, [onCropComplete, onMediaLoaded, onError])
     return <div data-testid="cropper" tabIndex={0} />
   },
 }))
 
-function Harness({ onCancel = () => {} }: { onCancel?: () => void }) {
+beforeEach(() => {
+  media.outcome = 'load'
+})
+
+function Harness({ onCancel = () => {}, onApply = () => {} }: { onCancel?: () => void; onApply?: () => void }) {
   const [open, setOpen] = useState(false)
   return (
     <>
@@ -36,16 +50,16 @@ function Harness({ onCancel = () => {} }: { onCancel?: () => void }) {
             onCancel()
             setOpen(false)
           }}
-          onApply={() => {}}
+          onApply={onApply}
         />
       )}
     </>
   )
 }
 
-async function openDialog(onCancel?: () => void) {
+async function openDialog(onCancel?: () => void, onApply?: () => void) {
   const user = userEvent.setup()
-  render(<Harness onCancel={onCancel} />)
+  render(<Harness onCancel={onCancel} onApply={onApply} />)
   const trigger = screen.getByRole('button', { name: 'Edit photo' })
   await user.click(trigger)
   return { user, trigger, dialog: screen.getByRole('dialog') }
@@ -118,5 +132,49 @@ describe('ImageCropDialog', () => {
     await user.keyboard('{Escape}')
     expect(onCancel).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('keeps Apply focusable but unavailable until the image has loaded', async () => {
+    media.outcome = 'pending'
+    const onApply = vi.fn()
+    const { user } = await openDialog(undefined, onApply)
+
+    const apply = screen.getByRole('button', { name: 'Use this framing' })
+    expect(apply).not.toBeDisabled()
+    expect(apply).toHaveAttribute('aria-disabled', 'true')
+    expect(apply).toHaveAccessibleDescription('Loading the image…')
+
+    apply.focus()
+    expect(apply).toHaveFocus()
+    await user.click(apply)
+    expect(onApply).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Saving…' })).not.toBeInTheDocument()
+  })
+
+  it('explains when the image cannot be loaded and keeps Apply unavailable', async () => {
+    media.outcome = 'error'
+    const onApply = vi.fn()
+    const onCancel = vi.fn()
+    const { user } = await openDialog(onCancel, onApply)
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent("This image can't be edited here — upload the file instead.")
+    const apply = screen.getByRole('button', { name: 'Use this framing' })
+    expect(apply).toHaveAttribute('aria-disabled', 'true')
+    expect(apply).toHaveAccessibleDescription("This image can't be edited here — upload the file instead.")
+
+    await user.click(apply)
+    expect(onApply).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('enables Apply once the image has loaded', async () => {
+    await openDialog()
+    const apply = screen.getByRole('button', { name: 'Use this framing' })
+    expect(apply).not.toHaveAttribute('aria-disabled')
+    expect(apply).not.toHaveAttribute('aria-describedby')
+    expect(screen.queryByText('Loading the image…')).not.toBeInTheDocument()
   })
 })
