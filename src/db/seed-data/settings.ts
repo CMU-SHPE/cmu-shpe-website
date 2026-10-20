@@ -1,6 +1,6 @@
 import type { siteSettings } from '../schema'
 
-export const settings: typeof siteSettings.$inferInsert = {
+export const settingsRow: typeof siteSettings.$inferInsert = {
   contactEmail: 'shpecmu9@gmail.com',
   meetingDay: 'Thursdays',
   meetingTime: '5:00 PM',

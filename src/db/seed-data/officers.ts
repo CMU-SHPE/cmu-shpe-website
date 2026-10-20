@@ -1,6 +1,6 @@
 import type { advisors as advisorsTable, officers as officersTable } from '../schema'
 
-export const officers: (typeof officersTable.$inferInsert)[] = [
+export const officerRows: (typeof officersTable.$inferInsert)[] = [
   {
     name: 'Jeff Torres Navarrete',
     role: 'Co-President',
@@ -85,7 +85,7 @@ export const officers: (typeof officersTable.$inferInsert)[] = [
   },
 ]
 
-export const advisors: (typeof advisorsTable.$inferInsert)[] = [
+export const advisorRows: (typeof advisorsTable.$inferInsert)[] = [
   {
     name: 'Ulises Techera',
     role: 'Instructor',

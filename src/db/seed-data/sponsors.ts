@@ -1,6 +1,6 @@
 import type { sponsors as sponsorsTable } from '../schema'
 
-export const sponsors: (typeof sponsorsTable.$inferInsert)[] = [
+export const sponsorRows: (typeof sponsorsTable.$inferInsert)[] = [
   {
     name: 'JGMS',
     tier: 'Platinum',
