@@ -5,3 +5,7 @@
 html {
   scroll-behavior: smooth;
 }
+
+.dark {
+  color-scheme: dark;
+}
