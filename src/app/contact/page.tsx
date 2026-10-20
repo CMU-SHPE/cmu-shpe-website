@@ -1,13 +1,18 @@
 import ContactForm from '@/components/ContactForm'
+import Editable from '@/components/editable'
 import { InstagramIcon, LinkedInIcon, LocationIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from '@/components/icons'
+import { currentAdmin } from '@/lib/admin'
+import { contentKeysFor } from '@/lib/content-keys'
 import { toLines } from '@/lib/lines'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
 
 export default async function Contact() {
-  const [settings, content] = await Promise.all([
+  const [content, admin, settings] = await Promise.all([
+    getSiteContent(contentKeysFor('contact')),
+    currentAdmin(),
     getSiteSettings(),
-    getSiteContent(['contact.subjects']),
   ])
+  const editable = Boolean(admin)
 
   return (
     <div>
@@ -16,15 +21,28 @@ export default async function Contact() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-4">
             <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-            <span className="text-shpe-gold font-semibold text-sm uppercase tracking-widest">
-              Get in Touch
-            </span>
+            <Editable
+              as="span"
+              contentKey="contact.header.eyebrow"
+              value={content['contact.header.eyebrow']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-sm uppercase tracking-widest"
+            />
           </div>
-          <h1 className="text-5xl font-black text-white mb-3">Contact Us</h1>
-          <p className="text-gray-300 max-w-xl">
-            Questions about membership, sponsorship, or events? We would love to hear from
-            you. Reach out and we will get back to you shortly.
-          </p>
+          <Editable
+            as="h1"
+            contentKey="contact.header.heading"
+            value={content['contact.header.heading']}
+            editable={editable}
+            className="text-5xl font-black text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="contact.header.intro"
+            value={content['contact.header.intro']}
+            editable={editable}
+            className="text-gray-300 max-w-xl"
+          />
         </div>
       </section>
 
@@ -34,7 +52,13 @@ export default async function Contact() {
           <div className="grid md:grid-cols-2 gap-14">
             {/* Contact Form */}
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-8">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Send Us a Message</h2>
+              <Editable
+                as="h2"
+                contentKey="contact.form.heading"
+                value={content['contact.form.heading']}
+                editable={editable}
+                className="text-xl font-bold text-gray-900 dark:text-white mb-6"
+              />
 
               <ContactForm
                 email={settings?.contactEmail ?? ''}
@@ -45,7 +69,13 @@ export default async function Contact() {
             {/* Contact Info */}
             <div className="space-y-8">
               <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Other Ways to Reach Us</h2>
+                <Editable
+                  as="h2"
+                  contentKey="contact.info.heading"
+                  value={content['contact.info.heading']}
+                  editable={editable}
+                  className="text-xl font-bold text-gray-900 dark:text-white mb-6"
+                />
                 <div className="space-y-5">
                   {settings && (
                     <InfoRow
@@ -55,15 +85,24 @@ export default async function Contact() {
                         </svg>
                       }
                       label="Email"
-                      value={settings.contactEmail}
-                      href={`mailto:${settings.contactEmail}`}
-                    />
+                    >
+                      <a
+                        href={`mailto:${settings.contactEmail}`}
+                        className="text-gray-700 dark:text-gray-300 text-sm hover:text-shpe-red transition-colors"
+                      >
+                        {settings.contactEmail}
+                      </a>
+                    </InfoRow>
                   )}
-                  <InfoRow
-                    icon={<LocationIcon className="w-5 h-5" />}
-                    label="Location"
-                    value="Colorado Mesa University, Grand Junction, CO"
-                  />
+                  <InfoRow icon={<LocationIcon className="w-5 h-5" />} label="Location">
+                    <Editable
+                      as="div"
+                      contentKey="contact.location"
+                      value={content['contact.location']}
+                      editable={editable}
+                      className="text-gray-700 dark:text-gray-300 text-sm"
+                    />
+                  </InfoRow>
                   {settings && (
                     <InfoRow
                       icon={
@@ -72,17 +111,24 @@ export default async function Contact() {
                         </svg>
                       }
                       label="Weekly Meetings"
-                      value={`${settings.meetingDay} at ${settings.meetingTime} — ${settings.meetingLocation}`}
-                    />
+                    >
+                      <div className="text-gray-700 dark:text-gray-300 text-sm">
+                        {`${settings.meetingDay} at ${settings.meetingTime} — ${settings.meetingLocation}`}
+                      </div>
+                    </InfoRow>
                   )}
                 </div>
               </div>
 
               {/* Social */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-4">
-                  Follow Us
-                </h3>
+                <Editable
+                  as="h3"
+                  contentKey="contact.social.heading"
+                  value={content['contact.social.heading']}
+                  editable={editable}
+                  className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-4"
+                />
                 <div className="flex gap-4">
                   {settings?.instagramUrl && (
                     <SocialLink href={settings.instagramUrl} label="Instagram" icon={<InstagramIcon />} />
@@ -107,11 +153,20 @@ export default async function Contact() {
 
               {/* Membership CTA */}
               <div className="bg-cmu-maroon rounded-xl p-6">
-                <h3 className="text-white font-bold text-lg mb-2">Ready to Join?</h3>
-                <p className="text-gray-300 text-sm mb-4 leading-relaxed">
-                  Membership is open to all CMU students. Come to any Thursday meeting
-                  or fill out the form to get in touch and we will get you started.
-                </p>
+                <Editable
+                  as="h3"
+                  contentKey="contact.join.heading"
+                  value={content['contact.join.heading']}
+                  editable={editable}
+                  className="text-white font-bold text-lg mb-2"
+                />
+                <Editable
+                  as="p"
+                  contentKey="contact.join.paragraph"
+                  value={content['contact.join.paragraph']}
+                  editable={editable}
+                  className="text-gray-300 text-sm mb-4 leading-relaxed"
+                />
                 {settings && (
                   <div className="text-shpe-gold text-sm font-semibold">
                     {settings.meetingDay} @ {settings.meetingTime} · {settings.meetingLocation}
@@ -129,13 +184,11 @@ export default async function Contact() {
 function InfoRow({
   icon,
   label,
-  value,
-  href,
+  children,
 }: {
   icon: React.ReactNode
   label: string
-  value: string
-  href?: string
+  children: React.ReactNode
 }) {
   return (
     <div className="flex items-start gap-3">
@@ -144,13 +197,7 @@ function InfoRow({
       </div>
       <div>
         <div className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wider mb-0.5">{label}</div>
-        {href ? (
-          <a href={href} className="text-gray-700 dark:text-gray-300 text-sm hover:text-shpe-red transition-colors">
-            {value}
-          </a>
-        ) : (
-          <div className="text-gray-700 dark:text-gray-300 text-sm">{value}</div>
-        )}
+        {children}
       </div>
     </div>
   )

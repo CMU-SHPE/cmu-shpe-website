@@ -1,10 +1,17 @@
 import Link from 'next/link'
-import { values, joinReasons } from '@/lib/about'
+import Editable, { EditableList } from '@/components/editable'
 import { CheckIcon } from '@/components/icons'
-import { getNationalStats } from '@/lib/queries'
+import { currentAdmin } from '@/lib/admin'
+import { contentKeysFor } from '@/lib/content-keys'
+import { getNationalStats, getSiteContent } from '@/lib/queries'
 
 export default async function About() {
-  const nationalStats = await getNationalStats()
+  const [content, admin, nationalStats] = await Promise.all([
+    getSiteContent(contentKeysFor('about')),
+    currentAdmin(),
+    getNationalStats(),
+  ])
+  const editable = Boolean(admin)
 
   return (
     <div>
@@ -13,15 +20,28 @@ export default async function About() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-4">
             <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-            <span className="text-shpe-gold font-semibold text-sm uppercase tracking-widest">
-              Who We Are
-            </span>
+            <Editable
+              as="span"
+              contentKey="about.header.eyebrow"
+              value={content['about.header.eyebrow']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-sm uppercase tracking-widest"
+            />
           </div>
-          <h1 className="text-5xl font-black text-white mb-3">About Our Chapter</h1>
-          <p className="text-gray-300 max-w-xl">
-            Learn about the CMU SHPE chapter, our mission, and the national organization
-            we are proud to be part of.
-          </p>
+          <Editable
+            as="h1"
+            contentKey="about.header.heading"
+            value={content['about.header.heading']}
+            editable={editable}
+            className="text-5xl font-black text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="about.header.intro"
+            value={content['about.header.intro']}
+            editable={editable}
+            className="text-gray-300 max-w-xl"
+          />
         </div>
       </section>
 
@@ -30,59 +50,94 @@ export default async function About() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-16 items-start">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-6">
-                Colorado Mesa University Chapter
-              </h2>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                The SHPE chapter at Colorado Mesa University was founded to bring together
-                Hispanic and underrepresented students in STEM disciplines and provide them
-                with the tools, resources, and network they need to succeed.
-              </p>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                Located in Grand Junction, Colorado, our chapter serves students from CMU&apos;s
-                engineering, computer science, mathematics, and physical sciences programs.
-                We are proud to be one of the active SHPE collegiate chapters in the state
-                of Colorado.
-              </p>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-8">
-                Our members gain access to national SHPE resources, including the annual
-                SHPE National Convention — one of the largest gatherings of Hispanic STEM
-                professionals and students in the country.
-              </p>
+              <Editable
+                as="h2"
+                contentKey="about.chapter.heading"
+                value={content['about.chapter.heading']}
+                editable={editable}
+                className="text-3xl font-bold text-gray-900 dark:text-white mb-6"
+              />
+              <Editable
+                as="p"
+                contentKey="about.chapter.paragraph1"
+                value={content['about.chapter.paragraph1']}
+                editable={editable}
+                className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4"
+              />
+              <Editable
+                as="p"
+                contentKey="about.chapter.paragraph2"
+                value={content['about.chapter.paragraph2']}
+                editable={editable}
+                className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4"
+              />
+              <Editable
+                as="p"
+                contentKey="about.chapter.paragraph3"
+                value={content['about.chapter.paragraph3']}
+                editable={editable}
+                className="text-gray-600 dark:text-gray-300 leading-relaxed mb-8"
+              />
 
               <blockquote className="border-l-4 border-shpe-red pl-6 py-1 mb-8">
-                <p className="text-gray-700 dark:text-gray-300 italic text-lg leading-relaxed">
-                  &ldquo;Changing lives by empowering the Hispanic community to realize its fullest
-                  potential and to impact the world through STEM awareness, access, support,
-                  and development.&rdquo;
-                </p>
-                <cite className="text-gray-400 dark:text-gray-500 text-sm mt-3 block not-italic">
-                  — SHPE National Mission
-                </cite>
+                <Editable
+                  as="p"
+                  contentKey="about.quote.text"
+                  value={content['about.quote.text']}
+                  editable={editable}
+                  className="text-gray-700 dark:text-gray-300 italic text-lg leading-relaxed"
+                />
+                <Editable
+                  as="cite"
+                  contentKey="about.quote.cite"
+                  value={content['about.quote.cite']}
+                  editable={editable}
+                  className="text-gray-400 dark:text-gray-500 text-sm mt-3 block not-italic"
+                />
               </blockquote>
             </div>
 
             <div className="space-y-6">
               <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-100 dark:border-gray-700">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                  <span className="w-1.5 h-6 bg-shpe-red rounded mr-3 flex-shrink-0" />
-                  Our Values
-                </h3>
-                <ul className="space-y-3">
-                  {values.map((v) => (
-                    <li key={v} className="flex items-start text-gray-600 dark:text-gray-300 text-sm">
+                <Editable
+                  as="h3"
+                  contentKey="about.values.heading"
+                  value={content['about.values.heading']}
+                  editable={editable}
+                  className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center"
+                  leading={<span className="w-1.5 h-6 bg-shpe-red rounded mr-3 flex-shrink-0" />}
+                />
+                <EditableList
+                  contentKey="about.values.items"
+                  value={content['about.values.items']}
+                  editable={editable}
+                  className="space-y-3"
+                  editorClassName="space-y-3 text-gray-600 dark:text-gray-300 text-sm"
+                  renderItem={(v) => (
+                    <li className="flex items-start text-gray-600 dark:text-gray-300 text-sm">
                       <CheckIcon className="w-4 h-4 text-shpe-red mt-0.5 mr-2 flex-shrink-0" />
                       {v}
                     </li>
-                  ))}
-                </ul>
+                  )}
+                />
               </div>
 
               <div className="bg-shpe-red rounded-xl p-6 text-white">
-                <h3 className="text-xl font-bold mb-4">Why Join SHPE?</h3>
-                <ul className="space-y-2.5">
-                  {joinReasons.map((r) => (
-                    <li key={r} className="flex items-start text-sm">
+                <Editable
+                  as="h3"
+                  contentKey="about.joinReasons.heading"
+                  value={content['about.joinReasons.heading']}
+                  editable={editable}
+                  className="text-xl font-bold mb-4"
+                />
+                <EditableList
+                  contentKey="about.joinReasons.items"
+                  value={content['about.joinReasons.items']}
+                  editable={editable}
+                  className="space-y-2.5"
+                  editorClassName="space-y-2.5 text-sm"
+                  renderItem={(r) => (
+                    <li className="flex items-start text-sm">
                       <svg
                         className="w-4 h-4 text-shpe-gold mt-0.5 mr-2 flex-shrink-0"
                         fill="currentColor"
@@ -96,8 +151,8 @@ export default async function About() {
                       </svg>
                       {r}
                     </li>
-                  ))}
-                </ul>
+                  )}
+                />
               </div>
             </div>
           </div>
@@ -110,16 +165,29 @@ export default async function About() {
           <div className="text-center mb-12">
             <div className="flex items-center justify-center mb-4">
               <div className="h-0.5 w-8 bg-shpe-red mr-3" />
-              <span className="text-shpe-red font-semibold text-sm uppercase tracking-wider">
-                The Bigger Picture
-              </span>
+              <Editable
+                as="span"
+                contentKey="about.national.eyebrow"
+                value={content['about.national.eyebrow']}
+                editable={editable}
+                className="text-shpe-red font-semibold text-sm uppercase tracking-wider"
+              />
               <div className="h-0.5 w-8 bg-shpe-red ml-3" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">About SHPE National</h2>
-            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
-              As a collegiate chapter, we are part of the Society of Hispanic Professional
-              Engineers — a national organization with chapters across the United States.
-            </p>
+            <Editable
+              as="h2"
+              contentKey="about.national.heading"
+              value={content['about.national.heading']}
+              editable={editable}
+              className="text-3xl font-bold text-gray-900 dark:text-white mb-4"
+            />
+            <Editable
+              as="p"
+              contentKey="about.national.intro"
+              value={content['about.national.intro']}
+              editable={editable}
+              className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto"
+            />
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
@@ -140,10 +208,20 @@ export default async function About() {
       {/* ── CTA ── */}
       <section className="bg-cmu-maroon py-16">
         <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to get involved?</h2>
-          <p className="text-gray-300 mb-8">
-            Reach out to learn about membership, upcoming events, and how to join our chapter.
-          </p>
+          <Editable
+            as="h2"
+            contentKey="about.cta.heading"
+            value={content['about.cta.heading']}
+            editable={editable}
+            className="text-3xl font-bold text-white mb-4"
+          />
+          <Editable
+            as="p"
+            contentKey="about.cta.paragraph"
+            value={content['about.cta.paragraph']}
+            editable={editable}
+            className="text-gray-300 mb-8"
+          />
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/contact"

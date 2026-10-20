@@ -1,15 +1,20 @@
+import Editable from '@/components/editable'
 import { LocationIcon } from '@/components/icons'
 import type { ClubEvent } from '@/db/schema'
+import { currentAdmin } from '@/lib/admin'
+import { contentKeysFor } from '@/lib/content-keys'
 import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
 import { getEvents, getSiteContent, getSiteSettings } from '@/lib/queries'
 
 export default async function Events() {
-  const [settings, events, content] = await Promise.all([
+  const [content, admin, settings, events] = await Promise.all([
+    getSiteContent(contentKeysFor('events')),
+    currentAdmin(),
     getSiteSettings(),
     getEvents(),
-    getSiteContent(['events.upcoming.heading', 'events.upcoming.empty', 'events.past.heading']),
   ])
+  const editable = Boolean(admin)
   const { upcoming, past } = splitEvents(events, todayInDenver(new Date()))
 
   return (
@@ -19,15 +24,28 @@ export default async function Events() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-4">
             <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-            <span className="text-shpe-gold font-semibold text-sm uppercase tracking-widest">
-              Stay in the Loop
-            </span>
+            <Editable
+              as="span"
+              contentKey="events.header.eyebrow"
+              value={content['events.header.eyebrow']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-sm uppercase tracking-widest"
+            />
           </div>
-          <h1 className="text-5xl font-black text-white mb-3">Events</h1>
-          <p className="text-gray-300 max-w-xl">
-            From workshops and networking nights to community service and conferences —
-            there is always something happening with CMU SHPE.
-          </p>
+          <Editable
+            as="h1"
+            contentKey="events.header.heading"
+            value={content['events.header.heading']}
+            editable={editable}
+            className="text-5xl font-black text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="events.header.intro"
+            value={content['events.header.intro']}
+            editable={editable}
+            className="text-gray-300 max-w-xl"
+          />
         </div>
       </section>
 
@@ -36,11 +54,23 @@ export default async function Events() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-10">
             <div className="h-0.5 w-8 bg-shpe-red mr-3" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{content['events.upcoming.heading']}</h2>
+            <Editable
+              as="h2"
+              contentKey="events.upcoming.heading"
+              value={content['events.upcoming.heading']}
+              editable={editable}
+              className="text-2xl font-bold text-gray-900 dark:text-white"
+            />
           </div>
 
           {upcoming.length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400">{content['events.upcoming.empty']}</p>
+            <Editable
+              as="p"
+              contentKey="events.upcoming.empty"
+              value={content['events.upcoming.empty']}
+              editable={editable}
+              className="text-gray-500 dark:text-gray-400"
+            />
           ) : (
             <div className="grid md:grid-cols-2 gap-6">
               {upcoming.map((event) => (
@@ -53,7 +83,13 @@ export default async function Events() {
             <>
               <div className="flex items-center mt-16 mb-10">
                 <div className="h-0.5 w-8 bg-shpe-red mr-3" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{content['events.past.heading']}</h2>
+                <Editable
+                  as="h2"
+                  contentKey="events.past.heading"
+                  value={content['events.past.heading']}
+                  editable={editable}
+                  className="text-2xl font-bold text-gray-900 dark:text-white"
+                />
               </div>
               <div className="grid md:grid-cols-2 gap-6">
                 {past.map((event) => (
@@ -68,10 +104,20 @@ export default async function Events() {
       {/* ── Stay Updated ── */}
       <section className="bg-shpe-red py-14">
         <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-2xl font-bold text-white mb-3">Never Miss an Event</h2>
-          <p className="text-red-100 mb-6">
-            Follow us on social media or reach out to be added to our mailing list.
-          </p>
+          <Editable
+            as="h2"
+            contentKey="events.updates.heading"
+            value={content['events.updates.heading']}
+            editable={editable}
+            className="text-2xl font-bold text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="events.updates.paragraph"
+            value={content['events.updates.paragraph']}
+            editable={editable}
+            className="text-red-100 mb-6"
+          />
           {settings && (
             <a
               href={`mailto:${settings.contactEmail}`}

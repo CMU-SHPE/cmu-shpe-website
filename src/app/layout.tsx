@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             signOutAction={signOutAction}
           />
           <main className="min-h-screen">{children}</main>
-          <Footer />
+          <Footer editable={Boolean(admin)} />
         </ThemeProvider>
       </body>
     </html>

@@ -1,10 +1,15 @@
 import Link from 'next/link'
+import Editable from '@/components/editable'
+import { contentKeysFor } from '@/lib/content-keys'
 import { navLinks } from '@/lib/nav'
-import { getSiteSettings } from '@/lib/queries'
+import { getSiteContent, getSiteSettings } from '@/lib/queries'
 import { InstagramIcon, LinkedInIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
 
-export default async function Footer() {
-  const settings = await getSiteSettings()
+export default async function Footer({ editable }: { editable: boolean }) {
+  const [content, settings] = await Promise.all([
+    getSiteContent(contentKeysFor('footer')),
+    getSiteSettings(),
+  ])
 
   return (
     <footer className="bg-cmu-maroon text-white">
@@ -17,19 +22,31 @@ export default async function Footer() {
               <span className="text-shpe-gold font-bold text-xl">@</span>
               <span className="text-white font-bold text-lg">CMU</span>
             </div>
-            <p className="text-gray-300 text-sm leading-relaxed">
-              Society of Hispanic Professional Engineers
-              <br />
-              Colorado Mesa University Chapter
-            </p>
-            <p className="text-gray-400 text-sm mt-3">Grand Junction, Colorado</p>
+            <Editable
+              as="p"
+              contentKey="footer.tagline"
+              value={content['footer.tagline']}
+              editable={editable}
+              className="text-gray-300 text-sm leading-relaxed"
+            />
+            <Editable
+              as="p"
+              contentKey="footer.location"
+              value={content['footer.location']}
+              editable={editable}
+              className="text-gray-400 text-sm mt-3"
+            />
           </div>
 
           {/* Quick Links */}
           <div>
-            <h3 className="text-shpe-gold font-semibold text-xs uppercase tracking-widest mb-4">
-              Quick Links
-            </h3>
+            <Editable
+              as="h3"
+              contentKey="footer.quickLinks.heading"
+              value={content['footer.quickLinks.heading']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-xs uppercase tracking-widest mb-4"
+            />
             <ul className="space-y-2">
               {navLinks.map((link) => (
                 <li key={link.href}>
@@ -46,9 +63,13 @@ export default async function Footer() {
 
           {/* Connect */}
           <div>
-            <h3 className="text-shpe-gold font-semibold text-xs uppercase tracking-widest mb-4">
-              Connect With Us
-            </h3>
+            <Editable
+              as="h3"
+              contentKey="footer.connect.heading"
+              value={content['footer.connect.heading']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-xs uppercase tracking-widest mb-4"
+            />
             {settings && (
               <>
                 <p className="text-gray-300 text-sm mb-1">{settings.contactEmail}</p>
@@ -93,9 +114,13 @@ export default async function Footer() {
         </div>
 
         <div className="border-t border-white/10 mt-10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-gray-400 text-sm">
-            © 2026 SHPE @ Colorado Mesa University. All rights reserved.
-          </p>
+          <Editable
+            as="p"
+            contentKey="footer.copyright"
+            value={content['footer.copyright']}
+            editable={editable}
+            className="text-gray-400 text-sm"
+          />
           <div className="flex items-center gap-6">
             <Link
               href="/login"

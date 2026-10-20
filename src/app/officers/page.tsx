@@ -1,14 +1,20 @@
+import Editable from '@/components/editable'
 import OfficerAvatar from '@/components/OfficerAvatar'
 import { LinkedInIcon } from '@/components/icons'
 import type { Advisor } from '@/db/schema'
-import { getAdvisors, getOfficers, getSiteSettings } from '@/lib/queries'
+import { currentAdmin } from '@/lib/admin'
+import { contentKeysFor } from '@/lib/content-keys'
+import { getAdvisors, getOfficers, getSiteContent, getSiteSettings } from '@/lib/queries'
 
 export default async function Officers() {
-  const [settings, officers, advisors] = await Promise.all([
+  const [content, admin, settings, officers, advisors] = await Promise.all([
+    getSiteContent(contentKeysFor('officers')),
+    currentAdmin(),
     getSiteSettings(),
     getOfficers(),
     getAdvisors(),
   ])
+  const editable = Boolean(admin)
 
   return (
     <div>
@@ -17,15 +23,28 @@ export default async function Officers() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-4">
             <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-            <span className="text-shpe-gold font-semibold text-sm uppercase tracking-widest">
-              Meet the Team
-            </span>
+            <Editable
+              as="span"
+              contentKey="officers.header.eyebrow"
+              value={content['officers.header.eyebrow']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-sm uppercase tracking-widest"
+            />
           </div>
-          <h1 className="text-5xl font-black text-white mb-3">Chapter Officers</h1>
-          <p className="text-gray-300 max-w-xl">
-            Our executive board is elected each spring and works year-round to create
-            opportunities and community for CMU SHPE members.
-          </p>
+          <Editable
+            as="h1"
+            contentKey="officers.header.heading"
+            value={content['officers.header.heading']}
+            editable={editable}
+            className="text-5xl font-black text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="officers.header.intro"
+            value={content['officers.header.intro']}
+            editable={editable}
+            className="text-gray-300 max-w-xl"
+          />
         </div>
       </section>
 
@@ -34,7 +53,13 @@ export default async function Officers() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-12">
             <div className="h-0.5 w-8 bg-shpe-red mr-3" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Executive Board 2025–2026</h2>
+            <Editable
+              as="h2"
+              contentKey="officers.board.heading"
+              value={content['officers.board.heading']}
+              editable={editable}
+              className="text-2xl font-bold text-gray-900 dark:text-white"
+            />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -80,7 +105,13 @@ export default async function Officers() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center mb-10">
               <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Faculty Advisor</h2>
+              <Editable
+                as="h2"
+                contentKey="officers.advisor.heading"
+                value={content['officers.advisor.heading']}
+                editable={editable}
+                className="text-2xl font-bold text-gray-900 dark:text-white"
+              />
             </div>
 
             {advisors.length === 1 ? (
@@ -99,12 +130,20 @@ export default async function Officers() {
       {/* ── Elections Info ── */}
       <section className="bg-shpe-red py-14">
         <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-2xl font-bold text-white mb-3">Interested in Running for Office?</h2>
-          <p className="text-red-100 mb-6 max-w-xl mx-auto">
-            Officer elections are held each spring semester. Any dues-paying member in good
-            academic standing is eligible to run. Leadership experience not required — just
-            dedication and a desire to serve.
-          </p>
+          <Editable
+            as="h2"
+            contentKey="officers.elections.heading"
+            value={content['officers.elections.heading']}
+            editable={editable}
+            className="text-2xl font-bold text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="officers.elections.paragraph"
+            value={content['officers.elections.paragraph']}
+            editable={editable}
+            className="text-red-100 mb-6 max-w-xl mx-auto"
+          />
           {settings && (
             <p className="text-red-200 text-sm">
               Contact us at{' '}
