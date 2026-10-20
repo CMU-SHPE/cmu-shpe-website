@@ -51,6 +51,8 @@ export default function ImageCropField({
     const input = event.currentTarget
     const file = input.files?.[0]
     const pick = ++latestPick.current
+    if (croppedInputRef.current) croppedInputRef.current.value = ''
+    setCropJson('')
     setPickError(null)
     setPreparing(false)
     if (!file || !file.type.startsWith('image/')) return
