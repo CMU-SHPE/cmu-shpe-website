@@ -122,12 +122,14 @@ export default async function Footer({ editable }: { editable: boolean }) {
             className="text-gray-400 text-sm"
           />
           <div className="flex items-center gap-6">
-            <Link
-              href="/login"
-              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
-            >
-              Admin sign in
-            </Link>
+            {!editable && (
+              <Link
+                href="/login"
+                className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+              >
+                Admin sign in
+              </Link>
+            )}
             <a
               href="https://shpe.org"
               target="_blank"
