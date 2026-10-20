@@ -1,6 +1,7 @@
 import SubmitButton from '@/components/submit-button'
 import MoveButtons from '@/components/admin/move-buttons'
 import PersonFields from '@/components/admin/person-fields'
+import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
@@ -103,17 +104,14 @@ function PersonItem({
           </SubmitButton>
         </form>
       </div>
-      <details className="mt-3">
-        <summary className="cursor-pointer rounded text-sm font-medium text-shpe-red dark:text-shpe-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold">
-          Edit<span className="sr-only"> {person.name}</span>
-        </summary>
+      <EditDetails name={person.name}>
         <form action={update} className="mt-4 max-w-md space-y-4">
           <PersonFields person={person}>{children}</PersonFields>
           <SubmitButton pendingLabel="Saving…" className={primaryButtonClass}>
             Save changes
           </SubmitButton>
         </form>
-      </details>
+      </EditDetails>
     </li>
   )
 }

@@ -1,4 +1,5 @@
 import SubmitButton from '@/components/submit-button'
+import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
@@ -101,17 +102,14 @@ function EventList({ events, emptyText }: { events: ClubEvent[]; emptyText: stri
               </SubmitButton>
             </form>
           </div>
-          <details className="mt-3">
-            <summary className="cursor-pointer rounded text-sm font-medium text-shpe-red dark:text-shpe-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold">
-              Edit<span className="sr-only"> {event.title}</span>
-            </summary>
+          <EditDetails name={event.title}>
             <form action={updateEvent.bind(null, event.id)} className="mt-4 max-w-md space-y-4">
               <EventFields event={event} />
               <SubmitButton pendingLabel="Saving…" className={primaryButtonClass}>
                 Save changes
               </SubmitButton>
             </form>
-          </details>
+          </EditDetails>
         </li>
       ))}
     </ul>

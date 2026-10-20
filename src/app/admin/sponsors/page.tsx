@@ -2,10 +2,12 @@ import ImageCropField from '@/components/image-crop-field'
 import SponsorLogo from '@/components/SponsorLogo'
 import SubmitButton from '@/components/submit-button'
 import MoveButtons from '@/components/admin/move-buttons'
+import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
   dangerButtonClass,
+  focusRingClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -90,7 +92,7 @@ function SponsorFields({ sponsor }: { sponsor?: Sponsor }) {
           name="bgColor"
           type="color"
           defaultValue={sponsor?.bgColor ?? DEFAULT_LOGO_BACKGROUND}
-          className="mt-1 block h-10 w-20 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold"
+          className={`mt-1 block h-10 w-20 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1 ${focusRingClass}`}
         />
       </label>
     </>
@@ -166,10 +168,7 @@ export default async function AdminSponsorsPage(props: {
                         </SubmitButton>
                       </form>
                     </div>
-                    <details className="mt-3">
-                      <summary className="cursor-pointer rounded text-sm font-medium text-shpe-red dark:text-shpe-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold">
-                        Edit<span className="sr-only"> {sponsor.name}</span>
-                      </summary>
+                    <EditDetails name={sponsor.name}>
                       <form
                         action={updateSponsor.bind(null, sponsor.id)}
                         className="mt-4 max-w-md space-y-4"
@@ -179,7 +178,7 @@ export default async function AdminSponsorsPage(props: {
                           Save changes
                         </SubmitButton>
                       </form>
-                    </details>
+                    </EditDetails>
                   </li>
                 ))}
               </ul>
