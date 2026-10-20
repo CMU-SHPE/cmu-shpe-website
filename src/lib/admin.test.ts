@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => {
-  const state = { rows: [] as { role: 'admin' | 'master'; email: string }[] }
+  const state = { rows: [] as { role: 'admin' | 'master'; email: string; passwordChangedAt?: Date | null }[] }
   const limit = vi.fn(async () => state.rows)
   const query = { from: () => query, where: () => query, limit }
   return {
@@ -81,6 +81,32 @@ describe('currentAdmin', () => {
     mocks.auth.mockResolvedValue(adminSession)
     mocks.state.rows = [{ role: 'master', email: 'someone-else@example.com' }]
     await expect(currentAdmin()).resolves.toBeNull()
+  })
+
+  it('rejects a session signed in before the last password change', async () => {
+    const changedAt = new Date('2026-10-20T15:00:00.000Z')
+    mocks.auth.mockResolvedValue({ ...adminSession, authTime: changedAt.getTime() - 1 })
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', passwordChangedAt: changedAt }]
+    await expect(currentAdmin()).resolves.toBeNull()
+  })
+
+  it('rejects a session with no authTime once the password has changed', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', passwordChangedAt: new Date() }]
+    await expect(currentAdmin()).resolves.toBeNull()
+  })
+
+  it('accepts a session signed in at or after the last password change', async () => {
+    const changedAt = new Date('2026-10-20T15:00:00.000Z')
+    mocks.auth.mockResolvedValue({ ...adminSession, authTime: changedAt.getTime() })
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', passwordChangedAt: changedAt }]
+    await expect(currentAdmin()).resolves.toMatchObject({ user: { id: '2' } })
+  })
+
+  it('accepts any session when the password was never changed', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', passwordChangedAt: null }]
+    await expect(currentAdmin()).resolves.toMatchObject({ user: { id: '2' } })
   })
 
   it('takes the role from the database row', async () => {

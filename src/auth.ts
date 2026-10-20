@@ -18,13 +18,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
-      if (user) token.role = user.role
+    /**
+     * authTime is set only when a password sign-in produces `user`. The JWT is
+     * re-encoded with a fresh `iat` on every session read, and clients can call
+     * the update trigger, so neither may move it forward.
+     */
+    jwt({ token, user, trigger }) {
+      if (user && trigger !== 'update') {
+        token.role = user.role
+        token.authTime = Date.now()
+      }
       return token
     },
     session({ session, token }) {
       session.user.id = token.sub ?? ''
       session.user.role = token.role as AdminRole
+      session.authTime = token.authTime
       return session
     },
   },

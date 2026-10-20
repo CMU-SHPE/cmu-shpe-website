@@ -29,3 +29,16 @@ export function parseAdminAccount(
   const passwordFailed = parsed.error.issues.some((issue) => issue.path[0] === 'password')
   return { success: false, code: passwordFailed ? 'password' : 'invalid' }
 }
+
+/**
+ * A session signed in before the account's password last changed must not be
+ * honoured. Sessions without an authTime predate the claim and are treated the
+ * same way once a change has happened.
+ */
+export function sessionPredatesPasswordChange(
+  authTime: number | undefined,
+  passwordChangedAt: Date | null,
+): boolean {
+  if (!passwordChangedAt) return false
+  return typeof authTime !== 'number' || authTime < passwordChangedAt.getTime()
+}

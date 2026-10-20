@@ -5,7 +5,7 @@ import type { Session } from 'next-auth'
 import { auth } from '@/auth'
 import { getDb } from '@/db'
 import { admins } from '@/db/schema'
-import { adminId } from '@/lib/admin-account'
+import { adminId, sessionPredatesPasswordChange } from '@/lib/admin-account'
 
 /**
  * On a server configuration error (missing AUTH_SECRET, untrusted host),
@@ -20,7 +20,7 @@ export async function currentSession(): Promise<Session | null> {
  * Sessions are JWTs, so a deleted or demoted admin keeps a valid token until it
  * expires. This re-checks the admins row and takes the role from the database;
  * matching the email too stops a token from mapping onto a different admin that
- * later reused the same id.
+ * later reused the same id, and a password change ends sessions signed in before it.
  */
 export const currentAdmin = cache(async (): Promise<Session | null> => {
   const session = await currentSession()
@@ -31,11 +31,12 @@ export const currentAdmin = cache(async (): Promise<Session | null> => {
   if (!id.success || !email) return null
 
   const [row] = await getDb()
-    .select({ role: admins.role, email: admins.email })
+    .select({ role: admins.role, email: admins.email, passwordChangedAt: admins.passwordChangedAt })
     .from(admins)
     .where(eq(admins.id, id.data))
     .limit(1)
   if (!row || row.email !== email) return null
+  if (sessionPredatesPasswordChange(session.authTime, row.passwordChangedAt)) return null
 
   return { ...session, user: { ...session.user, role: row.role } }
 })
