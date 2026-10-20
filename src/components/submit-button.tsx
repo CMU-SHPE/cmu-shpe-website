@@ -21,6 +21,7 @@ export default function SubmitButton({
   children,
   pendingLabel,
   className = '',
+  onClick,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   pendingLabel?: string
@@ -30,9 +31,16 @@ export default function SubmitButton({
     <button
       {...props}
       type="submit"
-      disabled={pending || props.disabled}
+      aria-disabled={pending || props['aria-disabled']}
       aria-busy={pending}
-      className={`${className} inline-flex items-center justify-center gap-2 transition active:scale-[0.97] disabled:cursor-not-allowed`}
+      onClick={(event) => {
+        if (pending) {
+          event.preventDefault()
+          return
+        }
+        onClick?.(event)
+      }}
+      className={`${className} inline-flex items-center justify-center gap-2 transition active:scale-[0.97] disabled:cursor-not-allowed aria-disabled:cursor-not-allowed aria-disabled:opacity-60`}
     >
       {pending && <Spinner />}
       {pending ? (pendingLabel ?? children) : children}

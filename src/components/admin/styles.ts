@@ -1,5 +1,5 @@
 const focusRing =
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900'
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-cmu-maroon dark:focus-visible:ring-shpe-gold focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900'
 
 export const pageHeadingClass = 'text-2xl font-bold text-gray-900 dark:text-white'
 

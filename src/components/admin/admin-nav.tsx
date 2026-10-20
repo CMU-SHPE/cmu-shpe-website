@@ -35,7 +35,7 @@ export default function AdminNav({ isMaster }: { isMaster: boolean }) {
               <Link
                 href={link.href}
                 aria-current={active ? 'page' : undefined}
-                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold ${
+                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-cmu-maroon dark:focus-visible:ring-shpe-gold focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:focus-visible:ring-offset-gray-800 ${
                   active
                     ? 'bg-cmu-maroon text-white'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-900 hover:text-shpe-red dark:hover:text-shpe-gold'
