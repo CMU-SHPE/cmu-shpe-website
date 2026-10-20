@@ -4,6 +4,7 @@ import {
   hexColor,
   httpUrl,
   moveDirection,
+  moveRequest,
   optionalEmail,
   optionalHttpUrl,
   optionalText,
@@ -106,5 +107,16 @@ describe('recordId and moveDirection', () => {
   it('only allows up and down', () => {
     expect(moveDirection.parse('up')).toBe('up')
     expect(moveDirection.safeParse('sideways').success).toBe(false)
+  })
+})
+
+describe('moveRequest', () => {
+  it('accepts a bound id and direction', () => {
+    expect(moveRequest.parse({ id: 3, direction: 'down' })).toEqual({ id: 3, direction: 'down' })
+  })
+
+  it('rejects tampered bound arguments', () => {
+    expect(moveRequest.safeParse({ id: 1.5, direction: 'up' }).success).toBe(false)
+    expect(moveRequest.safeParse({ id: 3, direction: 'left' }).success).toBe(false)
   })
 })
