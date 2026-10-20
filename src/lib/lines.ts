@@ -10,3 +10,13 @@ export function toLines(value: string): string[] {
     .map((line) => line.trim())
     .filter(Boolean)
 }
+
+export function uniqueIgnoringCase(items: readonly string[]): string[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const folded = item.toLocaleLowerCase()
+    if (seen.has(folded)) return false
+    seen.add(folded)
+    return true
+  })
+}

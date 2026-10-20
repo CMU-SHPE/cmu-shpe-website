@@ -94,8 +94,8 @@ export default function ContactForm({ email: contactEmail, subjects }: { email: 
           onChange={(e) => setSubject(e.target.value)}
           className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-shpe-red focus:border-transparent transition"
         >
-          {subjects.map((s) => (
-            <option key={s} value={s}>
+          {subjects.map((s, index) => (
+            <option key={`${index}:${s}`} value={s}>
               {s}
             </option>
           ))}

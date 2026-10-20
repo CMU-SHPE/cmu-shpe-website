@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toLines } from './lines'
+import { toLines, uniqueIgnoringCase } from './lines'
 
 describe('toLines', () => {
   it('splits seeded single-newline values into trimmed items', () => {
@@ -24,5 +24,19 @@ describe('toLines', () => {
 
   it('returns an empty list for an empty value', () => {
     expect(toLines('')).toEqual([])
+  })
+})
+
+describe('uniqueIgnoringCase', () => {
+  it('drops later case-insensitive duplicates and keeps the first spelling', () => {
+    expect(uniqueIgnoringCase(['Membership', 'Events', 'membership', 'EVENTS', 'Other'])).toEqual([
+      'Membership',
+      'Events',
+      'Other',
+    ])
+  })
+
+  it('leaves a list without duplicates unchanged', () => {
+    expect(uniqueIgnoringCase(['A', 'B'])).toEqual(['A', 'B'])
   })
 })

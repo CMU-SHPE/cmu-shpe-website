@@ -34,6 +34,18 @@ describe('parseSettingsForm', () => {
     })
   })
 
+  it('removes duplicate subjects regardless of case, keeping the first spelling', () => {
+    const parsed = parseSettingsForm(settingsForm({ subjects: 'Membership\nEvents\nmembership\nEVENTS' }))
+    expect(parsed.data?.subjects).toEqual(['Membership', 'Events'])
+  })
+
+  it('applies the subject cap after removing duplicates', () => {
+    const repeated = Array.from({ length: MAX_CONTACT_SUBJECTS + 5 }, () => 'Same subject')
+    expect(parseSettingsForm(settingsForm({ subjects: repeated.join('\n') })).data?.subjects).toEqual([
+      'Same subject',
+    ])
+  })
+
   it('rejects a javascript: social link', () => {
     expect(parseSettingsForm(settingsForm({ tiktokUrl: 'javascript:alert(1)' })).success).toBe(false)
   })

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { emailAddress, optionalHttpUrl, requiredText } from './form-fields'
-import { toLines } from './lines'
+import { toLines, uniqueIgnoringCase } from './lines'
 
 export const MAX_CONTACT_SUBJECTS = 20
 export const MAX_CONTACT_SUBJECT_LENGTH = 100
@@ -19,7 +19,7 @@ export const settingsSchema = z.object({
   subjects: z
     .string()
     .max(4000)
-    .transform(toLines)
+    .transform((value) => uniqueIgnoringCase(toLines(value)))
     .pipe(
       z
         .array(z.string().max(MAX_CONTACT_SUBJECT_LENGTH))

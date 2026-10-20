@@ -50,6 +50,15 @@ describe('ContactForm', () => {
     expect(await screen.findByText(new RegExp(contactEmail))).toBeInTheDocument()
   })
 
+  it('renders duplicate subject options without React key collisions', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<ContactForm email={contactEmail} subjects={['Events', 'Events']} />)
+
+    expect(screen.getAllByRole('option', { name: 'Events' })).toHaveLength(2)
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
   it('disables the submit button while the request is in flight', async () => {
     let resolveFetch: (value: { ok: boolean }) => void
     const pending = new Promise<{ ok: boolean }>((resolve) => {
