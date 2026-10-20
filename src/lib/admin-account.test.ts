@@ -105,6 +105,12 @@ describe('parsePasswordChange', () => {
     expect(change({ currentPassword: '' })).toEqual({ success: false, code: 'invalid' })
     expect(change({ currentPassword: null })).toEqual({ success: false, code: 'invalid' })
   })
+
+  it('reports a missing or over-long confirmation as a mismatch, not a missing current password', () => {
+    expect(change({ confirmPassword: null })).toEqual({ success: false, code: 'mismatch' })
+    expect(change({ confirmPassword: undefined })).toEqual({ success: false, code: 'mismatch' })
+    expect(change({ confirmPassword: 'x'.repeat(201) })).toEqual({ success: false, code: 'mismatch' })
+  })
 })
 
 describe('parsePasswordReset', () => {

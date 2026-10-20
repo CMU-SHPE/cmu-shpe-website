@@ -58,8 +58,10 @@ export function parsePasswordChange(
   | { success: false; code: PasswordChangeError } {
   const parsed = passwordChangeSchema.safeParse(input)
   if (!parsed.success) {
-    const newPasswordFailed = parsed.error.issues.some((issue) => issue.path[0] === 'newPassword')
-    return { success: false, code: newPasswordFailed ? 'password' : 'invalid' }
+    const failed = (field: string) => parsed.error.issues.some((issue) => issue.path[0] === field)
+    if (failed('newPassword')) return { success: false, code: 'password' }
+    if (failed('currentPassword')) return { success: false, code: 'invalid' }
+    return { success: false, code: 'mismatch' }
   }
   const { currentPassword, newPassword, confirmPassword } = parsed.data
   if (newPassword !== confirmPassword) return { success: false, code: 'mismatch' }
