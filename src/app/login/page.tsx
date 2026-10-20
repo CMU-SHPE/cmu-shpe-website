@@ -6,10 +6,12 @@ import { currentAdmin } from '@/lib/admin'
 import SubmitButton from '@/components/submit-button'
 import { cardClass, inputClass, labelClass, primaryButtonClass } from '@/components/admin/styles'
 
-export default async function LoginPage(props: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage(props: {
+  searchParams: Promise<{ error?: string; changed?: string }>
+}) {
   if (await currentAdmin()) redirect('/admin')
 
-  const { error } = await props.searchParams
+  const { error, changed } = await props.searchParams
 
   async function login(formData: FormData) {
     'use server'
@@ -37,6 +39,14 @@ export default async function LoginPage(props: { searchParams: Promise<{ error?:
           <span aria-hidden="true">&larr;</span> Back to site
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin sign in</h1>
+        {changed && !error && (
+          <p
+            role="status"
+            className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-800 dark:text-green-400"
+          >
+            Your password was changed — sign in with the new password.
+          </p>
+        )}
         {error && (
           <p
             role="alert"

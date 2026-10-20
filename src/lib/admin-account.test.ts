@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_ADMIN_ID, adminId, parseAdminAccount, sessionPredatesPasswordChange } from './admin-account'
+import {
+  MAX_ADMIN_ID,
+  adminId,
+  parseAdminAccount,
+  parsePasswordChange,
+  sessionPredatesPasswordChange,
+} from './admin-account'
 
 const valid = { name: '  Bea Builder ', email: ' Bea@Smoke.Test ', password: 'a'.repeat(12) }
 
@@ -64,5 +70,38 @@ describe('sessionPredatesPasswordChange', () => {
 
   it('rejects sessions with no authTime once the password has changed', () => {
     expect(sessionPredatesPasswordChange(undefined, changedAt)).toBe(true)
+  })
+})
+
+describe('parsePasswordChange', () => {
+  const current = 'old password 123'
+  const fresh = 'new password 456'
+  const change = (overrides: Record<string, unknown> = {}) =>
+    parsePasswordChange({ currentPassword: current, newPassword: fresh, confirmPassword: fresh, ...overrides })
+
+  it('accepts a valid change', () => {
+    expect(change()).toEqual({ success: true, data: { currentPassword: current, newPassword: fresh } })
+  })
+
+  it('rejects a confirmation that does not match', () => {
+    expect(change({ confirmPassword: 'new password 457' })).toEqual({ success: false, code: 'mismatch' })
+  })
+
+  it('rejects a new password that is too short', () => {
+    expect(change({ newPassword: 'short', confirmPassword: 'short' })).toEqual({ success: false, code: 'password' })
+  })
+
+  it('rejects a new password over 72 bytes', () => {
+    const long = 'é'.repeat(37)
+    expect(change({ newPassword: long, confirmPassword: long })).toEqual({ success: false, code: 'password' })
+  })
+
+  it('rejects a new password that matches the current one', () => {
+    expect(change({ newPassword: current, confirmPassword: current })).toEqual({ success: false, code: 'same' })
+  })
+
+  it('requires the current password', () => {
+    expect(change({ currentPassword: '' })).toEqual({ success: false, code: 'invalid' })
+    expect(change({ currentPassword: null })).toEqual({ success: false, code: 'invalid' })
   })
 })

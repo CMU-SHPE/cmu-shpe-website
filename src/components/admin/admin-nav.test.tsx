@@ -30,6 +30,20 @@ describe('AdminNav', () => {
     expect(screen.getByRole('link', { name: 'Officers' })).not.toHaveAttribute('aria-current')
   })
 
+  it('shows Change password to every admin', () => {
+    for (const isMaster of [false, true]) {
+      const { unmount } = render(<AdminNav isMaster={isMaster} />)
+      expect(screen.getByRole('link', { name: 'Change password' })).toHaveAttribute('href', '/admin/account')
+      unmount()
+    }
+  })
+
+  it('marks Change password current on /admin/account', () => {
+    navigation.pathname = '/admin/account'
+    render(<AdminNav isMaster={false} />)
+    expect(screen.getByRole('link', { name: 'Change password' })).toHaveAttribute('aria-current', 'page')
+  })
+
   it('marks a section current on its nested routes', () => {
     navigation.pathname = '/admin/officers/12'
     render(<AdminNav isMaster={false} />)

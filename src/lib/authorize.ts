@@ -15,16 +15,13 @@ const UNKNOWN_EMAIL_HASH = '$2b$12$zmxgyTFMPHMuQfXgqQ4z/.te.HtdD2kHyLthiKMDYsIYp
 
 export type AuthorizedAdmin = { id: string; email: string; name: string; role: AdminRole }
 
-export async function authorizeAdmin(
-  credentials: unknown,
-  forwardedFor: string | null,
-): Promise<AuthorizedAdmin | null> {
-  const parsed = credentialsSchema.safeParse(credentials)
-  if (!parsed.success) return null
-
+/**
+ * Records a password attempt and reports whether the email or IP is over its
+ * limit. The row is written before counting so concurrent attempts see each
+ * other; a correct password should be followed by clearLoginAttempts.
+ */
+export async function recordLoginAttempt(email: string, ip: string | null): Promise<{ throttled: boolean }> {
   const db = getDb()
-  const email = parsed.data.email.toLowerCase()
-  const ip = clientIp(forwardedFor)
   const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000)
 
   await db.insert(loginAttempts).values({ email, ip })
@@ -41,12 +38,30 @@ export async function authorizeAdmin(
           .where(and(eq(loginAttempts.ip, ip), gte(loginAttempts.createdAt, windowStart)))
       : Promise.resolve([{ ipAttempts: 0 }]),
   ])
-  if (isThrottled(emailAttempts, ipAttempts)) {
+  return { throttled: isThrottled(emailAttempts, ipAttempts) }
+}
+
+export async function clearLoginAttempts(email: string) {
+  await getDb().delete(loginAttempts).where(eq(loginAttempts.email, email))
+}
+
+export async function authorizeAdmin(
+  credentials: unknown,
+  forwardedFor: string | null,
+): Promise<AuthorizedAdmin | null> {
+  const parsed = credentialsSchema.safeParse(credentials)
+  if (!parsed.success) return null
+
+  const email = parsed.data.email.toLowerCase()
+  const ip = clientIp(forwardedFor)
+
+  const { throttled } = await recordLoginAttempt(email, ip)
+  if (throttled) {
     console.warn(`LOGIN THROTTLED: ${email} from ${ip ?? 'unknown ip'}`)
     return null
   }
 
-  const [admin] = await db
+  const [admin] = await getDb()
     .select({
       id: admins.id,
       email: admins.email,
@@ -64,6 +79,6 @@ export async function authorizeAdmin(
     return null
   }
 
-  await db.delete(loginAttempts).where(eq(loginAttempts.email, email))
+  await clearLoginAttempts(email)
   return { id: String(admin.id), email: admin.email, name: admin.name, role: admin.role }
 }

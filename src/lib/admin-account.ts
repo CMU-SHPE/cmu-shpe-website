@@ -42,3 +42,27 @@ export function sessionPredatesPasswordChange(
   if (!passwordChangedAt) return false
   return typeof authTime !== 'number' || authTime < passwordChangedAt.getTime()
 }
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: adminPassword,
+  confirmPassword: z.string().max(200),
+})
+
+export type PasswordChangeError = 'invalid' | 'password' | 'mismatch' | 'same'
+
+export function parsePasswordChange(
+  input: Record<string, unknown>,
+):
+  | { success: true; data: { currentPassword: string; newPassword: string } }
+  | { success: false; code: PasswordChangeError } {
+  const parsed = passwordChangeSchema.safeParse(input)
+  if (!parsed.success) {
+    const newPasswordFailed = parsed.error.issues.some((issue) => issue.path[0] === 'newPassword')
+    return { success: false, code: newPasswordFailed ? 'password' : 'invalid' }
+  }
+  const { currentPassword, newPassword, confirmPassword } = parsed.data
+  if (newPassword !== confirmPassword) return { success: false, code: 'mismatch' }
+  if (newPassword === currentPassword) return { success: false, code: 'same' }
+  return { success: true, data: { currentPassword, newPassword } }
+}

@@ -12,6 +12,7 @@ const sections: AdminSection[] = [
   { href: '/admin/sponsors', label: 'Sponsors' },
   { href: '/admin/events', label: 'Events' },
   { href: '/admin/lists', label: 'Page lists' },
+  { href: '/admin/account', label: 'Change password' },
 ]
 
 const masterSections: AdminSection[] = [{ href: '/admin/admins', label: 'Admin accounts' }]
