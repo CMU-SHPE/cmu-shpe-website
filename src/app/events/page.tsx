@@ -1,8 +1,10 @@
-import config from '@/lib/config'
 import { events, typeColors } from '@/lib/events'
 import { LocationIcon } from '@/components/icons'
+import { getSiteSettings } from '@/lib/queries'
 
-export default function Events() {
+export default async function Events() {
+  const settings = await getSiteSettings()
+
   return (
     <div>
       {/* ── Page Header ── */}
@@ -70,12 +72,14 @@ export default function Events() {
           <p className="text-red-100 mb-6">
             Follow us on social media or reach out to be added to our mailing list.
           </p>
-          <a
-            href={`mailto:${config.email}`}
-            className="inline-flex items-center justify-center bg-white text-shpe-red hover:bg-gray-100 px-6 py-3 rounded-lg font-semibold transition-all duration-200"
-          >
-            {config.email}
-          </a>
+          {settings && (
+            <a
+              href={`mailto:${settings.contactEmail}`}
+              className="inline-flex items-center justify-center bg-white text-shpe-red hover:bg-gray-100 px-6 py-3 rounded-lg font-semibold transition-all duration-200"
+            >
+              {settings.contactEmail}
+            </a>
+          )}
         </div>
       </section>
     </div>

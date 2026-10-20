@@ -1,9 +1,11 @@
 import Link from 'next/link'
-import config from '@/lib/config'
 import { navLinks } from '@/lib/nav'
+import { getSiteSettings } from '@/lib/queries'
 import { InstagramIcon, LinkedInIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
 
-export default function Footer() {
+export default async function Footer() {
+  const settings = await getSiteSettings()
+
   return (
     <footer className="bg-cmu-maroon text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -47,38 +49,42 @@ export default function Footer() {
             <h3 className="text-shpe-gold font-semibold text-xs uppercase tracking-widest mb-4">
               Connect With Us
             </h3>
-            <p className="text-gray-300 text-sm mb-1">{config.email}</p>
-            <p className="text-gray-400 text-sm mb-5">
-              Meetings: {config.meeting.day} {config.meeting.time} — {config.meeting.location}
-            </p>
+            {settings && (
+              <>
+                <p className="text-gray-300 text-sm mb-1">{settings.contactEmail}</p>
+                <p className="text-gray-400 text-sm mb-5">
+                  Meetings: {settings.meetingDay} {settings.meetingTime} — {settings.meetingLocation}
+                </p>
+              </>
+            )}
             <div className="flex space-x-4">
-              {config.social.instagram && (
-                <a href={config.social.instagram} aria-label="Instagram" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+              {settings?.instagramUrl && (
+                <a href={settings.instagramUrl} aria-label="Instagram" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
                   <InstagramIcon />
                 </a>
               )}
-              {config.social.linkedin && (
-                <a href={config.social.linkedin} aria-label="LinkedIn" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+              {settings?.linkedinUrl && (
+                <a href={settings.linkedinUrl} aria-label="LinkedIn" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
                   <LinkedInIcon />
                 </a>
               )}
-              {config.social.x && (
-                <a href={config.social.x} aria-label="X (Twitter)" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+              {settings?.xUrl && (
+                <a href={settings.xUrl} aria-label="X (Twitter)" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
                   <XIcon />
                 </a>
               )}
-              {config.social.youtube && (
-                <a href={config.social.youtube} aria-label="YouTube" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+              {settings?.youtubeUrl && (
+                <a href={settings.youtubeUrl} aria-label="YouTube" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
                   <YouTubeIcon />
                 </a>
               )}
-              {config.social.tiktok && (
-                <a href={config.social.tiktok} aria-label="TikTok" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+              {settings?.tiktokUrl && (
+                <a href={settings.tiktokUrl} aria-label="TikTok" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
                   <TikTokIcon />
                 </a>
               )}
-              {config.social.presence && (
-                <a href={config.social.presence} aria-label="Presence" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+              {settings?.presenceUrl && (
+                <a href={settings.presenceUrl} aria-label="Presence" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
                   <PresenceIcon />
                 </a>
               )}

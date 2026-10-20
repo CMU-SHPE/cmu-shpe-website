@@ -1,9 +1,11 @@
 import OfficerAvatar from '@/components/OfficerAvatar'
-import config from '@/lib/config'
 import { officers, advisor } from '@/lib/officers'
 import { LinkedInIcon } from '@/components/icons'
+import { getSiteSettings } from '@/lib/queries'
 
-export default function Officers() {
+export default async function Officers() {
+  const settings = await getSiteSettings()
+
   return (
     <div>
       {/* ── Page Header ── */}
@@ -105,16 +107,18 @@ export default function Officers() {
             academic standing is eligible to run. Leadership experience not required — just
             dedication and a desire to serve.
           </p>
-          <p className="text-red-200 text-sm">
-            Contact us at{' '}
-            <a
-              href={`mailto:${config.email}`}
-              className="text-white underline hover:text-red-100"
-            >
-              {config.email}
-            </a>{' '}
-            to learn more.
-          </p>
+          {settings && (
+            <p className="text-red-200 text-sm">
+              Contact us at{' '}
+              <a
+                href={`mailto:${settings.contactEmail}`}
+                className="text-white underline hover:text-red-100"
+              >
+                {settings.contactEmail}
+              </a>{' '}
+              to learn more.
+            </p>
+          )}
         </div>
       </section>
     </div>
