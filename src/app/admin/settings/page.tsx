@@ -10,6 +10,7 @@ import {
   sectionHeadingClass,
 } from '@/components/admin/styles'
 import { requireAdmin } from '@/lib/admin'
+import { HTTP_URL_INPUT } from '@/lib/form-fields'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
 import { MAX_CONTACT_SUBJECTS, MAX_CONTACT_SUBJECT_LENGTH } from '@/lib/settings-schema'
 import { saveSettings } from './actions'
@@ -113,6 +114,7 @@ export default async function AdminSettingsPage(props: {
                   name={field.name}
                   type="url"
                   maxLength={500}
+                  {...HTTP_URL_INPUT}
                   defaultValue={settings?.[field.name] ?? ''}
                   placeholder="https://…"
                   className={inputClass}

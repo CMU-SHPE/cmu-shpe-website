@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  HTTP_URL_INPUT,
+  IMAGE_SOURCE_INPUT,
   MAX_RECORD_ID,
   emailAddress,
   hexColor,
@@ -12,6 +14,7 @@ import {
   recordId,
   requiredText,
 } from './form-fields'
+import { imageSource } from './validation'
 
 describe('httpUrl', () => {
   it('accepts http and https URLs and trims them', () => {
@@ -126,5 +129,47 @@ describe('moveRequest', () => {
   it('rejects tampered bound arguments', () => {
     expect(moveRequest.safeParse({ id: 1.5, direction: 'up' }).success).toBe(false)
     expect(moveRequest.safeParse({ id: 3, direction: 'left' }).success).toBe(false)
+  })
+})
+
+function browserAccepts(pattern: string, value: string) {
+  return new RegExp(`^(?:${pattern})$`, 'v').test(value)
+}
+
+describe('input patterns', () => {
+  it('compile under the v flag browsers use for the pattern attribute', () => {
+    expect(() => new RegExp(HTTP_URL_INPUT.pattern, 'v')).not.toThrow()
+    expect(() => new RegExp(IMAGE_SOURCE_INPUT.pattern, 'v')).not.toThrow()
+  })
+
+  it('agree with the server on links', () => {
+    for (const value of [
+      'https://www.linkedin.com/in/jtorresn/',
+      'http://example.org/page',
+      'javascript:alert(1)',
+      'ftp://example.org/file',
+      'example.org',
+      '/sponsors',
+    ]) {
+      expect(browserAccepts(HTTP_URL_INPUT.pattern, value), value).toBe(httpUrl.safeParse(value).success)
+    }
+  })
+
+  it('agree with the server on image paths and links', () => {
+    for (const value of [
+      '/officers/jeff.jpg',
+      '/sponsors/sgm-inc-logo.svg',
+      'https://example.org/logo.png',
+      'http://example.org/logo.png',
+      '//evil.example/x.png',
+      '/',
+      '/\\evil.example/x.png',
+      '/a b.png',
+      'data:image/png;base64,AAAA',
+      'javascript:alert(1)',
+      'images/x.png',
+    ]) {
+      expect(browserAccepts(IMAGE_SOURCE_INPUT.pattern, value), value).toBe(imageSource.safeParse(value).success)
+    }
   })
 })

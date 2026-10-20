@@ -18,6 +18,7 @@ import {
 import type { Sponsor } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { DEFAULT_LOGO_BACKGROUND } from '@/lib/colors'
+import { HTTP_URL_INPUT, IMAGE_SOURCE_INPUT } from '@/lib/form-fields'
 import { getSponsors } from '@/lib/queries'
 import { LOGO_FIELD_NAMES } from '@/lib/sponsor-schema'
 import { SPONSOR_TIERS } from '@/lib/sponsor-tiers'
@@ -25,7 +26,7 @@ import { createSponsor, deleteSponsor, moveSponsor, updateSponsor } from './acti
 
 const errorMessages: Record<string, string> = {
   invalid:
-    'Please check the fields — the name is required, the website must start with http:// or https://, and a logo path must start with / or http(s)://.',
+    'Please check the fields — the name is required, the website must start with http:// or https://, and a logo path must start with a single / or https://.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
   missing: 'That sponsor no longer exists.',
   storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
@@ -57,6 +58,7 @@ function SponsorFields({ sponsor }: { sponsor?: Sponsor }) {
           name="website"
           type="url"
           maxLength={500}
+          {...HTTP_URL_INPUT}
           defaultValue={sponsor?.website ?? ''}
           placeholder="https://…"
           className={inputClass}
@@ -82,6 +84,7 @@ function SponsorFields({ sponsor }: { sponsor?: Sponsor }) {
         <input
           name="logoUrl"
           maxLength={500}
+          {...IMAGE_SOURCE_INPUT}
           defaultValue={sponsor?.logoUrl ?? ''}
           placeholder="/sponsors/logo.png or https://…"
           className={inputClass}

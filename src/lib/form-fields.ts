@@ -40,3 +40,13 @@ export const moveDirection = z.enum(MOVE_DIRECTIONS)
 export type MoveDirection = z.infer<typeof moveDirection>
 
 export const moveRequest = z.object({ id: recordId, direction: moveDirection })
+
+export const HTTP_URL_INPUT = {
+  pattern: 'https?://.+',
+  title: 'Use a full link that starts with http:// or https://',
+} as const
+
+export const IMAGE_SOURCE_INPUT = {
+  pattern: String.raw`\/[^\/\s\\][^\s\\]*|https:\/\/[^\s\\]+`,
+  title: 'Use a path on this site that starts with a single / (like /officers/jeff.jpg) or an https:// link',
+} as const

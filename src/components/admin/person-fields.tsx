@@ -1,5 +1,6 @@
 import ImageCropField from '@/components/image-crop-field'
 import { inputClass, labelClass } from '@/components/admin/styles'
+import { HTTP_URL_INPUT, IMAGE_SOURCE_INPUT } from '@/lib/form-fields'
 import { MAX_BIO_LENGTH, PHOTO_FIELD_NAMES } from '@/lib/person-schema'
 
 type Person = {
@@ -59,6 +60,7 @@ export default function PersonFields({
           name="linkedin"
           type="url"
           maxLength={500}
+          {...HTTP_URL_INPUT}
           defaultValue={person?.linkedin ?? ''}
           placeholder="https://www.linkedin.com/in/…"
           className={inputClass}
@@ -85,6 +87,7 @@ export default function PersonFields({
         <input
           name="photoUrl"
           maxLength={500}
+          {...IMAGE_SOURCE_INPUT}
           defaultValue={person?.photoUrl ?? ''}
           placeholder="/officers/name.jpg or https://…"
           className={inputClass}
