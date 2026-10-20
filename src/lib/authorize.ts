@@ -28,6 +28,7 @@ export async function authorizeAdmin(
   const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000)
 
   await db.insert(loginAttempts).values({ email, ip })
+  await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, windowStart))
   const [[{ emailAttempts }], [{ ipAttempts }]] = await Promise.all([
     db
       .select({ emailAttempts: count() })
@@ -60,7 +61,6 @@ export async function authorizeAdmin(
   if (!admin || !valid) {
     const reason = admin ? 'bad password' : 'unknown email'
     console.warn(`LOGIN FAILED (${reason}): ${email} from ${ip ?? 'unknown ip'}`)
-    await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, windowStart))
     return null
   }
 

@@ -15,8 +15,8 @@ const fake = vi.hoisted(() => {
       },
     }),
     delete: () => ({
-      where: async () => {
-        state.ops.push('delete attempts')
+      where: async (condition: { expiredBefore?: unknown }) => {
+        state.ops.push(condition?.expiredBefore ? 'purge expired attempts' : 'clear email attempts')
       },
     }),
     select: (fields: Record<string, unknown>) => {
@@ -42,6 +42,10 @@ const fake = vi.hoisted(() => {
 })
 
 vi.mock('@/db', () => ({ getDb: () => fake.db }))
+vi.mock('drizzle-orm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('drizzle-orm')>()),
+  lt: (_column: unknown, value: unknown) => ({ expiredBefore: value }),
+}))
 vi.mock('bcryptjs', () => ({ default: { compare: fake.compare } }))
 
 import { authorizeAdmin } from './authorize'
@@ -59,16 +63,42 @@ beforeEach(() => {
 })
 
 describe('authorizeAdmin', () => {
-  it('records the attempt before counting so concurrent requests see each other', async () => {
+  it('records the attempt and purges expired ones before counting', async () => {
     await authorizeAdmin(credentials, '203.0.113.7')
-    expect(fake.state.ops.slice(0, 3)).toEqual(['insert attempt', 'count emailAttempts', 'count ipAttempts'])
+    expect(fake.state.ops.slice(0, 4)).toEqual([
+      'insert attempt',
+      'purge expired attempts',
+      'count emailAttempts',
+      'count ipAttempts',
+    ])
   })
 
-  it('stops before the password check once throttled', async () => {
+  it('stops before the password check once throttled, after still purging expired attempts', async () => {
     fake.state.counts.emailAttempts = 6
     await expect(authorizeAdmin(credentials, '203.0.113.7')).resolves.toBeNull()
-    expect(fake.state.ops).not.toContain('find admin')
+    expect(fake.state.ops).toEqual(['insert attempt', 'purge expired attempts', 'count emailAttempts', 'count ipAttempts'])
     expect(fake.compare).not.toHaveBeenCalled()
+  })
+
+  it('purges expired attempts exactly once on every path', async () => {
+    const scenarios: (() => void)[] = [
+      () => (fake.state.counts.emailAttempts = 6),
+      () => (fake.state.admin = null),
+      () => (fake.state.admin = ana),
+      () => {
+        fake.state.admin = ana
+        fake.compare.mockResolvedValue(true)
+      },
+    ]
+    for (const arrange of scenarios) {
+      fake.state.ops = []
+      fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+      fake.state.admin = null
+      fake.compare.mockResolvedValue(false)
+      arrange()
+      await authorizeAdmin(credentials, null)
+      expect(fake.state.ops.filter((op) => op === 'purge expired attempts')).toHaveLength(1)
+    }
   })
 
   it('runs bcrypt for unknown emails so timing does not reveal admin accounts', async () => {
@@ -92,7 +122,7 @@ describe('authorizeAdmin', () => {
       name: 'Ana',
       role: 'admin',
     })
-    expect(fake.state.ops.at(-1)).toBe('delete attempts')
+    expect(fake.state.ops.at(-1)).toBe('clear email attempts')
   })
 
   it('lets the 5th attempt with the right password through after 4 failures', async () => {
