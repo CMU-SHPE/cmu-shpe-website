@@ -87,6 +87,8 @@ export default function EditableText({
   label: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  // Rendered once so the text shows before hydration; after that the effect owns the editor's DOM.
+  const [initialText] = useState(value)
   const [draft, setDraft] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -147,7 +149,9 @@ export default function EditableText({
           if (!multiline && event.key === 'Enter') event.preventDefault()
         }}
         onPaste={handlePaste}
-      />
+      >
+        {initialText}
+      </div>
       {dirty && (
         <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-left text-sm font-normal normal-case not-italic tracking-normal shadow-md">
           <button

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 
 const mocks = vi.hoisted(() => ({
   saveContentText: vi.fn(),
@@ -89,6 +90,22 @@ describe('Editable signed in', () => {
     expect(editor).toHaveTextContent('Building the Future')
     expect(editor).toHaveClass('text-4xl', 'font-bold')
     expect(container.querySelector('h2')).toBeNull()
+  })
+
+  it('server-renders the saved text, escaped, so it shows before hydration', () => {
+    const html = renderToString(
+      <Editable as="p" contentKey="home.hero.intro" value="Fish & <b>chips</b>" editable className="intro" />,
+    )
+    expect(html).toContain('Fish &amp; &lt;b&gt;chips&lt;/b&gt;')
+    expect(html).not.toContain('<b>')
+  })
+
+  it('shows the new value after the page refreshes with saved text', () => {
+    const { rerender } = render(
+      <Editable as="p" contentKey="home.hero.intro" value="Before" editable className="intro" />,
+    )
+    rerender(<Editable as="p" contentKey="home.hero.intro" value="After" editable className="intro" />)
+    expect(screen.getByRole('textbox')).toHaveTextContent(/^After$/)
   })
 
   it('sets stored text as escaped HTML in the editor', () => {
