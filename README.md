@@ -55,6 +55,10 @@ creates the master admin from `MASTER_EMAIL` and `MASTER_PASSWORD` (12+ characte
 safe to run again: it never overwrites text an officer has edited, only fills tables that
 are still empty, and only creates the master admin while no admin exists.
 
+`drizzle/` holds the generated SQL for the current schema so changes can be reviewed.
+After editing `src/db/schema.ts`, run `npm run db:generate` and commit the new file with
+the schema change, then apply it with `npm run db:push`.
+
 ### Local development
 
 ```bash
