@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 
 const mocks = vi.hoisted(() => ({
@@ -203,6 +203,35 @@ describe('Editable signed in', () => {
     expect(h3).toContainElement(screen.getByRole('textbox', { name: 'About: values heading' }))
     expect(h3).toHaveClass('flex', 'items-center')
     expect(h1).toHaveAccessibleName('About Our Chapter')
+  })
+
+  it('keeps a heading named by its text alone while there are unsaved edits', () => {
+    render(
+      <>
+        <Editable as="h2" contentKey="about.chapter.heading" value="Chapter" editable className="section" />
+        <Editable
+          as="h3"
+          contentKey="about.values.heading"
+          value="Our Values"
+          editable
+          className="flex items-center"
+          leading={<span className="bar" />}
+        />
+      </>,
+    )
+    for (const [level, label] of [
+      [2, 'About: chapter heading'],
+      [3, 'About: values heading'],
+    ] as const) {
+      const editor = screen.getByRole('textbox', { name: label })
+      editor.textContent = `Edited ${level}`
+      fireEvent.input(editor)
+
+      const heading = screen.getByRole('heading', { level })
+      expect(heading).toHaveAccessibleName(`Edited ${level}`)
+      expect(within(heading).queryByRole('button')).toBeNull()
+    }
+    expect(screen.getAllByRole('button', { name: 'Save changes' })).toHaveLength(2)
   })
 
   it('does not add a heading role around paragraph editors', () => {

@@ -82,15 +82,19 @@ export default function EditableText({
   value,
   multiline,
   className,
-  rootClassName,
   label,
+  headingLevel,
+  leading,
+  wrapperClassName,
 }: {
   contentKey: string
   value: string
   multiline: boolean
   className: string
-  rootClassName?: string
   label: string
+  headingLevel?: number
+  leading?: React.ReactNode
+  wrapperClassName?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   // Rendered once so the text shows before hydration; after that the effect owns the editor's DOM.
@@ -151,31 +155,46 @@ export default function EditableText({
     ref.current.focus()
   }
 
+  const textbox = (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline={multiline}
+      aria-label={label}
+      spellCheck
+      title="Click to edit"
+      className={`${className} min-h-[1.5em] min-w-[3ch] cursor-text rounded-md outline-none transition ${editorRingClass}`}
+      onInput={() => {
+        const el = ref.current
+        if (!el) return
+        setDraft(multiline ? domToText(el) : (el.textContent ?? '').replace(/\s+/g, ' ').trim())
+      }}
+      onKeyDown={(event) => {
+        if (!multiline && event.key === 'Enter') event.preventDefault()
+      }}
+      onPaste={handlePaste}
+      onDrop={(event) => event.preventDefault()}
+    >
+      {initialText}
+    </div>
+  )
+
   return (
-    <div className={rootClassName}>
-      <div
-        ref={ref}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-multiline={multiline}
-        aria-label={label}
-        spellCheck
-        title="Click to edit"
-        className={`${className} min-h-[1.5em] min-w-[3ch] cursor-text rounded-md outline-none transition ${editorRingClass}`}
-        onInput={() => {
-          const el = ref.current
-          if (!el) return
-          setDraft(multiline ? domToText(el) : (el.textContent ?? '').replace(/\s+/g, ' ').trim())
-        }}
-        onKeyDown={(event) => {
-          if (!multiline && event.key === 'Enter') event.preventDefault()
-        }}
-        onPaste={handlePaste}
-        onDrop={(event) => event.preventDefault()}
-      >
-        {initialText}
-      </div>
+    <div>
+      {headingLevel || leading ? (
+        <div
+          role={headingLevel ? 'heading' : undefined}
+          aria-level={headingLevel}
+          className={wrapperClassName}
+        >
+          {leading}
+          {textbox}
+        </div>
+      ) : (
+        textbox
+      )}
       {dirty && (
         <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-left text-sm font-normal normal-case not-italic tracking-normal shadow-md">
           <button

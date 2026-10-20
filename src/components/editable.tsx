@@ -31,27 +31,18 @@ export default function Editable({
   const { label, multiline } = contentKeyDefinition(contentKey)
 
   if (editable) {
-    const level = HEADING_LEVELS[Tag]
-    const heading = level ? { role: 'heading', 'aria-level': level } : {}
-    const editor = (
+    return (
       <EditableText
         contentKey={contentKey}
         value={value}
         multiline={multiline}
         label={label}
-        className={leading ? '' : className}
-        rootClassName={leading ? 'min-w-0 flex-1' : undefined}
+        className={leading ? 'min-w-0 flex-1' : className}
+        headingLevel={HEADING_LEVELS[Tag]}
+        leading={leading}
+        wrapperClassName={leading ? className : undefined}
       />
     )
-    if (leading) {
-      return (
-        <div className={className} {...heading}>
-          {leading}
-          {editor}
-        </div>
-      )
-    }
-    return level ? <div {...heading}>{editor}</div> : editor
   }
 
   return (
