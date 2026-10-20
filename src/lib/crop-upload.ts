@@ -1,5 +1,5 @@
 import { type CroppedImage, cropSourceUrl, parseCrop } from '@/lib/crop'
-import { type UploadFolder, isUploadedImage, uploadImage } from '@/lib/uploads'
+import { type UploadFolder, deleteUploadedBlob, isUploadedImage, uploadImage } from '@/lib/uploads'
 
 export type CropFieldNames = {
   file: string
@@ -36,7 +36,10 @@ export async function resolveCroppedUpload({
     let originalUrl: string | null
     if (isUploadedImage(originalFile)) {
       originalUrl = await uploadImage(originalFile, folder)
-      if (!originalUrl) return UPLOAD_FAILED
+      if (!originalUrl) {
+        await deleteUploadedBlob(imageUrl)
+        return UPLOAD_FAILED
+      }
     } else {
       originalUrl = cropSourceUrl(existing)
     }

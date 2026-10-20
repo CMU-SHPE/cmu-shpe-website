@@ -1,5 +1,20 @@
 import { pickOutputFormat } from './crop'
 
+export const IMAGE_EXTENSIONS = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+  'image/svg+xml': 'svg',
+} as const
+
+export type AllowedImageType = keyof typeof IMAGE_EXTENSIONS
+
+export function isAllowedImageType(type: string): type is AllowedImageType {
+  return Object.hasOwn(IMAGE_EXTENSIONS, type)
+}
+
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 export const MAX_ORIGINAL_EDGE = 2560
 export const TARGET_ORIGINAL_BYTES = 2 * 1024 * 1024
