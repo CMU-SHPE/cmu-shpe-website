@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import SponsorLogo from '@/components/SponsorLogo'
-import { sponsors, type Tier } from '@/lib/sponsors'
 import { CheckIcon } from '@/components/icons'
+import { getSponsors } from '@/lib/queries'
+import type { Tier } from '@/lib/sponsor-tiers'
 
 const tierMeta: {
   name: Tier
@@ -44,7 +45,8 @@ const benefits: { label: string; tiers: [Cell, Cell, Cell, Cell] }[] = [
   { label: 'Company presentation',         tiers: [true,  false, false, false] },
 ]
 
-export default function Sponsors() {
+export default async function Sponsors() {
+  const sponsors = await getSponsors()
   const byTier = (tier: Tier) => sponsors.filter((s) => s.tier === tier)
 
   return (
@@ -82,13 +84,12 @@ export default function Sponsors() {
               <div className="flex flex-wrap gap-5">
                 {tierSponsors.map((sponsor) => (
                   <SponsorLogo
-                    key={sponsor.name + sponsor.logo}
+                    key={sponsor.id}
                     name={sponsor.name}
-                    logo={sponsor.logo}
+                    logo={sponsor.logoUrl}
                     tier={sponsor.tier}
                     website={sponsor.website}
                     bgColor={sponsor.bgColor}
-                    size={sponsor.size}
                   />
                 ))}
               </div>

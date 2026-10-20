@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import SponsorLogo from '@/components/SponsorLogo'
-import { sponsors, tierOrder } from '@/lib/sponsors'
 import { events, typeColors } from '@/lib/events'
 import { stats, pillars } from '@/lib/home'
 import { LocationIcon } from '@/components/icons'
+import { getSponsors } from '@/lib/queries'
 
-export default function Home() {
+export default async function Home() {
+  const sponsors = await getSponsors()
+
   return (
     <div>
       {/* ── Hero ── */}
@@ -189,19 +191,16 @@ export default function Home() {
           </div>
 
           <div className="flex flex-wrap justify-center items-center gap-5 mb-10">
-            {[...sponsors]
-              .sort((a, b) => tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier))
-              .map((sponsor) => (
-                <SponsorLogo
-                  key={sponsor.name + sponsor.logo}
-                  name={sponsor.name}
-                  logo={sponsor.logo}
-                  tier={sponsor.tier}
-                  website={sponsor.website}
-                  bgColor={sponsor.bgColor}
-                  size={sponsor.size}
-                />
-              ))}
+            {sponsors.map((sponsor) => (
+              <SponsorLogo
+                key={sponsor.id}
+                name={sponsor.name}
+                logo={sponsor.logoUrl}
+                tier={sponsor.tier}
+                website={sponsor.website}
+                bgColor={sponsor.bgColor}
+              />
+            ))}
           </div>
 
           <div className="text-center">

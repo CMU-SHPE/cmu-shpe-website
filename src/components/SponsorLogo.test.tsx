@@ -18,6 +18,22 @@ describe('SponsorLogo', () => {
     expect(img.closest('a')).toHaveAttribute('href', 'https://acme.example')
   })
 
+  it('paints the logo tile with the sponsor background color', () => {
+    render(<SponsorLogo name="SGM" tier="Platinum" logo="/sponsors/sgm.svg" bgColor="#555555" />)
+
+    const tile = screen.getByRole('img', { name: 'SGM logo' }).parentElement
+    expect(tile).toHaveStyle({ backgroundColor: '#555555' })
+  })
+
+  it('falls back to a white tile for a missing or malformed background color', () => {
+    const { rerender } = render(<SponsorLogo name="Acme Co." tier="Gold" logo="/sponsors/acme.png" />)
+    const tile = () => screen.getByRole('img', { name: 'Acme Co. logo' }).parentElement
+    expect(tile()).toHaveStyle({ backgroundColor: '#ffffff' })
+
+    rerender(<SponsorLogo name="Acme Co." tier="Gold" logo="/sponsors/acme.png" bgColor="red;background:url(x)" />)
+    expect(tile()).toHaveStyle({ backgroundColor: '#ffffff' })
+  })
+
   it('falls back to the placeholder if the logo fails to load', () => {
     render(<SponsorLogo name="Acme Co." tier="Gold" logo="/sponsors/acme.png" />)
 

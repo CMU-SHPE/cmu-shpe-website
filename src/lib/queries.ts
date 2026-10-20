@@ -1,7 +1,8 @@
 import { asc, inArray } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { siteContent, siteSettings } from '@/db/schema'
+import { siteContent, siteSettings, sponsors } from '@/db/schema'
 import type { ContentKey } from '@/lib/content-keys'
+import { compareSponsors } from '@/lib/sponsor-tiers'
 
 export async function getSiteSettings() {
   const [row] = await getDb().select().from(siteSettings).orderBy(asc(siteSettings.id)).limit(1)
@@ -20,4 +21,9 @@ export async function getSiteContent<K extends ContentKey>(
           .where(inArray(siteContent.key, [...keys]))
   const stored = new Map(rows.map((row) => [row.key, row.value]))
   return Object.fromEntries(keys.map((key) => [key, stored.get(key) ?? ''])) as Record<K, string>
+}
+
+export async function getSponsors() {
+  const rows = await getDb().select().from(sponsors)
+  return rows.sort(compareSponsors)
 }
