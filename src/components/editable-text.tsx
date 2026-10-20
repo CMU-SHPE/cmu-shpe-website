@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { unstable_rethrow, useRouter } from 'next/navigation'
 import { saveContentText } from '@/app/edit-actions'
 import { Spinner } from '@/components/submit-button'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/admin/styles'
 import { normalizeNewlines } from '@/lib/text'
 
 const BLOCK_TAGS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'LI'])
+
+const SAVE_FAILED = 'Could not save — check your connection and try again.'
 
 const editorRingClass =
   'hover:ring-2 hover:ring-shpe-gold hover:ring-offset-2 hover:ring-offset-cmu-maroon focus:ring-2 focus:ring-shpe-gold focus:ring-offset-2 focus:ring-offset-cmu-maroon'
@@ -65,6 +67,10 @@ function renderInto(el: HTMLElement, value: string, multiline: boolean) {
   el.innerHTML = multiline ? textToHtml(value) : escapeHtml(value) || '<br>'
 }
 
+function blockFormatting(event: InputEvent) {
+  if (event.inputType.startsWith('format')) event.preventDefault()
+}
+
 function handlePaste(event: React.ClipboardEvent<HTMLDivElement>) {
   event.preventDefault()
   const text = event.clipboardData.getData('text/plain')
@@ -98,6 +104,13 @@ export default function EditableText({
     if (ref.current) renderInto(ref.current, value, multiline)
   }, [value, multiline])
 
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.addEventListener('beforeinput', blockFormatting)
+    return () => el.removeEventListener('beforeinput', blockFormatting)
+  }, [])
+
   const dirty = draft !== null && draft !== value
 
   useEffect(() => {
@@ -111,11 +124,19 @@ export default function EditableText({
     if (draft === null || pending) return
     setError(null)
     startTransition(async () => {
-      const result = await saveContentText(contentKey, draft)
+      let result: Awaited<ReturnType<typeof saveContentText>>
+      try {
+        result = await saveContentText(contentKey, draft)
+      } catch (err) {
+        unstable_rethrow(err)
+        setError(SAVE_FAILED)
+        return
+      }
       if ('error' in result) {
         setError(result.error)
         return
       }
+      ref.current?.focus()
       setDraft(null)
       router.refresh()
     })
@@ -125,7 +146,9 @@ export default function EditableText({
     if (pending) return
     setDraft(null)
     setError(null)
-    if (ref.current) renderInto(ref.current, value, multiline)
+    if (!ref.current) return
+    renderInto(ref.current, value, multiline)
+    ref.current.focus()
   }
 
   return (
@@ -149,6 +172,7 @@ export default function EditableText({
           if (!multiline && event.key === 'Enter') event.preventDefault()
         }}
         onPaste={handlePaste}
+        onDrop={(event) => event.preventDefault()}
       >
         {initialText}
       </div>

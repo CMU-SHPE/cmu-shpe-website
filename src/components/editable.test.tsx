@@ -5,16 +5,106 @@ import { renderToString } from 'react-dom/server'
 const mocks = vi.hoisted(() => ({
   saveContentText: vi.fn(),
   refresh: vi.fn(),
+  rethrow: vi.fn(),
 }))
 
 vi.mock('@/app/edit-actions', () => ({ saveContentText: mocks.saveContentText }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: mocks.refresh }),
+  unstable_rethrow: mocks.rethrow,
+}))
 
 import Editable, { EditableList } from './editable'
 
 beforeEach(() => {
   mocks.saveContentText.mockReset()
   mocks.refresh.mockReset()
+  mocks.rethrow.mockReset()
+})
+
+function renderIntroEditor(value = 'Saved') {
+  render(<Editable as="p" contentKey="home.hero.intro" value={value} editable className="intro" />)
+  return screen.getByRole('textbox')
+}
+
+function typeInto(editor: HTMLElement, text: string) {
+  editor.textContent = text
+  fireEvent.input(editor)
+}
+
+describe('editor robustness', () => {
+  it('keeps the draft and explains when the save request fails', async () => {
+    const failure = new TypeError('Failed to fetch')
+    mocks.saveContentText.mockRejectedValue(failure)
+    const editor = renderIntroEditor()
+    typeInto(editor, 'Draft text')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not save — check your connection and try again.',
+    )
+    expect(mocks.rethrow).toHaveBeenCalledWith(failure)
+    expect(editor).toHaveTextContent('Draft text')
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
+    expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
+  it('lets framework redirects, such as an expired session, through before handling the error', async () => {
+    const redirectError = Object.assign(new Error('NEXT_REDIRECT'), { digest: 'NEXT_REDIRECT;replace;/login;307;' })
+    mocks.saveContentText.mockRejectedValue(redirectError)
+    const order: string[] = []
+    mocks.rethrow.mockImplementation(() => order.push('rethrow'))
+    const editor = renderIntroEditor()
+    typeInto(editor, 'Draft')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await screen.findByRole('alert')
+    expect(mocks.rethrow).toHaveBeenCalledWith(redirectError)
+    expect(order).toEqual(['rethrow'])
+  })
+
+  it('returns focus to the text after a successful save', async () => {
+    mocks.saveContentText.mockResolvedValue({ ok: true })
+    const editor = renderIntroEditor()
+    typeInto(editor, 'New text')
+    const save = screen.getByRole('button', { name: 'Save changes' })
+    save.focus()
+
+    fireEvent.click(save)
+
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+    expect(editor).toHaveFocus()
+  })
+
+  it('returns focus to the text after discarding', () => {
+    const editor = renderIntroEditor()
+    typeInto(editor, 'Draft')
+    const discard = screen.getByRole('button', { name: 'Discard' })
+    discard.focus()
+
+    fireEvent.click(discard)
+
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull()
+    expect(editor).toHaveFocus()
+  })
+
+  it('blocks bold, italic and other formatting commands', () => {
+    const editor = renderIntroEditor()
+    for (const inputType of ['formatBold', 'formatItalic', 'formatUnderline']) {
+      const event = new InputEvent('beforeinput', { inputType, bubbles: true, cancelable: true })
+      expect(editor.dispatchEvent(event), inputType).toBe(false)
+    }
+    const typing = new InputEvent('beforeinput', { inputType: 'insertText', data: 'a', bubbles: true, cancelable: true })
+    expect(editor.dispatchEvent(typing)).toBe(true)
+  })
+
+  it('ignores dropped content', () => {
+    const editor = renderIntroEditor()
+    expect(fireEvent.drop(editor)).toBe(false)
+  })
 })
 
 describe('Editable signed out', () => {
