@@ -26,7 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         <meta name="websitelaunches-verification" content="b6a2583caccd14a46aef1d20effe4c93" />
         {/* Runs synchronously before paint to avoid flash of wrong theme */}
