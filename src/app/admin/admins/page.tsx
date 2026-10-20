@@ -7,7 +7,6 @@ import DeleteButton from '@/components/admin/delete-button'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  focusRingClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -20,7 +19,8 @@ import {
 } from '@/components/admin/styles'
 import { requireMaster } from '@/lib/admin'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
-import { createAdmin, deleteAdmin, resetAdminPassword } from './actions'
+import { createAdmin, deleteAdmin } from './actions'
+import ResetPassword, { linkClass } from './reset-password'
 
 const errorMessages: Record<string, string> = {
   invalid: 'Please check the name and email.',
@@ -30,48 +30,6 @@ const errorMessages: Record<string, string> = {
   missing: 'That admin account no longer exists.',
   self: 'You cannot delete or reset your own account here. Use Change password for your own password.',
   master: 'Master accounts cannot be deleted or reset here.',
-}
-
-const linkClass = `rounded text-sm font-medium text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`
-
-function ResetPassword({ id, name }: { id: number; name: string }) {
-  return (
-    <details className="text-left">
-      <summary className={`cursor-pointer ${linkClass}`}>
-        Reset password<span className="sr-only"> for {name}</span>
-      </summary>
-      <form action={resetAdminPassword.bind(null, id)} className="mt-3 w-64 space-y-3">
-        <p className={mutedTextClass}>Share the new password with them directly — there is no email.</p>
-        <label className={labelClass}>
-          New password ({MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_BYTES} characters)
-          <input
-            name="newPassword"
-            type="password"
-            required
-            minLength={MIN_PASSWORD_LENGTH}
-            maxLength={MAX_PASSWORD_BYTES}
-            autoComplete="new-password"
-            className={inputClass}
-          />
-        </label>
-        <label className={labelClass}>
-          Confirm new password
-          <input
-            name="confirmPassword"
-            type="password"
-            required
-            minLength={MIN_PASSWORD_LENGTH}
-            maxLength={MAX_PASSWORD_BYTES}
-            autoComplete="new-password"
-            className={inputClass}
-          />
-        </label>
-        <SubmitButton pendingLabel="Resetting…" className={primaryButtonClass}>
-          Reset password<span className="sr-only"> for {name}</span>
-        </SubmitButton>
-      </form>
-    </details>
-  )
 }
 
 const roleLabels = { admin: 'Admin', master: 'Master' } as const
@@ -188,7 +146,7 @@ export default async function AdminAccountsPage(props: {
                           <form action={deleteAdmin.bind(null, admin.id)}>
                             <DeleteButton name={admin.name} />
                           </form>
-                          <ResetPassword id={admin.id} name={admin.name} />
+                          <ResetPassword id={admin.id} name={admin.name} email={admin.email} />
                         </div>
                       )
                     )}
