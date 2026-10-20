@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => {
-  const state = { rows: [] as { role: 'admin' | 'master' }[] }
+  const state = { rows: [] as { role: 'admin' | 'master'; email: string }[] }
   const limit = vi.fn(async () => state.rows)
   const query = { from: () => query, where: () => query, limit }
   return {
@@ -61,8 +61,12 @@ describe('currentAdmin', () => {
     expect(mocks.select).not.toHaveBeenCalled()
   })
 
-  it('returns null without querying for a non-numeric session id', async () => {
-    mocks.auth.mockResolvedValue({ ...adminSession, user: { ...adminSession.user, id: 'abc' } })
+  it('returns null without querying for an invalid session id or missing email', async () => {
+    for (const id of ['abc', '0', '2147483648']) {
+      mocks.auth.mockResolvedValue({ ...adminSession, user: { ...adminSession.user, id } })
+      await expect(currentAdmin()).resolves.toBeNull()
+    }
+    mocks.auth.mockResolvedValue({ ...adminSession, user: { ...adminSession.user, email: undefined } })
     await expect(currentAdmin()).resolves.toBeNull()
     expect(mocks.select).not.toHaveBeenCalled()
   })
@@ -73,9 +77,15 @@ describe('currentAdmin', () => {
     expect(mocks.limit).toHaveBeenCalledTimes(1)
   })
 
+  it('returns null when the id now belongs to a different admin', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'master', email: 'someone-else@example.com' }]
+    await expect(currentAdmin()).resolves.toBeNull()
+  })
+
   it('takes the role from the database row', async () => {
     mocks.auth.mockResolvedValue(masterSession)
-    mocks.state.rows = [{ role: 'admin' }]
+    mocks.state.rows = [{ role: 'admin', email: 'max@example.com' }]
     const admin = await currentAdmin()
     expect(admin?.user.role).toBe('admin')
     expect(admin?.user.name).toBe('Max')
@@ -95,7 +105,7 @@ describe('requireAdmin', () => {
 
   it('returns the session for an existing admin', async () => {
     mocks.auth.mockResolvedValue(adminSession)
-    mocks.state.rows = [{ role: 'admin' }]
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com' }]
     await expect(requireAdmin()).resolves.toMatchObject({ user: { id: '2', role: 'admin' } })
   })
 })
@@ -103,19 +113,19 @@ describe('requireAdmin', () => {
 describe('requireMaster', () => {
   it('sends regular admins back to the dashboard', async () => {
     mocks.auth.mockResolvedValue(adminSession)
-    mocks.state.rows = [{ role: 'admin' }]
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com' }]
     await expect(requireMaster()).rejects.toThrow('REDIRECT /admin')
   })
 
   it('uses the database role over a stale master token', async () => {
     mocks.auth.mockResolvedValue(masterSession)
-    mocks.state.rows = [{ role: 'admin' }]
+    mocks.state.rows = [{ role: 'admin', email: 'max@example.com' }]
     await expect(requireMaster()).rejects.toThrow('REDIRECT /admin')
   })
 
   it('returns the session for a master', async () => {
     mocks.auth.mockResolvedValue(masterSession)
-    mocks.state.rows = [{ role: 'master' }]
+    mocks.state.rows = [{ role: 'master', email: 'max@example.com' }]
     await expect(requireMaster()).resolves.toMatchObject({ user: { id: '1', role: 'master' } })
   })
 })

@@ -17,10 +17,12 @@ import {
   tableRowClass,
 } from '@/components/admin/styles'
 import { requireMaster } from '@/lib/admin'
+import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
 import { createAdmin, deleteAdmin } from './actions'
 
 const errorMessages: Record<string, string> = {
-  invalid: 'Please check the fields — passwords must be at least 12 characters.',
+  invalid: 'Please check the name and email.',
+  password: `Passwords must be at least ${MIN_PASSWORD_LENGTH} characters and at most ${MAX_PASSWORD_BYTES} bytes. Accented letters and emoji count as 2 to 4 bytes each.`,
   duplicate: 'An account with that email already exists.',
   self: 'You cannot delete your own account.',
   master: 'Master accounts cannot be deleted.',
@@ -71,13 +73,13 @@ export default async function AdminAccountsPage(props: {
             />
           </label>
           <label className={labelClass}>
-            Password (12+ characters)
+            Password ({MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_BYTES} characters)
             <input
               name="password"
               type="password"
               required
-              minLength={12}
-              maxLength={200}
+              minLength={MIN_PASSWORD_LENGTH}
+              maxLength={MAX_PASSWORD_BYTES}
               autoComplete="new-password"
               className={inputClass}
             />

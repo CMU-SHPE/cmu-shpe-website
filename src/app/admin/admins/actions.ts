@@ -2,29 +2,23 @@
 
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
-import { eq } from 'drizzle-orm'
-import { z } from 'zod'
+import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins } from '@/db/schema'
 import { requireMaster } from '@/lib/admin'
-
-const adminSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  email: z.string().trim().pipe(z.email().max(320)),
-  password: z.string().min(12).max(200),
-})
+import { adminId, parseAdminAccount } from '@/lib/admin-account'
 
 export async function createAdmin(formData: FormData) {
   await requireMaster()
 
-  const parsed = adminSchema.safeParse({
+  const parsed = parseAdminAccount({
     name: formData.get('name'),
     email: formData.get('email'),
     password: formData.get('password'),
   })
-  if (!parsed.success) redirect('/admin/admins?error=invalid')
+  if (!parsed.success) redirect(`/admin/admins?error=${parsed.code}`)
 
-  const email = parsed.data.email.toLowerCase()
+  const { name, email, password } = parsed.data
   const db = getDb()
   const [existing] = await db
     .select({ id: admins.id })
@@ -35,12 +29,7 @@ export async function createAdmin(formData: FormData) {
 
   const inserted = await db
     .insert(admins)
-    .values({
-      name: parsed.data.name,
-      email,
-      passwordHash: await bcrypt.hash(parsed.data.password, 12),
-      role: 'admin',
-    })
+    .values({ name, email, passwordHash: await bcrypt.hash(password, 12), role: 'admin' })
     .onConflictDoNothing({ target: admins.email })
     .returning({ id: admins.id })
   if (inserted.length === 0) redirect('/admin/admins?error=duplicate')
@@ -50,18 +39,23 @@ export async function createAdmin(formData: FormData) {
 
 export async function deleteAdmin(id: number) {
   const session = await requireMaster()
-  if (!Number.isInteger(id)) redirect('/admin/admins')
-  if (Number(session.user.id) === id) redirect('/admin/admins?error=self')
+  const target = adminId.safeParse(id)
+  if (!target.success) redirect('/admin/admins')
+  if (Number(session.user.id) === target.data) redirect('/admin/admins?error=self')
 
   const db = getDb()
-  const [target] = await db
-    .select({ role: admins.role })
-    .from(admins)
-    .where(eq(admins.id, id))
-    .limit(1)
-  if (!target) redirect('/admin/admins')
-  if (target.role === 'master') redirect('/admin/admins?error=master')
+  const deleted = await db
+    .delete(admins)
+    .where(and(eq(admins.id, target.data), eq(admins.role, 'admin')))
+    .returning({ id: admins.id })
+  if (deleted.length === 0) {
+    const [kept] = await db
+      .select({ role: admins.role })
+      .from(admins)
+      .where(eq(admins.id, target.data))
+      .limit(1)
+    redirect(kept?.role === 'master' ? '/admin/admins?error=master' : '/admin/admins')
+  }
 
-  await db.delete(admins).where(eq(admins.id, id))
   redirect('/admin/admins?saved=1')
 }

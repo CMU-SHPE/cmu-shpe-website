@@ -95,6 +95,30 @@ describe('authorizeAdmin', () => {
     expect(fake.state.ops.at(-1)).toBe('delete attempts')
   })
 
+  it('lets the 5th attempt with the right password through after 4 failures', async () => {
+    fake.state.admin = ana
+    fake.state.counts.emailAttempts = 5
+    fake.compare.mockResolvedValue(true)
+    await expect(authorizeAdmin(credentials, null)).resolves.toMatchObject({ id: '2' })
+  })
+
+  it('throttles the 6th attempt after 5 failures even with the right password', async () => {
+    fake.state.admin = ana
+    fake.state.counts.emailAttempts = 6
+    fake.compare.mockResolvedValue(true)
+    await expect(authorizeAdmin(credentials, null)).resolves.toBeNull()
+    expect(fake.compare).not.toHaveBeenCalled()
+  })
+
+  it('applies the same boundary to the per-ip count', async () => {
+    fake.state.admin = ana
+    fake.compare.mockResolvedValue(true)
+    fake.state.counts.ipAttempts = 20
+    await expect(authorizeAdmin(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
+    fake.state.counts.ipAttempts = 21
+    await expect(authorizeAdmin(credentials, '203.0.113.7')).resolves.toBeNull()
+  })
+
   it('rejects malformed credentials without touching the database', async () => {
     await expect(authorizeAdmin({ email: 'not-an-email', password: 'x' }, null)).resolves.toBeNull()
     expect(fake.state.ops).toEqual([])
