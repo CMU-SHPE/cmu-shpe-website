@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { asc, eq } from 'drizzle-orm'
 import { getDb } from '@/db'
@@ -32,5 +33,6 @@ export async function saveSettings(formData: FormData) {
       .onConflictDoUpdate({ target: siteContent.key, set: { value: subjectsValue } }),
   ])
 
+  revalidatePath('/', 'layout')
   redirect('/admin/settings?saved=1')
 }
