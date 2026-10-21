@@ -1,0 +1,19 @@
+name: Clean up preview database
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  delete-neon-branch:
+    # Fork PRs never get a preview database, and secrets are not available to them.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: preview/${{ github.head_ref }}
+          api_key: ${{ secrets.NEON_API_KEY }}
