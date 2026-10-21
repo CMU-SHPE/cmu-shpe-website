@@ -18,8 +18,8 @@ describe('cleanupBlobs', () => {
     expect(uploads.deleteUploadedBlob.mock.calls).toEqual([[photo], [null], [original]])
   })
 
-  it('deletes images when run outside Vercel', async () => {
-    vi.stubEnv('VERCEL_ENV', '')
+  it.each([['development'], [undefined]])('deletes images when VERCEL_ENV is %s', async (vercelEnv) => {
+    vi.stubEnv('VERCEL_ENV', vercelEnv)
     await cleanupBlobs(photo)
     expect(uploads.deleteUploadedBlob).toHaveBeenCalledWith(photo)
   })
