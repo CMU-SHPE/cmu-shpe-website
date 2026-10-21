@@ -46,7 +46,7 @@ describe('editor robustness', () => {
     )
     expect(mocks.rethrow).toHaveBeenCalledWith(failure)
     expect(editor).toHaveTextContent('Draft text')
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Save changes' })).toHaveAttribute('aria-busy', 'false')
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
@@ -74,8 +74,8 @@ describe('editor robustness', () => {
 
     fireEvent.click(save)
 
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
-    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull())
+    expect(mocks.refresh).toHaveBeenCalled()
     expect(editor).toHaveFocus()
   })
 
@@ -287,6 +287,7 @@ describe('Editable signed in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Too long')
+    expect(await screen.findByRole('button', { name: 'Save changes' })).toHaveAttribute('aria-busy', 'false')
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
