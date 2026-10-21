@@ -31,8 +31,8 @@ Chapter officers sign in and edit the whole site without touching code:
 
 ## Getting started
 
-Requires Node.js (CI runs on Node 24 — see `.github/workflows/ci.yml`) and a Neon Postgres
-database.
+Requires Node.js 24 (the version CI runs — see `.github/workflows/ci.yml`) and a Neon
+Postgres database. `npm run db:push` fails on Node 20.
 
 ```bash
 npm install
@@ -59,6 +59,20 @@ are still empty, and only creates the master admin while no admin exists.
 After editing `src/db/schema.ts`, run `npm run db:generate` and commit the new file with
 the schema change, then apply it with `npm run db:push`.
 
+### Recovering the master account
+
+If the master admin forgets their password or loses access to their email, someone with
+the database connection string puts the new values in `MASTER_EMAIL` and
+`MASTER_PASSWORD` in `.env.local` and runs:
+
+```bash
+npm run db:reset-master
+```
+
+It moves the master account to `MASTER_EMAIL`, sets its password to `MASTER_PASSWORD`,
+clears its sign-in lockout and signs out every existing master session. Other admins are
+left alone; the master resets their passwords from **Admin accounts**.
+
 ### Local development
 
 ```bash
@@ -67,6 +81,9 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and sign in at
 [http://localhost:3000/login](http://localhost:3000/login).
+
+The local site uses whichever database `DATABASE_URL` points at. With the production
+connection string, edits made locally change the live site.
 
 ## Editing the site
 
@@ -96,6 +113,7 @@ link. Officers without a photo show their initials.
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
 | `npm run db:seed` | Seed the database with the site's content and the master admin |
+| `npm run db:reset-master` | Move the master account to `MASTER_EMAIL` and reset its password |
 
 ## Project structure
 
@@ -128,4 +146,12 @@ custom domain `shpecmu.com` is configured in the Vercel project settings rather 
 not deploy anything.
 
 The Vercel project needs `DATABASE_URL`, `AUTH_SECRET` and `BLOB_READ_WRITE_TOKEN`.
-`MASTER_EMAIL` and `MASTER_PASSWORD` are only read by `npm run db:seed`.
+`MASTER_EMAIL` and `MASTER_PASSWORD` are only read by `npm run db:seed` and
+`npm run db:reset-master`.
+
+Each preview deployment gets its own Neon database branch (`preview/<git-branch>`), a copy
+of production's data, so editing a preview never changes the live site. Previews also
+never delete uploaded images, because their copied rows still point at production's
+images. `.github/workflows/preview-db-cleanup.yml` deletes a branch's preview database
+when its pull request closes; it needs a `NEON_PROJECT_ID` repository variable and a
+`NEON_API_KEY` repository secret.
