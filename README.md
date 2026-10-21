@@ -62,16 +62,26 @@ the schema change, then apply it with `npm run db:push`.
 ### Recovering the master account
 
 If the master admin forgets their password or loses access to their email, someone with
-the database connection string puts the new values in `MASTER_EMAIL` and
-`MASTER_PASSWORD` in `.env.local` and runs:
+the database connection string puts the new values in `.env.local`, with the password in
+single quotes so characters such as `#` are kept:
+
+```
+MASTER_EMAIL=new-master@example.com
+MASTER_PASSWORD='the new password'
+```
+
+then runs:
 
 ```bash
 npm run db:reset-master
 ```
 
 It moves the master account to `MASTER_EMAIL`, sets its password to `MASTER_PASSWORD`,
-clears its sign-in lockout and signs out every existing master session. Other admins are
-left alone; the master resets their passwords from **Admin accounts**.
+clears the failed sign-ins recorded against both emails and signs out every existing
+master session. It reports the new password's length; if that doesn't match what you
+typed, fix the quoting and run it again. Variables already set in the shell take
+precedence over `.env.local`. Other admins are left alone; the master resets their
+passwords from **Admin accounts**.
 
 ### Local development
 
@@ -149,9 +159,25 @@ The Vercel project needs `DATABASE_URL`, `AUTH_SECRET` and `BLOB_READ_WRITE_TOKE
 `MASTER_EMAIL` and `MASTER_PASSWORD` are only read by `npm run db:seed` and
 `npm run db:reset-master`.
 
-Each preview deployment gets its own Neon database branch (`preview/<git-branch>`), a copy
-of production's data, so editing a preview never changes the live site. Previews also
-never delete uploaded images, because their copied rows still point at production's
-images. `.github/workflows/preview-db-cleanup.yml` deletes a branch's preview database
-when its pull request closes; it needs a `NEON_PROJECT_ID` repository variable and a
-`NEON_API_KEY` repository secret.
+### Preview databases
+
+Neon's preview branching is enabled on the database's Vercel connection (Deployments
+Configuration → **Preview**, with **Resource must be active before deployment** on). Each
+git branch's previews share one Neon branch, `preview/<git-branch>`: a copy of
+production's data taken at that branch's first preview, so editing a preview never
+changes the live site.
+
+- **Images:** previews upload to production's Blob store and never delete images, because
+  their copied rows still point at production's images. Images uploaded from previews
+  are left behind.
+- **Sign-in:** Preview must have its own `AUTH_SECRET`. A preview's copy can hold an old
+  password hash, and a session signed with production's secret would be accepted by
+  production.
+- **Schema changes:** a pull request that changes `src/db/schema.ts` must also apply the
+  change to its preview branch with `npm run db:push` against that branch's connection
+  string, or its previews will fail.
+- **Cleanup:** `.github/workflows/preview-db-cleanup.yml` deletes a pull request's Neon
+  branch when it closes. It needs a `NEON_PROJECT_ID` repository variable and a
+  `NEON_API_KEY` repository secret. GitHub doesn't run it for a pull request closed
+  while it has merge conflicts; delete that branch from the Neon console's
+  **Branches** page. The free Neon plan allows 10 branches per project.
