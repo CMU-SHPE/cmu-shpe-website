@@ -26,9 +26,14 @@ describe('safeErrorMessage', () => {
 })
 
 describe('isUniqueViolation', () => {
+  const duplicate = postgresError('duplicate key value violates unique constraint "admins_email_unique"', '23505')
+
   it('recognises a unique constraint violation wrapped by Drizzle', () => {
-    const duplicate = postgresError('duplicate key value violates unique constraint "admins_email_unique"', '23505')
     expect(isUniqueViolation(queryError(duplicate))).toBe(true)
+  })
+
+  it('recognises the raw Neon error that db.batch throws', () => {
+    expect(isUniqueViolation(duplicate)).toBe(true)
   })
 
   it('ignores other failures', () => {

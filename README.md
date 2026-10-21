@@ -63,7 +63,7 @@ the schema change, then apply it with `npm run db:push`.
 
 If the master admin forgets their password or loses access to their email, someone with
 the database connection string puts the new values in `.env.local`, with the password in
-single quotes so characters such as `#` are kept:
+single quotes so characters such as `#` are kept (the password itself can't contain `'`):
 
 ```
 MASTER_EMAIL=new-master@example.com

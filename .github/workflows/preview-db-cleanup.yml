@@ -21,7 +21,8 @@ jobs:
           BRANCH_NAME: preview/${{ github.head_ref }}
         run: |
           api="https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches"
-          branch_id=$(curl -fsS "$api" -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY" \
+          branch_id=$(curl -fsS -G "$api" --data-urlencode "search=$BRANCH_NAME" \
+            -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY" \
             | jq -r --arg name "$BRANCH_NAME" '[.branches[] | select(.name == $name and (.default | not)) | .id] | first // empty')
           if [ -z "$branch_id" ]; then
             echo "No Neon branch named $BRANCH_NAME; nothing to delete."
