@@ -182,5 +182,5 @@ changes the live site.
   while it has merge conflicts; delete that branch by running the workflow by hand
   (Actions → **Clean up preview database** → **Run workflow**, or
   `gh workflow run preview-db-cleanup.yml -f branch=preview/<git-branch>`), or from the
-  Neon console's **Branches** page. When nothing matches, the run lists the `preview/`
-  branches it found. The free Neon plan allows 10 branches per project.
+  Neon console's **Branches** page. When nothing matches, the run shows a warning and lists
+  every branch in the Neon project. The free Neon plan allows 10 branches per project.

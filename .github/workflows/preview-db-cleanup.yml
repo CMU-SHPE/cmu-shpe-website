@@ -25,7 +25,7 @@ jobs:
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || format('preview/{0}', github.head_ref) }}
         run: |
-          if [[ "$BRANCH_NAME" != preview/?* || "$BRANCH_NAME" == *$'\n'* ]]; then
+          if [[ "$BRANCH_NAME" != preview/?* || "$BRANCH_NAME" == *[[:cntrl:]]* ]]; then
             echo "::error::Only a single-line preview/<name> branch can be deleted by this workflow."
             exit 1
           fi
