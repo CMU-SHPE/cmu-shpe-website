@@ -53,8 +53,8 @@ jobs:
 
           if [ -z "$branch_id" ]; then
             echo "::warning::No Neon branch named $BRANCH_NAME; nothing deleted."
-            echo "Preview branches found:"
-            grep '^preview/' <<<"$seen" || echo "(none)"
+            echo "Branches in project $NEON_PROJECT_ID ($(grep -c . <<<"$seen" || true)):"
+            grep . <<<"$seen" || echo "(none)"
             exit 0
           fi
           curl -fsS -X DELETE "$api/$branch_id" -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY" > /dev/null
