@@ -23,12 +23,11 @@ export default function OfficerAvatar({
   const textClass = size === 'lg' ? 'text-xl' : 'text-2xl'
 
   if (photo && !imgError) {
-    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
     return (
       <div className={`${sizeClasses} rounded-full overflow-hidden mx-auto mb-4 flex-shrink-0`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`${base}${photo}`}
+          src={photo}
           alt={name}
           onError={() => setImgError(true)}
           className="w-full h-full object-cover"
