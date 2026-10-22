@@ -11,7 +11,6 @@ const config: Config = {
         'shpe-red': '#C8102E',
         'shpe-gold': '#FDB913',
         'cmu-maroon': '#4B0012',
-        'sgm-bg': '#555555',
       },
     },
   },

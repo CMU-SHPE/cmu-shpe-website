@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { navLinks } from '@/lib/nav'
+import SubmitButton from './submit-button'
 import { useTheme } from './ThemeProvider'
 
 function SunIcon() {
@@ -25,13 +26,48 @@ function MoonIcon() {
   )
 }
 
-export default function Navbar() {
+function SignedInAs({ name }: { name: string }) {
+  return (
+    <span className="text-gray-300">
+      Signed in as <span className="font-semibold text-white">{name}</span>
+    </span>
+  )
+}
+
+const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold'
+
+export default function Navbar({
+  user,
+  signOutAction,
+}: {
+  user: { name: string } | null
+  signOutAction: () => Promise<void>
+}) {
   const [isOpen, setIsOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
 
   return (
     <nav className="bg-cmu-maroon sticky top-0 z-50 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {user && (
+          <div className="hidden md:flex items-center justify-end gap-4 border-b border-white/10 py-1.5 text-sm">
+            <SignedInAs name={user.name} />
+            <Link
+              href="/admin"
+              className={`rounded-md px-2 py-1 font-semibold text-shpe-gold hover:text-white transition-colors duration-200 ${focusRing}`}
+            >
+              Admin
+            </Link>
+            <form action={signOutAction}>
+              <SubmitButton
+                pendingLabel="Signing out…"
+                className={`rounded-md border border-white/30 px-3 py-1 font-medium text-white hover:bg-white/10 disabled:opacity-60 ${focusRing}`}
+              >
+                Sign out
+              </SubmitButton>
+            </form>
+          </div>
+        )}
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2 group">
@@ -113,6 +149,28 @@ export default function Navbar() {
             >
               Join Us
             </Link>
+            {user && (
+              <div className="mt-3 border-t border-white/10 pt-3 space-y-1">
+                <p className="px-3 py-1 text-sm">
+                  <SignedInAs name={user.name} />
+                </p>
+                <Link
+                  href="/admin"
+                  className={`block text-shpe-gold hover:text-white hover:bg-white/10 px-3 py-2 rounded-md text-base font-semibold transition-colors duration-200 ${focusRing}`}
+                  onClick={() => setIsOpen(false)}
+                >
+                  Admin
+                </Link>
+                <form action={signOutAction}>
+                  <SubmitButton
+                    pendingLabel="Signing out…"
+                    className={`w-full rounded-md border border-white/30 px-3 py-2 text-base font-semibold text-white hover:bg-white/10 disabled:opacity-60 ${focusRing}`}
+                  >
+                    Sign out
+                  </SubmitButton>
+                </form>
+              </div>
+            )}
           </div>
         )}
       </div>

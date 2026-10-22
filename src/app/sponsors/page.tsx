@@ -1,50 +1,48 @@
 import Link from 'next/link'
+import Editable from '@/components/editable'
 import SponsorLogo from '@/components/SponsorLogo'
-import { sponsors, type Tier } from '@/lib/sponsors'
 import { CheckIcon } from '@/components/icons'
+import { currentAdmin } from '@/lib/admin'
+import { BENEFIT_COLUMNS, parseBenefitCell } from '@/lib/benefit-cells'
+import { type ContentKeyWithPrefix, contentKeysFor } from '@/lib/content-keys'
+import { getSiteContent, getSponsorBenefits, getSponsors } from '@/lib/queries'
+import type { Tier } from '@/lib/sponsor-tiers'
 
 const tierMeta: {
   name: Tier
-  amount?: string
+  amountKey: ContentKeyWithPrefix<'sponsors'>
   badge: string
 }[] = [
   {
     name: 'Platinum',
-    // amount: 'This is the description',
+    amountKey: 'sponsors.tier.platinum.amount',
     badge: 'bg-gray-200 text-gray-700'
   },
   {
     name: 'Gold',
-    // amount: '$2,500+',
+    amountKey: 'sponsors.tier.gold.amount',
     badge: 'bg-shpe-gold text-cmu-maroon'
   },
   {
     name: 'Silver',
-    // amount: '$1,000+',
+    amountKey: 'sponsors.tier.silver.amount',
     badge: 'bg-gray-400 text-white'
   },
   {
     name: 'Bronze',
-    // amount: '$500+',
+    amountKey: 'sponsors.tier.bronze.amount',
     badge: 'bg-orange-300 text-orange-900'
   },
 ]
 
-// true = ✓, false = ✗, number = partial count
-type Cell = boolean | number
-
-const benefits: { label: string; tiers: [Cell, Cell, Cell, Cell] }[] = [
-  //                                       Platinum  Gold     Silver   Bronze
-  { label: 'Logo on website',              tiers: [true,  true,  true,  true]  },
-  // { label: 'Access to resume book',        tiers: [true,  true,  true,  false] },
-  { label: 'Social media features',        tiers: [true,  true,  1,     false] },
-  // { label: 'Networking banquet seats',     tiers: [true,  2,     false, false] },
-  { label: 'Logo on event banners',        tiers: [true,  true,  false, false] },
-  { label: 'Newsletter spotlight',         tiers: [true,  true,  false, false] },
-  { label: 'Company presentation',         tiers: [true,  false, false, false] },
-]
-
-export default function Sponsors() {
+export default async function Sponsors() {
+  const [content, admin, sponsors, benefits] = await Promise.all([
+    getSiteContent(contentKeysFor('sponsors')),
+    currentAdmin(),
+    getSponsors(),
+    getSponsorBenefits(),
+  ])
+  const editable = Boolean(admin)
   const byTier = (tier: Tier) => sponsors.filter((s) => s.tier === tier)
 
   return (
@@ -54,15 +52,28 @@ export default function Sponsors() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center mb-4">
             <div className="h-0.5 w-8 bg-shpe-gold mr-3" />
-            <span className="text-shpe-gold font-semibold text-sm uppercase tracking-widest">
-              Our Partners
-            </span>
+            <Editable
+              as="span"
+              contentKey="sponsors.header.eyebrow"
+              value={content['sponsors.header.eyebrow']}
+              editable={editable}
+              className="text-shpe-gold font-semibold text-sm uppercase tracking-widest"
+            />
           </div>
-          <h1 className="text-5xl font-black text-white mb-3">Sponsors</h1>
-          <p className="text-gray-300 max-w-xl">
-            Our sponsors are the backbone of CMU SHPE. Their investment directly funds
-            events, travel to conferences, and professional development resources for our members.
-          </p>
+          <Editable
+            as="h1"
+            contentKey="sponsors.header.heading"
+            value={content['sponsors.header.heading']}
+            editable={editable}
+            className="text-5xl font-black text-white mb-3"
+          />
+          <Editable
+            as="p"
+            contentKey="sponsors.header.intro"
+            value={content['sponsors.header.intro']}
+            editable={editable}
+            className="text-gray-300 max-w-xl"
+          />
         </div>
       </section>
 
@@ -77,18 +88,17 @@ export default function Sponsors() {
                 <span className={`px-3 py-1 rounded-full text-sm font-bold ${tier.badge}`}>
                   {tier.name}
                 </span>
-                <span className="text-gray-400 dark:text-gray-500 text-sm">{tier.amount}</span>
+                <span className="text-gray-400 dark:text-gray-500 text-sm">{content[tier.amountKey]}</span>
               </div>
               <div className="flex flex-wrap gap-5">
                 {tierSponsors.map((sponsor) => (
                   <SponsorLogo
-                    key={sponsor.name + sponsor.logo}
+                    key={sponsor.id}
                     name={sponsor.name}
-                    logo={sponsor.logo}
+                    logo={sponsor.logoUrl}
                     tier={sponsor.tier}
                     website={sponsor.website}
                     bgColor={sponsor.bgColor}
-                    size={sponsor.size}
                   />
                 ))}
               </div>
@@ -103,17 +113,29 @@ export default function Sponsors() {
           <div className="text-center mb-14">
             <div className="flex items-center justify-center mb-4">
               <div className="h-0.5 w-8 bg-shpe-red mr-3" />
-              <span className="text-shpe-red font-semibold text-sm uppercase tracking-wider">
-                Partner With Us
-              </span>
+              <Editable
+                as="span"
+                contentKey="sponsors.become.eyebrow"
+                value={content['sponsors.become.eyebrow']}
+                editable={editable}
+                className="text-shpe-red font-semibold text-sm uppercase tracking-wider"
+              />
               <div className="h-0.5 w-8 bg-shpe-red ml-3" />
             </div>
-            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">Become a Sponsor</h2>
-            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
-              Investing in CMU SHPE means investing in the next generation of Hispanic
-              engineering talent. Our members are driven, ambitious, and ready to make
-              an impact in your organization.
-            </p>
+            <Editable
+              as="h2"
+              contentKey="sponsors.become.heading"
+              value={content['sponsors.become.heading']}
+              editable={editable}
+              className="text-4xl font-bold text-gray-900 dark:text-white mb-4"
+            />
+            <Editable
+              as="p"
+              contentKey="sponsors.become.intro"
+              value={content['sponsors.become.intro']}
+              editable={editable}
+              className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto"
+            />
           </div>
 
           {/* Tier comparison table */}
@@ -125,18 +147,24 @@ export default function Sponsors() {
                   {tierMeta.map((t) => (
                     <th key={t.name} className="px-4 py-4 font-semibold text-center">
                       <div>{t.name}</div>
-                      <div className="text-gray-300 font-normal text-xs mt-0.5">{t.amount}</div>
+                      <Editable
+                        as="div"
+                        contentKey={t.amountKey}
+                        value={content[t.amountKey]}
+                        editable={editable}
+                        className="text-gray-300 font-normal text-xs mt-0.5"
+                      />
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {benefits.map((benefit, i) => (
-                  <tr key={benefit.label} className={i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}>
+                  <tr key={benefit.id} className={i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}>
                     <td className="px-6 py-3.5 text-gray-700 dark:text-gray-300 font-medium">{benefit.label}</td>
-                    {benefit.tiers.map((cell, j) => (
-                      <td key={j} className="px-4 py-3.5 text-center">
-                        {cell === true ? <Check /> : cell === false ? <X /> : <Partial text={String(cell)} />}
+                    {tierMeta.map((t) => (
+                      <td key={t.name} className="px-4 py-3.5 text-center">
+                        <BenefitCell value={benefit[BENEFIT_COLUMNS[t.name]]} />
                       </td>
                     ))}
                   </tr>
@@ -147,11 +175,20 @@ export default function Sponsors() {
 
           {/* CTA */}
           <div className="bg-cmu-maroon rounded-2xl p-10 text-center">
-            <h3 className="text-2xl font-bold text-white mb-3">Interested in sponsoring?</h3>
-            <p className="text-gray-300 mb-6 max-w-lg mx-auto">
-              Reach out to our President or Faculty Advisor for our full sponsorship prospectus
-              and to discuss a partnership that works for your organization.
-            </p>
+            <Editable
+              as="h3"
+              contentKey="sponsors.cta.heading"
+              value={content['sponsors.cta.heading']}
+              editable={editable}
+              className="text-2xl font-bold text-white mb-3"
+            />
+            <Editable
+              as="p"
+              contentKey="sponsors.cta.paragraph"
+              value={content['sponsors.cta.paragraph']}
+              editable={editable}
+              className="text-gray-300 mb-6 max-w-lg mx-auto"
+            />
             <Link
               href="/contact"
               className="inline-flex items-center justify-center bg-shpe-gold hover:bg-yellow-400 text-cmu-maroon px-8 py-4 rounded-lg font-bold text-base transition-all duration-200"
@@ -163,6 +200,13 @@ export default function Sponsors() {
       </section>
     </div>
   )
+}
+
+function BenefitCell({ value }: { value: string }) {
+  const cell = parseBenefitCell(value)
+  if (cell.kind === 'yes') return <Check />
+  if (cell.kind === 'no') return <X />
+  return <Partial text={cell.text} />
 }
 
 function Check() {

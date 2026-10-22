@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-
-type Tier = 'Platinum' | 'Gold' | 'Silver' | 'Bronze'
+import { DEFAULT_LOGO_BACKGROUND, safeHexColor } from '@/lib/colors'
+import type { Tier } from '@/lib/sponsor-tiers'
 
 const tierSizes: Record<Tier, string> = {
   Platinum: 'w-48 h-24',
@@ -16,18 +16,16 @@ export default function SponsorLogo({
   logo,
   tier,
   website,
-  bgColor = 'bg-white',
-  size: sizeProp,
+  bgColor,
 }: {
   name: string
-  logo?: string
+  logo?: string | null
   tier: Tier
-  website?: string
+  website?: string | null
   bgColor?: string
-  size?: string
 }) {
   const [imgError, setImgError] = useState(false)
-  const size = sizeProp ?? tierSizes[tier]
+  const size = tierSizes[tier]
   const showLogo = logo && !imgError
 
   const placeholder = (
@@ -42,7 +40,8 @@ export default function SponsorLogo({
 
   const logoEl = (
     <div
-      className={`${size} rounded-xl border border-gray-200 ${bgColor} overflow-hidden flex items-center justify-center`}
+      className={`${size} rounded-xl border border-gray-200 overflow-hidden flex items-center justify-center`}
+      style={{ backgroundColor: safeHexColor(bgColor, DEFAULT_LOGO_BACKGROUND) }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
