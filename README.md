@@ -179,5 +179,8 @@ changes the live site.
 - **Cleanup:** `.github/workflows/preview-db-cleanup.yml` deletes a pull request's Neon
   branch when it closes. It needs a `NEON_PROJECT_ID` repository variable and a
   `NEON_API_KEY` repository secret. GitHub doesn't run it for a pull request closed
-  while it has merge conflicts; delete that branch from the Neon console's
-  **Branches** page. The free Neon plan allows 10 branches per project.
+  while it has merge conflicts; delete that branch by running the workflow by hand
+  (Actions → **Clean up preview database** → **Run workflow**, or
+  `gh workflow run preview-db-cleanup.yml -f branch=preview/<git-branch>`), or from the
+  Neon console's **Branches** page. When nothing matches, the run lists the `preview/`
+  branches it found. The free Neon plan allows 10 branches per project.
