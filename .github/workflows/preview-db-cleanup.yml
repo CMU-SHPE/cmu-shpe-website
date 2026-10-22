@@ -3,29 +3,58 @@ name: Clean up preview database
 on:
   pull_request:
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Neon branch to delete, for example preview/my-feature
+        required: true
 
 permissions: {}
 
 jobs:
   delete-neon-branch:
     # Workflows from forks don't receive the Neon API key.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Delete the pull request's preview database branch
+      - name: Delete the preview database branch
         shell: bash
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          BRANCH_NAME: preview/${{ github.head_ref }}
+          BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || format('preview/{0}', github.head_ref) }}
         run: |
+          if [[ "$BRANCH_NAME" != preview/?* || "$BRANCH_NAME" == *[[:cntrl:]]* ]]; then
+            echo "::error::Only a single-line preview/<name> branch can be deleted by this workflow."
+            exit 1
+          fi
+
           api="https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches"
-          branch_id=$(curl -fsS -G "$api" --data-urlencode "search=$BRANCH_NAME" \
-            -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY" \
-            | jq -r --arg name "$BRANCH_NAME" '[.branches[] | select(.name == $name and (.default | not)) | .id] | first // empty')
+          cursor=''
+          branch_id=''
+          seen=''
+          # Neon returns a next cursor even on the last page, so stop at the first empty page.
+          for _ in $(seq 1 50); do
+            args=(-fsS -G "$api" -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY")
+            [ -z "$cursor" ] || args+=(--data-urlencode "cursor=$cursor")
+            page=$(curl "${args[@]}")
+            jq -e '.branches | type == "array"' >/dev/null <<<"$page" \
+              || { echo "::error::Unexpected response from Neon's branch list."; exit 1; }
+            [ "$(jq '.branches | length' <<<"$page")" -gt 0 ] || break
+            branch_id=$(jq -r --arg name "$BRANCH_NAME" \
+              '[.branches[] | select(.name == $name and (.default | not)) | .id] | first // empty' <<<"$page")
+            [ -z "$branch_id" ] || break
+            seen+="$(jq -r '.branches[].name' <<<"$page")"$'\n'
+            next=$(jq -r '.pagination.next // empty' <<<"$page")
+            [ -n "$next" ] && [ "$next" != "$cursor" ] || break
+            cursor=$next
+          done
+
           if [ -z "$branch_id" ]; then
-            echo "No Neon branch named $BRANCH_NAME; nothing to delete."
+            echo "::warning::No Neon branch named $BRANCH_NAME; nothing deleted."
+            echo "Branches in project $NEON_PROJECT_ID ($(grep -c . <<<"$seen" || true)):"
+            grep . <<<"$seen" || echo "(none)"
             exit 0
           fi
           curl -fsS -X DELETE "$api/$branch_id" -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY" > /dev/null
