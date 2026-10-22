@@ -25,8 +25,8 @@ jobs:
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           BRANCH_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || format('preview/{0}', github.head_ref) }}
         run: |
-          if [[ "$BRANCH_NAME" != preview/* ]]; then
-            echo "Only preview/ branches can be deleted by this workflow, not $BRANCH_NAME."
+          if [[ "$BRANCH_NAME" != preview/?* || "$BRANCH_NAME" == *$'\n'* ]]; then
+            echo "::error::Only a single-line preview/<name> branch can be deleted by this workflow."
             exit 1
           fi
 
@@ -39,6 +39,8 @@ jobs:
             args=(-fsS -G "$api" -H 'accept: application/json' -H "Authorization: Bearer $NEON_API_KEY")
             [ -z "$cursor" ] || args+=(--data-urlencode "cursor=$cursor")
             page=$(curl "${args[@]}")
+            jq -e '.branches | type == "array"' >/dev/null <<<"$page" \
+              || { echo "::error::Unexpected response from Neon's branch list."; exit 1; }
             [ "$(jq '.branches | length' <<<"$page")" -gt 0 ] || break
             branch_id=$(jq -r --arg name "$BRANCH_NAME" \
               '[.branches[] | select(.name == $name and (.default | not)) | .id] | first // empty' <<<"$page")
@@ -50,7 +52,8 @@ jobs:
           done
 
           if [ -z "$branch_id" ]; then
-            echo "No Neon branch named $BRANCH_NAME; nothing to delete. Preview branches found:"
+            echo "::warning::No Neon branch named $BRANCH_NAME; nothing deleted."
+            echo "Preview branches found:"
             grep '^preview/' <<<"$seen" || echo "(none)"
             exit 0
           fi
