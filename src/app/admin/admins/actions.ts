@@ -5,12 +5,12 @@ import bcrypt from 'bcryptjs'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins } from '@/db/schema'
-import { requireMaster } from '@/lib/admin'
-import { adminId, parseAdminAccount, parsePasswordReset } from '@/lib/admin-account'
+import { requireAccountCreator, requireMaster } from '@/lib/admin'
+import { accountCreatorGrant, adminId, parseAdminAccount, parsePasswordReset } from '@/lib/admin-account'
 import { clearLoginAttempts } from '@/lib/authorize'
 
 export async function createAdmin(formData: FormData) {
-  await requireMaster()
+  await requireAccountCreator()
 
   const parsed = parseAdminAccount({
     name: formData.get('name'),
@@ -30,7 +30,13 @@ export async function createAdmin(formData: FormData) {
 
   const inserted = await db
     .insert(admins)
-    .values({ name, email, passwordHash: await bcrypt.hash(password, 12), role: 'admin' })
+    .values({
+      name,
+      email,
+      passwordHash: await bcrypt.hash(password, 12),
+      role: 'admin',
+      canCreateAccounts: false,
+    })
     .onConflictDoNothing({ target: admins.email })
     .returning({ id: admins.id })
   if (inserted.length === 0) redirect('/admin/admins?error=duplicate')
@@ -89,4 +95,29 @@ export async function resetAdminPassword(id: number, formData: FormData) {
   await clearLoginAttempts(updated.email)
 
   redirect('/admin/admins?saved=reset')
+}
+
+export async function setCanCreateAccounts(id: number, enabled: boolean) {
+  const session = await requireMaster()
+  const parsed = accountCreatorGrant.safeParse({ id, enabled })
+  if (!parsed.success) redirect('/admin/admins')
+  if (Number(session.user.id) === parsed.data.id) redirect('/admin/admins?error=self')
+
+  const db = getDb()
+  const [target] = await db
+    .select({ role: admins.role })
+    .from(admins)
+    .where(eq(admins.id, parsed.data.id))
+    .limit(1)
+  if (!target) redirect('/admin/admins?error=missing')
+  if (target.role === 'master') redirect('/admin/admins?error=master')
+
+  const updated = await db
+    .update(admins)
+    .set({ canCreateAccounts: parsed.data.enabled })
+    .where(and(eq(admins.id, parsed.data.id), eq(admins.role, 'admin')))
+    .returning({ id: admins.id })
+  if (updated.length === 0) redirect('/admin/admins?error=missing')
+
+  redirect('/admin/admins?saved=1')
 }

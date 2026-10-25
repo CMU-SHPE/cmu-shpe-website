@@ -8,6 +8,13 @@
       "when": 1792531514763,
       "tag": "0000_rare_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792898047634,
+      "tag": "0001_smiling_hairball",
+      "breakpoints": true
     }
   ]
 }

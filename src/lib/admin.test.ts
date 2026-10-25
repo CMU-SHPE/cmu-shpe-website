@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => {
-  const state = { rows: [] as { role: 'admin' | 'master'; email: string; passwordChangedAt?: Date | null }[] }
+  const state = {
+    rows: [] as {
+      role: 'admin' | 'master'
+      email: string
+      canCreateAccounts?: boolean
+      passwordChangedAt?: Date | null
+    }[],
+  }
   const limit = vi.fn(async () => state.rows)
   const query = { from: () => query, where: () => query, limit }
   return {
@@ -19,7 +26,7 @@ vi.mock('@/auth', () => ({ auth: mocks.auth }))
 vi.mock('@/db', () => ({ getDb: () => ({ select: mocks.select }) }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
-import { currentAdmin, currentSession, requireAdmin, requireMaster } from './admin'
+import { currentAdmin, currentSession, requireAccountCreator, requireAdmin, requireMaster } from './admin'
 
 const adminSession = { user: { id: '2', name: 'Ana', email: 'ana@example.com', role: 'admin' }, expires: '' }
 const masterSession = { user: { id: '1', name: 'Max', email: 'max@example.com', role: 'master' }, expires: '' }
@@ -116,6 +123,16 @@ describe('currentAdmin', () => {
     expect(admin?.user.role).toBe('admin')
     expect(admin?.user.name).toBe('Max')
   })
+
+  it('takes the account creation permission from the database row, not the token', async () => {
+    mocks.auth.mockResolvedValue({ ...adminSession, user: { ...adminSession.user, canCreateAccounts: true } })
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', canCreateAccounts: false }]
+    expect((await currentAdmin())?.user.canCreateAccounts).toBe(false)
+
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', canCreateAccounts: true }]
+    expect((await currentAdmin())?.user.canCreateAccounts).toBe(true)
+  })
 })
 
 describe('requireAdmin', () => {
@@ -153,5 +170,40 @@ describe('requireMaster', () => {
     mocks.auth.mockResolvedValue(masterSession)
     mocks.state.rows = [{ role: 'master', email: 'max@example.com' }]
     await expect(requireMaster()).resolves.toMatchObject({ user: { id: '1', role: 'master' } })
+  })
+})
+
+describe('requireAccountCreator', () => {
+  it('redirects a signed-out visitor to /login', async () => {
+    mocks.auth.mockResolvedValue(null)
+    await expect(requireAccountCreator()).rejects.toThrow('REDIRECT /login')
+  })
+
+  it('sends a plain admin back to the dashboard', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', canCreateAccounts: false }]
+    await expect(requireAccountCreator()).rejects.toThrow('REDIRECT /admin')
+  })
+
+  it('returns the session for an admin allowed to create accounts', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', canCreateAccounts: true }]
+    await expect(requireAccountCreator()).resolves.toMatchObject({
+      user: { id: '2', role: 'admin', canCreateAccounts: true },
+    })
+  })
+
+  it('returns the session for the master', async () => {
+    mocks.auth.mockResolvedValue(masterSession)
+    mocks.state.rows = [{ role: 'master', email: 'max@example.com', canCreateAccounts: false }]
+    await expect(requireAccountCreator()).resolves.toMatchObject({ user: { id: '1', role: 'master' } })
+  })
+
+  it('applies a revoked permission on the next request', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', canCreateAccounts: true }]
+    await expect(requireAccountCreator()).resolves.toBeTruthy()
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com', canCreateAccounts: false }]
+    await expect(requireAccountCreator()).rejects.toThrow('REDIRECT /admin')
   })
 })

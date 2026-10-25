@@ -8,7 +8,12 @@ declare module 'next-auth' {
   }
 
   interface Session {
-    user: DefaultSession['user'] & { id: string; role: AdminRole }
+    user: DefaultSession['user'] & {
+      id: string
+      role: AdminRole
+      /** Set only by currentAdmin() from the database, never carried in the JWT. */
+      canCreateAccounts?: boolean
+    }
     /** Epoch milliseconds when the admin last signed in with a password. */
     authTime?: number
   }

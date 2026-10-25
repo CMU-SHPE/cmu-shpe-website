@@ -17,9 +17,10 @@ import {
   tableHeadRowClass,
   tableRowClass,
 } from '@/components/admin/styles'
-import { requireMaster } from '@/lib/admin'
+import { requireAccountCreator } from '@/lib/admin'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
 import { createAdmin, deleteAdmin } from './actions'
+import AccountCreatorToggle from './account-creator-toggle'
 import ResetPassword, { linkClass } from './reset-password'
 
 const errorMessages: Record<string, string> = {
@@ -28,8 +29,8 @@ const errorMessages: Record<string, string> = {
   duplicate: 'An account with that email already exists.',
   mismatch: 'The new password and its confirmation do not match.',
   missing: 'That admin account no longer exists.',
-  self: 'You cannot delete or reset your own account here. Use Change password for your own password.',
-  master: 'Master accounts cannot be deleted or reset here.',
+  self: 'You cannot delete, reset or change permissions for your own account here. Use Change password for your own password.',
+  master: 'Master accounts cannot be deleted, reset or changed here.',
 }
 
 const roleLabels = { admin: 'Admin', master: 'Master' } as const
@@ -37,11 +38,18 @@ const roleLabels = { admin: 'Admin', master: 'Master' } as const
 export default async function AdminAccountsPage(props: {
   searchParams: Promise<{ saved?: string; error?: string }>
 }) {
-  const session = await requireMaster()
+  const session = await requireAccountCreator()
+  const isMaster = session.user.role === 'master'
   const [{ saved, error }, rows] = await Promise.all([
     props.searchParams,
     getDb()
-      .select({ id: admins.id, name: admins.name, email: admins.email, role: admins.role })
+      .select({
+        id: admins.id,
+        name: admins.name,
+        email: admins.email,
+        role: admins.role,
+        canCreateAccounts: admins.canCreateAccounts,
+      })
       .from(admins)
       .orderBy(asc(admins.name)),
   ])
@@ -67,7 +75,8 @@ export default async function AdminAccountsPage(props: {
         </h2>
         <p className={`mt-1 ${mutedTextClass}`}>
           Create the account and share the password with them directly — there is no email
-          invitation.
+          invitation. New accounts can edit the site but cannot create other accounts
+          {isMaster ? ' until you allow it below.' : '.'}
         </p>
         <form action={createAdmin} className="mt-4 max-w-md space-y-4">
           <label className={labelClass}>
@@ -141,8 +150,14 @@ export default async function AdminAccountsPage(props: {
                         Change your password
                       </Link>
                     ) : (
+                      isMaster &&
                       admin.role === 'admin' && (
                         <div className="flex flex-col items-end gap-2">
+                          <AccountCreatorToggle
+                            id={admin.id}
+                            name={admin.name}
+                            enabled={admin.canCreateAccounts}
+                          />
                           <form action={deleteAdmin.bind(null, admin.id)}>
                             <DeleteButton name={admin.name} />
                           </form>
