@@ -67,7 +67,7 @@ describe('sendEmail', () => {
     await sendEmail(message)
     expect(mocks.constructed).toEqual(['re_test_key'])
     expect(mocks.send).toHaveBeenCalledWith({
-      from: 'SHPE @ CMU <hello@news.shpecmu.com>',
+      from: '"SHPE @ CMU" <hello@news.shpecmu.com>',
       to: 'ana@example.com',
       replyTo: 'shpe@cmu.edu',
       subject: message.subject,
@@ -75,6 +75,13 @@ describe('sendEmail', () => {
       html: message.html,
     })
     expect(consoleError).not.toHaveBeenCalled()
+  })
+
+  it('quotes the display name because a bare @ is not allowed in an RFC 5322 phrase', async () => {
+    configure()
+    const { sendEmail } = await load()
+    await sendEmail(message)
+    expect(mocks.send.mock.calls[0][0].from).toMatch(/^"SHPE @ CMU" <hello@news\.shpecmu\.com>$/)
   })
 
   it.each([[null], [{ contactEmail: '' }]])('omits reply-to when settings are %j', async (settings) => {

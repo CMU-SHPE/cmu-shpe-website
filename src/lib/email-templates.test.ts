@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accountExists, confirmEmail, escapeHtml, passwordChanged, resetPassword } from './email-templates'
+import { accountExists, adminAccountExists, confirmEmail, escapeHtml, passwordChanged, resetPassword } from './email-templates'
 
 const HOSTILE = '<script>alert("x")</script> & \'Ana\''
 const LINK = 'https://shpecmu.com/join/confirm?token=abc&x=1'
@@ -14,6 +14,7 @@ describe('email templates', () => {
   const rendered = {
     confirmEmail: confirmEmail(HOSTILE, LINK),
     accountExists: accountExists(HOSTILE, 'https://shpecmu.com/login', LINK),
+    adminAccountExists: adminAccountExists(HOSTILE, 'https://shpecmu.com/login'),
     resetPassword: resetPassword(HOSTILE, LINK),
     passwordChanged: passwordChanged(HOSTILE),
   }
@@ -38,6 +39,14 @@ describe('email templates', () => {
   it('gives the existing account owner both a sign-in and a reset link', () => {
     expect(rendered.accountExists.text).toContain('https://shpecmu.com/login')
     expect(rendered.accountExists.text).toContain(LINK)
+  })
+
+  it('sends admins to the master admin instead of a reset link', () => {
+    const email = rendered.adminAccountExists
+    expect(email.text).toContain('https://shpecmu.com/login')
+    expect(email.text).toContain('reset by the master admin')
+    expect(email.text).not.toMatch(/reset-password|forgot-password|token=/)
+    expect(email.html).not.toContain('Reset my password')
   })
 
   it('falls back to a generic greeting for a blank name', () => {

@@ -56,6 +56,16 @@ export function accountExists(name: string, signInLink: string, resetLink: strin
   ])
 }
 
+export function adminAccountExists(name: string, signInLink: string): EmailContent {
+  return render('Someone tried to create an account with your email', name, [
+    'Someone tried to create a new SHPE @ CMU account using this email address, but it already belongs to a site admin. No new account was created.',
+    'If that was you, sign in instead:',
+    { href: signInLink, label: 'Sign in' },
+    'Forgot your password? A site admin’s password is reset by the master admin, so contact them for a new one.',
+    'If it wasn’t you, you can ignore this email. Your account hasn’t changed.',
+  ])
+}
+
 export function resetPassword(name: string, link: string): EmailContent {
   return render('Reset your SHPE @ CMU password', name, [
     'We got a request to reset the password for your SHPE @ CMU account.',

@@ -48,7 +48,7 @@ export async function sendEmail({ to, subject, text, html }: EmailMessage): Prom
   let result: Awaited<ReturnType<Resend['emails']['send']>>
   try {
     result = await mailer.client.emails.send({
-      from: `SHPE @ CMU <hello@${mailer.domain}>`,
+      from: `"SHPE @ CMU" <hello@${mailer.domain}>`,
       to,
       replyTo: await replyTo(),
       subject,
