@@ -12,6 +12,7 @@ import {
   sponsorBenefits,
   sponsors,
 } from '@/db/schema'
+import { contentDefaults } from '@/db/seed-data/content'
 import type { ContentKey } from '@/lib/content-keys'
 import { compareSponsors } from '@/lib/sponsor-tiers'
 
@@ -20,9 +21,7 @@ export async function getSiteSettings() {
   return row ?? null
 }
 
-export async function getSiteContent<K extends ContentKey>(
-  keys: readonly K[],
-): Promise<Record<K, string>> {
+async function getStoredContent(keys: readonly ContentKey[]): Promise<Map<string, string>> {
   const rows =
     keys.length === 0
       ? []
@@ -30,8 +29,34 @@ export async function getSiteContent<K extends ContentKey>(
           .select()
           .from(siteContent)
           .where(inArray(siteContent.key, [...keys]))
-  const stored = new Map(rows.map((row) => [row.key, row.value]))
+  return new Map(rows.map((row) => [row.key, row.value]))
+}
+
+export async function getSiteContent<K extends ContentKey>(
+  keys: readonly K[],
+): Promise<Record<K, string>> {
+  const stored = await getStoredContent(keys)
   return Object.fromEntries(keys.map((key) => [key, stored.get(key) ?? ''])) as Record<K, string>
+}
+
+/**
+ * Falls back to the seeded default only when a key has no row, so text an admin
+ * deliberately blanked stays blank. Pages that must never render empty on a
+ * database that hasn't been seeded (privacy, terms) use this.
+ */
+export async function getSiteContentWithDefaults<K extends ContentKey>(
+  keys: readonly K[],
+): Promise<Record<K, string>> {
+  const stored = await getStoredContent(keys)
+  return Object.fromEntries(keys.map((key) => [key, stored.get(key) ?? contentDefaults[key]])) as Record<
+    K,
+    string
+  >
+}
+
+export async function getPrivacyPolicyVersion(): Promise<string> {
+  const content = await getSiteContentWithDefaults(['privacy.updated'])
+  return content['privacy.updated']
 }
 
 export async function getSponsors() {
