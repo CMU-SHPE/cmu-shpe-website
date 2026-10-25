@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { asc } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { getDb } from '@/db'
-import { admins } from '@/db/schema'
+import { admins, type AdminRole } from '@/db/schema'
 import SubmitButton from '@/components/submit-button'
 import DeleteButton from '@/components/admin/delete-button'
 import StatusBanner from '@/components/admin/status-banner'
@@ -35,24 +36,47 @@ const errorMessages: Record<string, string> = {
 
 const roleLabels = { admin: 'Admin', master: 'Master' } as const
 
+type AccountRow = {
+  id: number
+  name: string
+  role: AdminRole
+  email: string | null
+  canCreateAccounts: boolean | null
+  createdByName: string | null
+}
+
+/** Only the master may see emails, permissions and creators, so other viewers never load them. */
+async function listAccounts(isMaster: boolean): Promise<AccountRow[]> {
+  const db = getDb()
+  if (!isMaster) {
+    const rows = await db
+      .select({ id: admins.id, name: admins.name, role: admins.role })
+      .from(admins)
+      .orderBy(asc(admins.name))
+    return rows.map((row) => ({ ...row, email: null, canCreateAccounts: null, createdByName: null }))
+  }
+
+  const creators = alias(admins, 'creators')
+  return db
+    .select({
+      id: admins.id,
+      name: admins.name,
+      role: admins.role,
+      email: admins.email,
+      canCreateAccounts: admins.canCreateAccounts,
+      createdByName: creators.name,
+    })
+    .from(admins)
+    .leftJoin(creators, eq(admins.createdBy, creators.id))
+    .orderBy(asc(admins.name))
+}
+
 export default async function AdminAccountsPage(props: {
   searchParams: Promise<{ saved?: string; error?: string }>
 }) {
   const session = await requireAccountCreator()
   const isMaster = session.user.role === 'master'
-  const [{ saved, error }, rows] = await Promise.all([
-    props.searchParams,
-    getDb()
-      .select({
-        id: admins.id,
-        name: admins.name,
-        email: admins.email,
-        role: admins.role,
-        canCreateAccounts: admins.canCreateAccounts,
-      })
-      .from(admins)
-      .orderBy(asc(admins.name)),
-  ])
+  const [{ saved, error }, rows] = await Promise.all([props.searchParams, listAccounts(isMaster)])
 
   return (
     <div className="space-y-6">
@@ -122,12 +146,19 @@ export default async function AdminAccountsPage(props: {
               <th scope="col" className="py-2 pr-4 font-medium">
                 Name
               </th>
-              <th scope="col" className="py-2 pr-4 font-medium">
-                Email
-              </th>
+              {isMaster && (
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  Email
+                </th>
+              )}
               <th scope="col" className="py-2 pr-4 font-medium">
                 Role
               </th>
+              {isMaster && (
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  Created by
+                </th>
+              )}
               <th scope="col" className="py-2">
                 <span className="sr-only">Actions</span>
               </th>
@@ -142,8 +173,9 @@ export default async function AdminAccountsPage(props: {
                     {admin.name}
                     {isSelf && <span className={`ml-2 ${mutedTextClass}`}>(you)</span>}
                   </td>
-                  <td className="py-3 pr-4 break-all">{admin.email}</td>
+                  {isMaster && <td className="py-3 pr-4 break-all">{admin.email}</td>}
                   <td className="py-3 pr-4">{roleLabels[admin.role]}</td>
+                  {isMaster && <td className="py-3 pr-4">{admin.createdByName ?? '—'}</td>}
                   <td className="py-3 text-right align-top">
                     {isSelf ? (
                       <Link href="/admin/account" className={linkClass}>
@@ -156,12 +188,12 @@ export default async function AdminAccountsPage(props: {
                           <AccountCreatorToggle
                             id={admin.id}
                             name={admin.name}
-                            enabled={admin.canCreateAccounts}
+                            enabled={admin.canCreateAccounts === true}
                           />
                           <form action={deleteAdmin.bind(null, admin.id)}>
                             <DeleteButton name={admin.name} />
                           </form>
-                          <ResetPassword id={admin.id} name={admin.name} email={admin.email} />
+                          <ResetPassword id={admin.id} name={admin.name} email={admin.email ?? ''} />
                         </div>
                       )
                     )}

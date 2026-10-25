@@ -155,6 +155,7 @@ describe('createAdmin', () => {
         passwordHash: '$2b$12$hash',
         role: 'admin',
         canCreateAccounts: false,
+        createdBy: 1,
       },
     ])
   })
@@ -163,13 +164,13 @@ describe('createAdmin', () => {
     mocks.state.caller = elevated
     expect(await redirectOf(createAdmin(accountForm()))).toBe('/admin/admins?saved=1')
     expect(mocks.state.inserts).toHaveLength(1)
-    expect(mocks.state.inserts[0]).toMatchObject({ role: 'admin', canCreateAccounts: false })
+    expect(mocks.state.inserts[0]).toMatchObject({ role: 'admin', canCreateAccounts: false, createdBy: 2 })
   })
 
   it('ignores role and permission fields smuggled into the form', async () => {
     mocks.state.caller = elevated
-    await redirectOf(createAdmin(accountForm({ role: 'master', canCreateAccounts: 'true' })))
-    expect(mocks.state.inserts[0]).toMatchObject({ role: 'admin', canCreateAccounts: false })
+    await redirectOf(createAdmin(accountForm({ role: 'master', canCreateAccounts: 'true', createdBy: '1' })))
+    expect(mocks.state.inserts[0]).toMatchObject({ role: 'admin', canCreateAccounts: false, createdBy: 2 })
   })
 
   it('refuses a plain admin', async () => {

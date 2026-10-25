@@ -10,7 +10,7 @@ import { accountCreatorGrant, adminId, parseAdminAccount, parsePasswordReset } f
 import { clearLoginAttempts } from '@/lib/authorize'
 
 export async function createAdmin(formData: FormData) {
-  await requireAccountCreator()
+  const session = await requireAccountCreator()
 
   const parsed = parseAdminAccount({
     name: formData.get('name'),
@@ -36,6 +36,7 @@ export async function createAdmin(formData: FormData) {
       passwordHash: await bcrypt.hash(password, 12),
       role: 'admin',
       canCreateAccounts: false,
+      createdBy: Number(session.user.id),
     })
     .onConflictDoNothing({ target: admins.email })
     .returning({ id: admins.id })
