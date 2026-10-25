@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest'
+import { accountExists, confirmEmail, escapeHtml, passwordChanged, resetPassword } from './email-templates'
+
+const HOSTILE = '<script>alert("x")</script> & \'Ana\''
+const LINK = 'https://shpecmu.com/join/confirm?token=abc&x=1'
+
+describe('escapeHtml', () => {
+  it('escapes every HTML-significant character', () => {
+    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;')
+  })
+})
+
+describe('email templates', () => {
+  const rendered = {
+    confirmEmail: confirmEmail(HOSTILE, LINK),
+    accountExists: accountExists(HOSTILE, 'https://shpecmu.com/login', LINK),
+    resetPassword: resetPassword(HOSTILE, LINK),
+    passwordChanged: passwordChanged(HOSTILE),
+  }
+
+  it.each(Object.entries(rendered))('%s escapes the name in HTML and keeps it out of the subject', (_, email) => {
+    expect(email.html).not.toContain('<script>')
+    expect(email.html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; &#39;Ana&#39;')
+    expect(email.text).toContain(`Hi ${HOSTILE},`)
+    expect(email.subject).not.toContain('Ana')
+  })
+
+  it('escapes links inside href attributes and includes them verbatim in text', () => {
+    expect(rendered.confirmEmail.html).toContain('href="https://shpecmu.com/join/confirm?token=abc&amp;x=1"')
+    expect(rendered.confirmEmail.text).toContain(LINK)
+  })
+
+  it('states each link lifetime', () => {
+    expect(rendered.confirmEmail.text).toContain('expires in 24 hours')
+    expect(rendered.resetPassword.text).toContain('expires in 1 hour')
+  })
+
+  it('gives the existing account owner both a sign-in and a reset link', () => {
+    expect(rendered.accountExists.text).toContain('https://shpecmu.com/login')
+    expect(rendered.accountExists.text).toContain(LINK)
+  })
+
+  it('falls back to a generic greeting for a blank name', () => {
+    expect(confirmEmail('   ', LINK).text.startsWith('Hi,\n')).toBe(true)
+  })
+})
