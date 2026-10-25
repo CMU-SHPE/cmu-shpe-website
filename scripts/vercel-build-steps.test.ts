@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn }))
 vi.mock('drizzle-kit/api', () => ({ pushSchema: mocks.pushSchema }))
 vi.mock('@neondatabase/serverless', () => ({ neon: () => () => {} }))
+// The real schema and drizzle-orm take seconds to load cold, enough to time out a test.
+vi.mock('../src/db/schema', () => ({ members: {} }))
+vi.mock('drizzle-orm', () => ({ sql: () => ({}) }))
 vi.mock('drizzle-orm/neon-http', () => ({ drizzle: () => ({ execute: async () => ({ rows: [] }) }) }))
 
 import { runVercelBuild, shouldPushSchema } from './vercel-build-steps'
@@ -25,12 +28,6 @@ function plan(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
-
-// The preview path imports these on first use; loading them here keeps that cold start
-// out of the first preview test's time limit when the whole suite runs in parallel.
-beforeAll(async () => {
-  await Promise.all([import('../src/db/schema'), import('drizzle-orm')])
-}, 30_000)
 
 beforeEach(() => {
   mocks.nextExitCode = 0
@@ -123,5 +120,36 @@ describe('runVercelBuild', () => {
     const pushSchema = () => new Promise<void>(() => {})
     expect(await runVercelBuild({ VERCEL_ENV: 'preview' }, { pushSchema, nextBuild }, 10)).toBe(1)
     expect(nextBuild).not.toHaveBeenCalled()
+  })
+
+  it('explains a drizzle-kit exit that happens during the push, and only then', async () => {
+    const exitEvents = new EventEmitter()
+    const nextBuild = vi.fn(async () => 0)
+    const pushSchema = async () => {
+      exitEvents.emit('exit', 0)
+      exitEvents.emit('exit', 1)
+    }
+    expect(await runVercelBuild({ VERCEL_ENV: 'preview' }, { pushSchema, nextBuild }, 1000, exitEvents)).toBe(0)
+    expect(console.error).toHaveBeenCalledTimes(1)
+    expect(console.error).toHaveBeenCalledWith('PREVIEW SCHEMA PUSH FAILED: drizzle-kit exited during the schema push')
+
+    exitEvents.emit('exit', 1)
+    expect(console.error).toHaveBeenCalledTimes(1)
+    expect(exitEvents.listenerCount('exit')).toBe(0)
+  })
+
+  it('stops listening for exits after a failed or timed-out push', async () => {
+    const exitEvents = new EventEmitter()
+    const nextBuild = vi.fn(async () => 0)
+    const hang = () => new Promise<void>(() => {})
+    expect(await runVercelBuild({ VERCEL_ENV: 'preview' }, { pushSchema: hang, nextBuild }, 10, exitEvents)).toBe(1)
+    expect(exitEvents.listenerCount('exit')).toBe(0)
+  })
+
+  it('never listens for exits outside previews', async () => {
+    const exitEvents = new EventEmitter()
+    const on = vi.spyOn(exitEvents, 'on')
+    await runVercelBuild({ VERCEL_ENV: 'production' }, undefined, undefined, exitEvents)
+    expect(on).not.toHaveBeenCalled()
   })
 })
