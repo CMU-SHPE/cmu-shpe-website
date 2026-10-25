@@ -1,27 +1,34 @@
 import type { DefaultSession } from 'next-auth'
-import type { AdminRole } from '@/db/schema'
+import type { AdminRole, MemberRole } from '@/db/schema'
+
+export type AccountKind = 'admin' | 'member'
 
 declare module 'next-auth' {
   interface User {
-    role: AdminRole
+    kind: AccountKind
+    role: AdminRole | MemberRole
     authTime?: number
   }
 
   interface Session {
     user: DefaultSession['user'] & {
       id: string
-      role: AdminRole
+      /** Missing on tokens issued before members existed; those are admin sessions. */
+      kind?: AccountKind
+      /** Narrowed by currentAdmin() and currentMember(), which take it from the database. */
+      role: AdminRole | MemberRole
       /** Set only by currentAdmin() from the database, never carried in the JWT. */
       canCreateAccounts?: boolean
     }
-    /** Epoch milliseconds when the admin last signed in with a password. */
+    /** Epoch milliseconds when the account last signed in with a password. */
     authTime?: number
   }
 }
 
 declare module '@auth/core/jwt' {
   interface JWT {
-    role: AdminRole
+    kind?: AccountKind
+    role: AdminRole | MemberRole
     authTime?: number
   }
 }

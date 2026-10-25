@@ -6,10 +6,10 @@ import {
   integer,
   pgEnum,
   pgTable,
-  primaryKey,
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 export const adminRole = pgEnum('admin_role', ['admin', 'master'])
@@ -189,9 +189,13 @@ export const newsletterTopics = pgTable('newsletter_topics', {
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 })
 
+// A serial id rather than a composite primary key: drizzle-kit's pushSchema (used for preview
+// databases) drops query parameters, and its composite-key introspection is the one query that
+// needs them, so every push after such a table exists would fail.
 export const memberTopicSubscriptions = pgTable(
   'member_topic_subscriptions',
   {
+    id: serial('id').primaryKey(),
     memberId: integer('member_id')
       .notNull()
       .references(() => members.id, { onDelete: 'cascade' }),
@@ -200,7 +204,10 @@ export const memberTopicSubscriptions = pgTable(
       .references(() => newsletterTopics.id, { onDelete: 'cascade' }),
     optedInAt: timestamp('opted_in_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.memberId, table.topicId] })],
+  (table) => [
+    uniqueIndex('member_topic_subscriptions_member_topic_idx').on(table.memberId, table.topicId),
+    index('member_topic_subscriptions_topic_idx').on(table.topicId),
+  ],
 )
 
 // Kept apart from login_attempts so spamming /join with an admin's email can't lock that admin out of login.

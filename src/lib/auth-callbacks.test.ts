@@ -6,7 +6,8 @@ type SessionParams = Parameters<typeof sessionCallback>[0]
 
 const SIGN_IN = 1_792_000_000_000
 const LATER = SIGN_IN + 60 * 60 * 1000
-const user = { id: '2', email: 'ana@example.com', name: 'Ana', role: 'admin' as const }
+const user = { id: '2', email: 'ana@example.com', name: 'Ana', kind: 'admin' as const, role: 'admin' as const }
+const member = { id: '2', email: 'mia@example.com', name: 'Mia', kind: 'member' as const, role: 'supporter' as const }
 
 function jwt(params: Partial<JwtParams>) {
   return jwtCallback({ token: {}, account: null, ...params } as JwtParams)
@@ -21,7 +22,19 @@ describe('jwtCallback', () => {
     vi.useFakeTimers({ now: LATER })
     expect(
       await jwt({ token: { sub: '2' } as JwtParams['token'], user: { ...user, authTime: SIGN_IN }, trigger: 'signIn' }),
-    ).toMatchObject({ sub: '2', role: 'admin', authTime: SIGN_IN })
+    ).toMatchObject({ sub: '2', kind: 'admin', role: 'admin', authTime: SIGN_IN })
+  })
+
+  it('marks a member sign-in with the member kind', async () => {
+    const token = await jwt({ token: { sub: '2' } as JwtParams['token'], user: { ...member, authTime: SIGN_IN }, trigger: 'signIn' })
+    expect(token).toMatchObject({ kind: 'member', role: 'supporter', authTime: SIGN_IN })
+  })
+
+  it('never changes the kind or authTime through the update trigger', async () => {
+    vi.useFakeTimers({ now: LATER })
+    const token = { sub: '2', kind: 'member' as const, role: 'supporter' as const, authTime: SIGN_IN }
+    const result = await jwt({ token, user: { ...user, authTime: LATER }, trigger: 'update', session: { kind: 'admin' } })
+    expect(result).toMatchObject({ kind: 'member', role: 'supporter', authTime: SIGN_IN })
   })
 
   it('does not invent an authTime when the user has none', async () => {
@@ -52,5 +65,23 @@ describe('sessionCallback', () => {
       token: { sub: '2', role: 'master', authTime: SIGN_IN },
     } as unknown as SessionParams)
     expect(result).toMatchObject({ user: { id: '2', role: 'master' }, authTime: SIGN_IN })
+  })
+
+  it('exposes the kind from the token', async () => {
+    const session = { user: { id: '', email: 'mia@example.com', role: 'supporter' as const }, expires: '' }
+    const result = await sessionCallback({
+      session,
+      token: { sub: '2', kind: 'member', role: 'supporter', authTime: SIGN_IN },
+    } as unknown as SessionParams)
+    expect(result).toMatchObject({ user: { id: '2', kind: 'member', role: 'supporter' } })
+  })
+
+  it('leaves the kind unset for tokens issued before the claim existed', async () => {
+    const session = { user: { id: '', email: 'ana@example.com', role: 'admin' as const }, expires: '' }
+    const result = await sessionCallback({
+      session,
+      token: { sub: '2', role: 'admin', authTime: SIGN_IN },
+    } as unknown as SessionParams)
+    expect(result.user).not.toHaveProperty('kind')
   })
 })

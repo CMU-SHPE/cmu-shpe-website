@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 import type { Session } from 'next-auth'
 import { auth } from '@/auth'
 import { getDb } from '@/db'
-import { admins } from '@/db/schema'
+import { admins, type AdminRole } from '@/db/schema'
 import { adminId, mayCreateAccounts, sessionPredatesPasswordChange } from '@/lib/admin-account'
 
 /**
@@ -16,16 +16,23 @@ export async function currentSession(): Promise<Session | null> {
   return session?.user ? session : null
 }
 
+export type AdminSession = Session & {
+  user: Session['user'] & { kind: 'admin'; role: AdminRole; canCreateAccounts: boolean }
+}
+
 /**
  * Sessions are JWTs, so a deleted or demoted admin keeps a valid token until it
  * expires. This re-checks the admins row and takes the role and the account
  * creation permission from the database, so revoking either applies on the next
  * request; matching the email too stops a token from mapping onto a different admin
  * that later reused the same id, and a password change ends sessions signed in before it.
+ * Member sessions are refused before any lookup, since member ids and emails live in a
+ * separate table and can coincide with an admin's. A token with no kind predates
+ * members and is an admin session.
  */
-export const currentAdmin = cache(async (): Promise<Session | null> => {
+export const currentAdmin = cache(async (): Promise<AdminSession | null> => {
   const session = await currentSession()
-  if (!session) return null
+  if (!session || session.user.kind === 'member') return null
 
   const id = adminId.safeParse(Number(session.user.id))
   const email = session.user.email
@@ -44,7 +51,10 @@ export const currentAdmin = cache(async (): Promise<Session | null> => {
   if (!row || row.email !== email) return null
   if (sessionPredatesPasswordChange(session.authTime, row.passwordChangedAt)) return null
 
-  return { ...session, user: { ...session.user, role: row.role, canCreateAccounts: row.canCreateAccounts } }
+  return {
+    ...session,
+    user: { ...session.user, kind: 'admin', role: row.role, canCreateAccounts: row.canCreateAccounts },
+  }
 })
 
 export async function requireAdmin() {

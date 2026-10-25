@@ -78,17 +78,26 @@ function failureReason(error: unknown) {
   return error.cause instanceof Error ? `${error.message} (${error.cause.message})` : error.message
 }
 
+// drizzle-kit calls process.exit(1) without a message when introspection fails mid-push.
+function reportExitDuringPush(code: number) {
+  if (code !== 0) console.error('PREVIEW SCHEMA PUSH FAILED: drizzle-kit exited during the schema push')
+}
+
 export async function runVercelBuild(
   env: Record<string, string | undefined>,
   steps: BuildSteps = defaultSteps,
   timeoutMs = SCHEMA_PUSH_TIMEOUT_MS,
+  exitEvents: Pick<NodeJS.EventEmitter, 'on' | 'off'> = process,
 ) {
   if (shouldPushSchema(env.VERCEL_ENV)) {
+    exitEvents.on('exit', reportExitDuringPush)
     try {
       await withTimeout(steps.pushSchema(), timeoutMs, 'Preview schema push')
     } catch (error) {
       console.error('PREVIEW SCHEMA PUSH FAILED:', failureReason(error))
       return 1
+    } finally {
+      exitEvents.off('exit', reportExitDuringPush)
     }
   }
   return steps.nextBuild()
