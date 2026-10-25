@@ -6,6 +6,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -13,6 +14,8 @@ import {
 
 export const adminRole = pgEnum('admin_role', ['admin', 'master'])
 export const sponsorTier = pgEnum('sponsor_tier', ['Platinum', 'Gold', 'Silver', 'Bronze'])
+export const memberRole = pgEnum('member_role', ['supporter', 'sponsor'])
+export const memberTokenPurpose = pgEnum('member_token_purpose', ['confirm_email', 'reset_password'])
 
 export const admins = pgTable('admins', {
   id: serial('id').primaryKey(),
@@ -57,6 +60,7 @@ export const siteSettings = pgTable('site_settings', {
   youtubeUrl: text('youtube_url'),
   tiktokUrl: text('tiktok_url'),
   presenceUrl: text('presence_url'),
+  mailingAddress: text('mailing_address').notNull().default(''),
 })
 
 export const sponsors = pgTable('sponsors', {
@@ -148,8 +152,77 @@ export const sponsorBenefits = pgTable('sponsor_benefits', {
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
+export const members = pgTable('members', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  role: memberRole('role').notNull().default('supporter'),
+  emailConfirmedAt: timestamp('email_confirmed_at', { withTimezone: true, mode: 'date' }),
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true, mode: 'date' }),
+  ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true, mode: 'date' }).notNull(),
+  privacyPolicyVersion: text('privacy_policy_version').notNull(),
+  termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true, mode: 'date' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+})
+
+export const memberTokens = pgTable(
+  'member_tokens',
+  {
+    id: serial('id').primaryKey(),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    purpose: memberTokenPurpose('purpose').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('member_tokens_member_purpose_idx').on(table.memberId, table.purpose)],
+)
+
+export const newsletterTopics = pgTable('newsletter_topics', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+})
+
+export const memberTopicSubscriptions = pgTable(
+  'member_topic_subscriptions',
+  {
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    topicId: integer('topic_id')
+      .notNull()
+      .references(() => newsletterTopics.id, { onDelete: 'cascade' }),
+    optedInAt: timestamp('opted_in_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.memberId, table.topicId] })],
+)
+
+// Kept apart from login_attempts so spamming /join with an admin's email can't lock that admin out of login.
+export const requestThrottle = pgTable(
+  'request_throttle',
+  {
+    id: serial('id').primaryKey(),
+    action: text('action').notNull(),
+    email: text('email').notNull(),
+    ip: text('ip'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('request_throttle_email_idx').on(table.action, table.email, table.createdAt),
+    index('request_throttle_ip_idx').on(table.action, table.ip, table.createdAt),
+  ],
+)
+
 export type AdminRole = (typeof adminRole.enumValues)[number]
 export type SponsorTier = (typeof sponsorTier.enumValues)[number]
+export type MemberRole = (typeof memberRole.enumValues)[number]
+export type MemberTokenPurpose = (typeof memberTokenPurpose.enumValues)[number]
 
 export type Admin = typeof admins.$inferSelect
 export type LoginAttempt = typeof loginAttempts.$inferSelect
@@ -163,3 +236,8 @@ export type HomeStat = typeof homeStats.$inferSelect
 export type HomePillar = typeof homePillars.$inferSelect
 export type NationalStat = typeof nationalStats.$inferSelect
 export type SponsorBenefit = typeof sponsorBenefits.$inferSelect
+export type Member = typeof members.$inferSelect
+export type MemberToken = typeof memberTokens.$inferSelect
+export type NewsletterTopic = typeof newsletterTopics.$inferSelect
+export type MemberTopicSubscription = typeof memberTopicSubscriptions.$inferSelect
+export type RequestThrottle = typeof requestThrottle.$inferSelect
