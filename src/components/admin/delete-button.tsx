@@ -3,13 +3,15 @@
 import SubmitButton from '@/components/submit-button'
 import { dangerButtonClass } from '@/components/admin/styles'
 
-export default function DeleteButton({ name }: { name: string }) {
+export default function DeleteButton({ name, warning }: { name: string; warning?: string }) {
+  const message = warning ? `Delete ${name}? ${warning} This can't be undone.` : `Delete ${name}? This can't be undone.`
+
   return (
     <SubmitButton
       pendingLabel="Deleting…"
       className={dangerButtonClass}
       onClick={(event) => {
-        if (!window.confirm(`Delete ${name}? This can't be undone.`)) event.preventDefault()
+        if (!window.confirm(message)) event.preventDefault()
       }}
     >
       {'Delete '}
