@@ -27,7 +27,12 @@ Chapter officers sign in and edit the whole site without touching code:
   page, and the sponsor benefits table.
 - **Site settings** — contact email, weekly meeting day, time and location, social links
   (a blank link hides its icon) and the contact form's subject options.
-- **Admin accounts** — the master admin creates and removes the other admin accounts.
+- **Admin accounts** — the master admin creates and removes the other admin accounts, and
+  can allow individual admins to create accounts too. Those admins can only add regular
+  admins and see the account list by name and role; email addresses, deleting accounts,
+  resetting passwords and changing permissions stay with the master. The master's list
+  also shows who created each account (— for the original master account, accounts made
+  before this was recorded, or when the creator has since been deleted).
 
 ## Getting started
 
@@ -106,6 +111,10 @@ connection string, edits made locally change the live site.
 4. Choose **Change password** in the admin sidebar to change your own password. The master
    admin can reset another admin's password from **Admin accounts** and share it with them
    directly. Either change signs that account out on every other device.
+5. **Admin accounts** appears in the sidebar for the master and for any admin the master has
+   allowed to create accounts. The master turns that on or off per admin with the **Can
+   create accounts** button next to their name; the change applies on that admin's next
+   page load. Every new account starts as a regular admin without the permission.
 
 Images uploaded in the admin are stored in Vercel Blob. Fields that take an image also
 accept a path to a file in `public/` (for example `/officers/jeff.jpg`) or an `https://`

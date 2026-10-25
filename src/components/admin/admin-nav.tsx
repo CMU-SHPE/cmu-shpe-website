@@ -15,16 +15,16 @@ const sections: AdminSection[] = [
   { href: '/admin/account', label: 'Change password' },
 ]
 
-const masterSections: AdminSection[] = [{ href: '/admin/admins', label: 'Admin accounts' }]
+const accountSections: AdminSection[] = [{ href: '/admin/admins', label: 'Admin accounts' }]
 
 function isActive(pathname: string, href: string) {
   if (href === '/admin') return pathname === href
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export default function AdminNav({ isMaster }: { isMaster: boolean }) {
+export default function AdminNav({ canCreateAccounts }: { canCreateAccounts: boolean }) {
   const pathname = usePathname()
-  const links = isMaster ? [...sections, ...masterSections] : sections
+  const links = canCreateAccounts ? [...sections, ...accountSections] : sections
 
   return (
     <nav aria-label="Admin" className="md:w-56 md:shrink-0">
