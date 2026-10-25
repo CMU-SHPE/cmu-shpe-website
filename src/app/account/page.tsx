@@ -92,7 +92,11 @@ export default async function AccountPage(props: {
           <p className={`mt-1 ${mutedTextClass}`}>Signed in as {member.user.email}</p>
         </div>
 
-        {hasResult && <FocusOnMount id={STATUS_ID}>{banner}</FocusOnMount>}
+        {hasResult && (
+          <FocusOnMount key={error ?? knownSaved} id={STATUS_ID}>
+            {banner}
+          </FocusOnMount>
+        )}
 
         <section className={cardClass} aria-labelledby="name-heading">
           <h2 id="name-heading" className={sectionHeadingClass}>
