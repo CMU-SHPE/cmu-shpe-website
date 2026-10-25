@@ -178,9 +178,10 @@ changes the live site.
   deployments it applies `src/db/schema.ts` to that preview's Neon branch before building.
   If a change would delete data already in the preview's tables, or drizzle-kit can't
   tell a rename from a drop-and-create, nothing is applied and the preview build fails;
-  apply that change to the preview branch by hand. Production and
-  local builds never touch the schema: apply production changes yourself with
-  `npm run db:push` against production's connection string.
+  apply that change to the preview branch by hand. Production and local builds never
+  touch the schema: apply production changes yourself with `npm run db:push` against
+  production's connection string *before* merging to `main`, because the new code
+  queries the new columns as soon as it deploys.
 - **Cleanup:** `.github/workflows/preview-db-cleanup.yml` deletes a pull request's Neon
   branch when it closes. It needs a `NEON_PROJECT_ID` repository variable and a
   `NEON_API_KEY` repository secret. GitHub doesn't run it for a pull request closed
