@@ -29,8 +29,10 @@ Chapter officers sign in and edit the whole site without touching code:
   (a blank link hides its icon) and the contact form's subject options.
 - **Admin accounts** — the master admin creates and removes the other admin accounts, and
   can allow individual admins to create accounts too. Those admins can only add regular
-  admins; deleting accounts, resetting passwords and changing permissions stay with the
-  master.
+  admins and see the account list by name and role; email addresses, deleting accounts,
+  resetting passwords and changing permissions stay with the master. The master's list
+  also shows who created each account (— for the original master account, accounts made
+  before this was recorded, or when the creator has since been deleted).
 
 ## Getting started
 
