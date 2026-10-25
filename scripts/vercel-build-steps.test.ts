@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
@@ -25,6 +25,12 @@ function plan(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+// The preview path imports these on first use; loading them here keeps that cold start
+// out of the first preview test's time limit when the whole suite runs in parallel.
+beforeAll(async () => {
+  await Promise.all([import('../src/db/schema'), import('drizzle-orm')])
+}, 30_000)
 
 beforeEach(() => {
   mocks.nextExitCode = 0
