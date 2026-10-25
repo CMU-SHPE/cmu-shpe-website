@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_ADMIN_ID,
+  accountCreatorGrant,
   adminId,
+  mayCreateAccounts,
   parseAdminAccount,
   parsePasswordChange,
   parsePasswordReset,
@@ -135,6 +137,44 @@ describe('parsePasswordReset', () => {
   it('treats an out-of-range id as a missing account', () => {
     for (const id of [0, -1, 1.5, MAX_ADMIN_ID + 1, Number.NaN]) {
       expect(reset({ id })).toEqual({ success: false, code: 'missing' })
+    }
+  })
+})
+
+describe('mayCreateAccounts', () => {
+  it('allows the master whether or not the flag is set', () => {
+    expect(mayCreateAccounts({ role: 'master' })).toBe(true)
+    expect(mayCreateAccounts({ role: 'master', canCreateAccounts: false })).toBe(true)
+  })
+
+  it('allows an admin only when the flag is set', () => {
+    expect(mayCreateAccounts({ role: 'admin', canCreateAccounts: true })).toBe(true)
+    expect(mayCreateAccounts({ role: 'admin', canCreateAccounts: false })).toBe(false)
+  })
+
+  it('denies an admin whose flag was never read from the database', () => {
+    expect(mayCreateAccounts({ role: 'admin' })).toBe(false)
+  })
+})
+
+describe('accountCreatorGrant', () => {
+  it('accepts an in-range id with a boolean', () => {
+    expect(accountCreatorGrant.safeParse({ id: 2, enabled: true })).toMatchObject({
+      success: true,
+      data: { id: 2, enabled: true },
+    })
+    expect(accountCreatorGrant.safeParse({ id: MAX_ADMIN_ID, enabled: false }).success).toBe(true)
+  })
+
+  it('rejects out-of-range ids', () => {
+    for (const id of [0, -1, 1.5, MAX_ADMIN_ID + 1, Number.NaN, '2']) {
+      expect(accountCreatorGrant.safeParse({ id, enabled: true }).success).toBe(false)
+    }
+  })
+
+  it('rejects anything but a real boolean', () => {
+    for (const enabled of ['true', 1, null, undefined]) {
+      expect(accountCreatorGrant.safeParse({ id: 2, enabled }).success).toBe(false)
     }
   })
 })

@@ -1,0 +1,1 @@
+ALTER TABLE "admins" ADD COLUMN "can_create_accounts" boolean DEFAULT false NOT NULL;

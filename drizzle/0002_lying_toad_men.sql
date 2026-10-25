@@ -1,0 +1,2 @@
+ALTER TABLE "admins" ADD COLUMN "created_by" integer;--> statement-breakpoint
+ALTER TABLE "admins" ADD CONSTRAINT "admins_created_by_admins_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admins"("id") ON DELETE set null ON UPDATE no action;

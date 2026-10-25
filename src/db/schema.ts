@@ -1,4 +1,6 @@
 import {
+  type AnyPgColumn,
+  boolean,
   date,
   index,
   integer,
@@ -18,6 +20,8 @@ export const admins = pgTable('admins', {
   name: text('name').notNull(),
   passwordHash: text('password_hash').notNull(),
   role: adminRole('role').notNull().default('admin'),
+  canCreateAccounts: boolean('can_create_accounts').notNull().default(false),
+  createdBy: integer('created_by').references((): AnyPgColumn => admins.id, { onDelete: 'set null' }),
   passwordChangedAt: timestamp('password_changed_at', { withTimezone: true, mode: 'date' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })

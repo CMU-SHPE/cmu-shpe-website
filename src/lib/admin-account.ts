@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AdminRole } from '@/db/schema'
 
 export const MIN_PASSWORD_LENGTH = 12
 export const MAX_PASSWORD_BYTES = 72
@@ -18,6 +19,12 @@ const adminAccountSchema = z.object({
 })
 
 export const adminId = z.number().int().positive().max(MAX_ADMIN_ID)
+
+export function mayCreateAccounts(user: { role: AdminRole; canCreateAccounts?: boolean }): boolean {
+  return user.role === 'master' || user.canCreateAccounts === true
+}
+
+export const accountCreatorGrant = z.object({ id: adminId, enabled: z.boolean() })
 
 export type AdminAccountInput = z.infer<typeof adminAccountSchema>
 
