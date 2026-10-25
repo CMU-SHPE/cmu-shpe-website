@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { CONTENT_KEYS, contentKeyDefinition, type ContentKey } from '@/lib/content-keys'
 import { emailAddress, httpUrl } from '@/lib/form-fields'
+import { MAX_CONTENT_LENGTH } from '@/lib/content-schema'
 import { imageSource } from '@/lib/validation'
 import { contentDefaults } from './content'
 import { homePillarRows, homeStatRows, nationalStatRows, sponsorBenefitRows } from './lists'
@@ -53,6 +54,36 @@ describe('content defaults', () => {
     expect(contentDefaults['footer.tagline']).toBe(
       'Society of Hispanic Professional Engineers\nColorado Mesa University Chapter',
     )
+  })
+
+  it('fits every default within the inline editor limit', () => {
+    for (const [key, value] of Object.entries(contentDefaults)) {
+      expect(value.length, key).toBeLessThanOrEqual(MAX_CONTENT_LENGTH)
+    }
+  })
+
+  it('covers every topic the privacy policy must disclose', () => {
+    const privacy = Object.entries(contentDefaults)
+      .filter(([key]) => key.startsWith('privacy.'))
+      .map(([, value]) => value)
+      .join('\n')
+    for (const topic of [
+      'name and email address',
+      'hashed',
+      'newsletter',
+      'RSVP',
+      'Vercel',
+      'Neon',
+      'Resend',
+      'deleted after 7 days',
+      'about 15 minutes',
+      'Delete my account',
+      'strictly necessary',
+      'analytics',
+      'under 13',
+    ]) {
+      expect(privacy, topic).toContain(topic)
+    }
   })
 
   it('leaves the tier amounts empty, as they are today', () => {
