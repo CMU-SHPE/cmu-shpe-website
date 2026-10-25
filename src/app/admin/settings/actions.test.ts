@@ -2,16 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
   const calls: string[] = []
+  const updates: Record<string, unknown>[] = []
   const chain = (result: unknown) => {
     const query: Record<string, unknown> = {}
-    for (const method of ['from', 'orderBy', 'set', 'where', 'values', 'onConflictDoUpdate']) {
+    for (const method of ['from', 'orderBy', 'where', 'values', 'onConflictDoUpdate']) {
       query[method] = () => query
+    }
+    query.set = (values: Record<string, unknown>) => {
+      updates.push(values)
+      return query
     }
     query.limit = async () => result
     return query
   }
   return {
     calls,
+    updates,
     existing: [] as { id: number }[],
     requireAdmin: vi.fn(async () => calls.push('requireAdmin')),
     batch: vi.fn(async () => calls.push('batch')),
@@ -60,6 +66,7 @@ function settingsForm(overrides: Record<string, string> = {}) {
 
 beforeEach(() => {
   mocks.calls.length = 0
+  mocks.updates.length = 0
   mocks.existing = [{ id: 1 }]
 })
 
@@ -77,5 +84,16 @@ describe('saveSettings', () => {
   it('redirects with an error and writes nothing for invalid input', async () => {
     await expect(saveSettings(settingsForm({ xUrl: 'javascript:alert(1)' }))).rejects.toThrow('NEXT_REDIRECT')
     expect(mocks.calls).toEqual(['requireAdmin', 'redirect /admin/settings?error=invalid'])
+  })
+
+  it('keeps the stored mailing address when the form has no mailing address field', async () => {
+    await expect(saveSettings(settingsForm())).rejects.toThrow('NEXT_REDIRECT')
+    expect(mocks.updates).toHaveLength(1)
+    expect(Object.keys(mocks.updates[0])).not.toContain('mailingAddress')
+  })
+
+  it('clears the mailing address when the field is submitted blank', async () => {
+    await expect(saveSettings(settingsForm({ mailingAddress: '' }))).rejects.toThrow('NEXT_REDIRECT')
+    expect(mocks.updates[0]).toMatchObject({ mailingAddress: '' })
   })
 })

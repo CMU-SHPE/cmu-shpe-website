@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_CONTACT_SUBJECTS, parseSettingsForm } from './settings-schema'
+import { MAX_CONTACT_SUBJECTS, MAX_MAILING_ADDRESS_LENGTH, parseSettingsForm } from './settings-schema'
 
 function settingsForm(overrides: Record<string, string> = {}) {
   const formData = new FormData()
@@ -68,5 +68,25 @@ describe('parseSettingsForm', () => {
     const formData = settingsForm()
     formData.delete('meetingLocation')
     expect(parseSettingsForm(formData).success).toBe(false)
+  })
+
+  it('leaves the mailing address out when the form has no such field', () => {
+    const parsed = parseSettingsForm(settingsForm())
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).not.toHaveProperty('mailingAddress')
+  })
+
+  it('trims a multiline mailing address and keeps its line breaks', () => {
+    const parsed = parseSettingsForm(settingsForm({ mailingAddress: '  SHPE @ CMU\n123 Main St\nAnytown, CO 00000 \n' }))
+    expect(parsed.data?.mailingAddress).toBe('SHPE @ CMU\n123 Main St\nAnytown, CO 00000')
+  })
+
+  it('accepts a blank mailing address as a deliberate clear', () => {
+    expect(parseSettingsForm(settingsForm({ mailingAddress: '   ' })).data?.mailingAddress).toBe('')
+  })
+
+  it('rejects a mailing address that is too long', () => {
+    const tooLong = 'a'.repeat(MAX_MAILING_ADDRESS_LENGTH + 1)
+    expect(parseSettingsForm(settingsForm({ mailingAddress: tooLong })).success).toBe(false)
   })
 })
