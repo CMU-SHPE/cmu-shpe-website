@@ -59,8 +59,8 @@ export default async function AdminMembersPage(props: {
 
       <StatusBanner saved={saved} error={error} errorMessages={errorMessages} savedMessage="Member deleted." />
 
-      <section className={cardClass} aria-label="Search members">
-        <form method="get" action="/admin/members" role="search" className="flex max-w-xl flex-wrap items-end gap-3">
+      <section className={cardClass}>
+        <form method="get" action="/admin/members" role="search" aria-label="Members" className="flex max-w-xl flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <label htmlFor="member-search" className={labelClass}>
               Search by name or email
