@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { asc } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { getDb } from '@/db'
-import { admins } from '@/db/schema'
+import { admins, type AdminRole } from '@/db/schema'
 import SubmitButton from '@/components/submit-button'
 import DeleteButton from '@/components/admin/delete-button'
 import StatusBanner from '@/components/admin/status-banner'
@@ -17,9 +18,10 @@ import {
   tableHeadRowClass,
   tableRowClass,
 } from '@/components/admin/styles'
-import { requireMaster } from '@/lib/admin'
+import { requireAccountCreator } from '@/lib/admin'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
 import { createAdmin, deleteAdmin } from './actions'
+import AccountCreatorToggle from './account-creator-toggle'
 import ResetPassword, { linkClass } from './reset-password'
 
 const errorMessages: Record<string, string> = {
@@ -28,23 +30,53 @@ const errorMessages: Record<string, string> = {
   duplicate: 'An account with that email already exists.',
   mismatch: 'The new password and its confirmation do not match.',
   missing: 'That admin account no longer exists.',
-  self: 'You cannot delete or reset your own account here. Use Change password for your own password.',
-  master: 'Master accounts cannot be deleted or reset here.',
+  self: 'You cannot delete, reset or change permissions for your own account here. Use Change password for your own password.',
+  master: 'Master accounts cannot be deleted, reset or changed here.',
 }
 
 const roleLabels = { admin: 'Admin', master: 'Master' } as const
 
+type AccountRow = {
+  id: number
+  name: string
+  role: AdminRole
+  email: string | null
+  canCreateAccounts: boolean | null
+  createdByName: string | null
+}
+
+/** Only the master may see emails, permissions and creators, so other viewers never load them. */
+async function listAccounts(isMaster: boolean): Promise<AccountRow[]> {
+  const db = getDb()
+  if (!isMaster) {
+    const rows = await db
+      .select({ id: admins.id, name: admins.name, role: admins.role })
+      .from(admins)
+      .orderBy(asc(admins.name))
+    return rows.map((row) => ({ ...row, email: null, canCreateAccounts: null, createdByName: null }))
+  }
+
+  const creators = alias(admins, 'creators')
+  return db
+    .select({
+      id: admins.id,
+      name: admins.name,
+      role: admins.role,
+      email: admins.email,
+      canCreateAccounts: admins.canCreateAccounts,
+      createdByName: creators.name,
+    })
+    .from(admins)
+    .leftJoin(creators, eq(admins.createdBy, creators.id))
+    .orderBy(asc(admins.name))
+}
+
 export default async function AdminAccountsPage(props: {
   searchParams: Promise<{ saved?: string; error?: string }>
 }) {
-  const session = await requireMaster()
-  const [{ saved, error }, rows] = await Promise.all([
-    props.searchParams,
-    getDb()
-      .select({ id: admins.id, name: admins.name, email: admins.email, role: admins.role })
-      .from(admins)
-      .orderBy(asc(admins.name)),
-  ])
+  const session = await requireAccountCreator()
+  const isMaster = session.user.role === 'master'
+  const [{ saved, error }, rows] = await Promise.all([props.searchParams, listAccounts(isMaster)])
 
   return (
     <div className="space-y-6">
@@ -67,7 +99,8 @@ export default async function AdminAccountsPage(props: {
         </h2>
         <p className={`mt-1 ${mutedTextClass}`}>
           Create the account and share the password with them directly — there is no email
-          invitation.
+          invitation. New accounts can edit the site but cannot create other accounts
+          {isMaster ? ' until you allow it below.' : '.'}
         </p>
         <form action={createAdmin} className="mt-4 max-w-md space-y-4">
           <label className={labelClass}>
@@ -113,12 +146,19 @@ export default async function AdminAccountsPage(props: {
               <th scope="col" className="py-2 pr-4 font-medium">
                 Name
               </th>
-              <th scope="col" className="py-2 pr-4 font-medium">
-                Email
-              </th>
+              {isMaster && (
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  Email
+                </th>
+              )}
               <th scope="col" className="py-2 pr-4 font-medium">
                 Role
               </th>
+              {isMaster && (
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  Created by
+                </th>
+              )}
               <th scope="col" className="py-2">
                 <span className="sr-only">Actions</span>
               </th>
@@ -133,20 +173,27 @@ export default async function AdminAccountsPage(props: {
                     {admin.name}
                     {isSelf && <span className={`ml-2 ${mutedTextClass}`}>(you)</span>}
                   </td>
-                  <td className="py-3 pr-4 break-all">{admin.email}</td>
+                  {isMaster && <td className="py-3 pr-4 break-all">{admin.email}</td>}
                   <td className="py-3 pr-4">{roleLabels[admin.role]}</td>
+                  {isMaster && <td className="py-3 pr-4">{admin.createdByName ?? '—'}</td>}
                   <td className="py-3 text-right align-top">
                     {isSelf ? (
                       <Link href="/admin/account" className={linkClass}>
                         Change your password
                       </Link>
                     ) : (
+                      isMaster &&
                       admin.role === 'admin' && (
                         <div className="flex flex-col items-end gap-2">
+                          <AccountCreatorToggle
+                            id={admin.id}
+                            name={admin.name}
+                            enabled={admin.canCreateAccounts === true}
+                          />
                           <form action={deleteAdmin.bind(null, admin.id)}>
                             <DeleteButton name={admin.name} />
                           </form>
-                          <ResetPassword id={admin.id} name={admin.name} email={admin.email} />
+                          <ResetPassword id={admin.id} name={admin.name} email={admin.email ?? ''} />
                         </div>
                       )
                     )}
