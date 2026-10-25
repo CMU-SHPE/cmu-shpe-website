@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { jwtCallback, sessionCallback } from '@/lib/auth-callbacks'
-import { authorizeAdmin } from '@/lib/authorize'
+import { authorizeCredentials } from '@/lib/authorize'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
@@ -13,7 +13,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: 'Password', type: 'password' },
       },
       authorize(credentials, request) {
-        return authorizeAdmin(credentials, request.headers?.get('x-forwarded-for') ?? null)
+        return authorizeCredentials(credentials, request.headers?.get('x-forwarded-for') ?? null)
       },
     }),
   ],

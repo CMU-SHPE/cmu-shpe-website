@@ -1,12 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type AdminRow = { id: number; email: string; name: string; role: 'admin' | 'master'; passwordHash: string }
+type MemberRow = {
+  id: number
+  email: string
+  name: string
+  role: 'supporter' | 'sponsor'
+  passwordHash: string
+  emailConfirmedAt: Date | null
+}
 
 const fake = vi.hoisted(() => {
   const state = {
     ops: [] as string[],
     counts: { emailAttempts: 1, ipAttempts: 1 } as Record<string, number>,
     admin: null as AdminRow | null,
+    member: null as MemberRow | null,
     limitDelayMs: 0,
   }
   const db = {
@@ -22,8 +31,12 @@ const fake = vi.hoisted(() => {
     }),
     select: (fields: Record<string, unknown>) => {
       const [key] = Object.keys(fields)
+      let table = ''
       const query = {
-        from: () => query,
+        from: (source: Record<symbol, string>) => {
+          table = source[Symbol.for('drizzle:Name')]
+          return query
+        },
         where: () => {
           if (key in state.counts) {
             state.ops.push(`count ${key}`)
@@ -32,6 +45,10 @@ const fake = vi.hoisted(() => {
           return query
         },
         limit: async () => {
+          if (table === 'members') {
+            state.ops.push('find member')
+            return state.member ? [state.member] : []
+          }
           state.ops.push('find admin')
           if (state.limitDelayMs) vi.setSystemTime(Date.now() + state.limitDelayMs)
           return state.admin ? [state.admin] : []
@@ -50,15 +67,25 @@ vi.mock('drizzle-orm', async (importOriginal) => ({
 }))
 vi.mock('bcryptjs', () => ({ default: { compare: fake.compare } }))
 
-import { authorizeAdmin } from './authorize'
+import { authorizeCredentials } from './authorize'
 
 const ana: AdminRow = { id: 2, email: 'ana@example.com', name: 'Ana', role: 'admin', passwordHash: '$2b$12$real' }
 const credentials = { email: 'Ana@Example.com', password: 'correct horse battery' }
+const mia: MemberRow = {
+  id: 2,
+  email: 'mia@example.com',
+  name: 'Mia',
+  role: 'supporter',
+  passwordHash: '$2b$12$member',
+  emailConfirmedAt: new Date('2026-10-01T00:00:00.000Z'),
+}
+const miaCredentials = { email: 'Mia@Example.com', password: 'member horse battery' }
 
 beforeEach(() => {
   fake.state.ops = []
   fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
   fake.state.admin = null
+  fake.state.member = null
   fake.state.limitDelayMs = 0
   fake.compare.mockReset()
   fake.compare.mockResolvedValue(false)
@@ -69,9 +96,9 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('authorizeAdmin', () => {
+describe('authorizeCredentials', () => {
   it('records the attempt and purges expired ones before counting', async () => {
-    await authorizeAdmin(credentials, '203.0.113.7')
+    await authorizeCredentials(credentials, '203.0.113.7')
     expect(fake.state.ops.slice(0, 4)).toEqual([
       'insert attempt',
       'purge expired attempts',
@@ -82,7 +109,7 @@ describe('authorizeAdmin', () => {
 
   it('stops before the password check once throttled, after still purging expired attempts', async () => {
     fake.state.counts.emailAttempts = 6
-    await expect(authorizeAdmin(credentials, '203.0.113.7')).resolves.toBeNull()
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
     expect(fake.state.ops).toEqual(['insert attempt', 'purge expired attempts', 'count emailAttempts', 'count ipAttempts'])
     expect(fake.compare).not.toHaveBeenCalled()
   })
@@ -103,30 +130,31 @@ describe('authorizeAdmin', () => {
       fake.state.admin = null
       fake.compare.mockResolvedValue(false)
       arrange()
-      await authorizeAdmin(credentials, null)
+      await authorizeCredentials(credentials, null)
       expect(fake.state.ops.filter((op) => op === 'purge expired attempts')).toHaveLength(1)
     }
   })
 
   it('runs bcrypt for unknown emails so timing does not reveal admin accounts', async () => {
-    await expect(authorizeAdmin(credentials, null)).resolves.toBeNull()
+    await expect(authorizeCredentials(credentials, null)).resolves.toBeNull()
     expect(fake.compare).toHaveBeenCalledTimes(1)
     expect(fake.compare.mock.calls[0][1]).toMatch(/^\$2b\$12\$/)
   })
 
   it('keeps the attempt on a wrong password', async () => {
     fake.state.admin = ana
-    await expect(authorizeAdmin(credentials, null)).resolves.toBeNull()
+    await expect(authorizeCredentials(credentials, null)).resolves.toBeNull()
     expect(fake.compare).toHaveBeenCalledWith('correct horse battery', ana.passwordHash)
   })
 
   it('returns the admin and clears their attempts on success', async () => {
     fake.state.admin = ana
     fake.compare.mockResolvedValue(true)
-    await expect(authorizeAdmin(credentials, null)).resolves.toEqual({
+    await expect(authorizeCredentials(credentials, null)).resolves.toEqual({
       id: '2',
       email: 'ana@example.com',
       name: 'Ana',
+      kind: 'admin',
       role: 'admin',
       authTime: expect.any(Number),
     })
@@ -142,7 +170,7 @@ describe('authorizeAdmin', () => {
       vi.setSystemTime(Date.now() + 250)
       return true
     })
-    const result = await authorizeAdmin(credentials, null)
+    const result = await authorizeCredentials(credentials, null)
     expect(result?.authTime).toBe(start)
     expect(Date.now()).toBe(start + 40 + 250)
   })
@@ -151,14 +179,14 @@ describe('authorizeAdmin', () => {
     fake.state.admin = ana
     fake.state.counts.emailAttempts = 5
     fake.compare.mockResolvedValue(true)
-    await expect(authorizeAdmin(credentials, null)).resolves.toMatchObject({ id: '2' })
+    await expect(authorizeCredentials(credentials, null)).resolves.toMatchObject({ id: '2' })
   })
 
   it('throttles the 6th attempt after 5 failures even with the right password', async () => {
     fake.state.admin = ana
     fake.state.counts.emailAttempts = 6
     fake.compare.mockResolvedValue(true)
-    await expect(authorizeAdmin(credentials, null)).resolves.toBeNull()
+    await expect(authorizeCredentials(credentials, null)).resolves.toBeNull()
     expect(fake.compare).not.toHaveBeenCalled()
   })
 
@@ -166,13 +194,69 @@ describe('authorizeAdmin', () => {
     fake.state.admin = ana
     fake.compare.mockResolvedValue(true)
     fake.state.counts.ipAttempts = 20
-    await expect(authorizeAdmin(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
     fake.state.counts.ipAttempts = 21
-    await expect(authorizeAdmin(credentials, '203.0.113.7')).resolves.toBeNull()
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
   })
 
   it('rejects malformed credentials without touching the database', async () => {
-    await expect(authorizeAdmin({ email: 'not-an-email', password: 'x' }, null)).resolves.toBeNull()
+    await expect(authorizeCredentials({ email: 'not-an-email', password: 'x' }, null)).resolves.toBeNull()
     expect(fake.state.ops).toEqual([])
+  })
+
+  it('signs in a confirmed member as a member when no admin has the email', async () => {
+    fake.state.member = mia
+    fake.compare.mockResolvedValue(true)
+    await expect(authorizeCredentials(miaCredentials, null)).resolves.toEqual({
+      id: '2',
+      email: 'mia@example.com',
+      name: 'Mia',
+      kind: 'member',
+      role: 'supporter',
+      authTime: expect.any(Number),
+    })
+    expect(fake.compare).toHaveBeenCalledTimes(1)
+    expect(fake.compare).toHaveBeenCalledWith('member horse battery', mia.passwordHash)
+    expect(fake.state.ops.slice(-3)).toEqual(['find admin', 'find member', 'clear email attempts'])
+  })
+
+  it('signs in as the admin without looking at members when the email is an admin', async () => {
+    fake.state.admin = ana
+    fake.state.member = { ...mia, email: ana.email }
+    fake.compare.mockResolvedValue(true)
+    await expect(authorizeCredentials(credentials, null)).resolves.toMatchObject({ kind: 'admin', role: 'admin' })
+    expect(fake.state.ops).not.toContain('find member')
+    expect(fake.compare).toHaveBeenCalledWith('correct horse battery', ana.passwordHash)
+  })
+
+  it('refuses an unconfirmed member with the right password, keeping the attempt', async () => {
+    fake.state.member = { ...mia, emailConfirmedAt: null }
+    fake.compare.mockResolvedValue(true)
+    await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
+    expect(fake.compare).toHaveBeenCalledTimes(1)
+    expect(fake.state.ops).not.toContain('clear email attempts')
+  })
+
+  it('refuses a member with a wrong password, keeping the attempt', async () => {
+    fake.state.member = mia
+    await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
+    expect(fake.compare).toHaveBeenCalledTimes(1)
+    expect(fake.state.ops).not.toContain('clear email attempts')
+  })
+
+  it('checks both tables and runs exactly one bcrypt compare against the dummy hash for an unknown email', async () => {
+    await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
+    expect(fake.state.ops.slice(-2)).toEqual(['find admin', 'find member'])
+    expect(fake.compare).toHaveBeenCalledTimes(1)
+    expect(fake.compare.mock.calls[0][1]).toMatch(/^\$2b\$12\$/)
+    expect(fake.compare.mock.calls[0][1]).not.toBe(mia.passwordHash)
+  })
+
+  it('throttles members with the same login attempt limits as admins', async () => {
+    fake.state.member = mia
+    fake.state.counts.emailAttempts = 6
+    fake.compare.mockResolvedValue(true)
+    await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
+    expect(fake.compare).not.toHaveBeenCalled()
   })
 })

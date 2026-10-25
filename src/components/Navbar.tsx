@@ -36,27 +36,35 @@ function SignedInAs({ name }: { name: string }) {
 
 const focusRing = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-shpe-gold'
 
+export type NavbarUser = { name: string; kind: 'admin' | 'member' }
+
+const accountLinks = {
+  admin: { href: '/admin', label: 'Admin' },
+  member: { href: '/account', label: 'Account' },
+} as const
+
 export default function Navbar({
   user,
   signOutAction,
 }: {
-  user: { name: string } | null
+  user: NavbarUser | null
   signOutAction: () => Promise<void>
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
+  const account = user && { name: user.name, ...accountLinks[user.kind] }
 
   return (
     <nav className="bg-cmu-maroon sticky top-0 z-50 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {user && (
+        {account && (
           <div className="hidden md:flex items-center justify-end gap-4 border-b border-white/10 py-1.5 text-sm">
-            <SignedInAs name={user.name} />
+            <SignedInAs name={account.name} />
             <Link
-              href="/admin"
+              href={account.href}
               className={`rounded-md px-2 py-1 font-semibold text-shpe-gold hover:text-white transition-colors duration-200 ${focusRing}`}
             >
-              Admin
+              {account.label}
             </Link>
             <form action={signOutAction}>
               <SubmitButton
@@ -149,17 +157,17 @@ export default function Navbar({
             >
               Join Us
             </Link>
-            {user && (
+            {account && (
               <div className="mt-3 border-t border-white/10 pt-3 space-y-1">
                 <p className="px-3 py-1 text-sm">
-                  <SignedInAs name={user.name} />
+                  <SignedInAs name={account.name} />
                 </p>
                 <Link
-                  href="/admin"
+                  href={account.href}
                   className={`block text-shpe-gold hover:text-white hover:bg-white/10 px-3 py-2 rounded-md text-base font-semibold transition-colors duration-200 ${focusRing}`}
                   onClick={() => setIsOpen(false)}
                 >
-                  Admin
+                  {account.label}
                 </Link>
                 <form action={signOutAction}>
                   <SubmitButton

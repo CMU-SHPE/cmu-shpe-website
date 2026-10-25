@@ -190,7 +190,10 @@ changes the live site.
   apply that change to the preview branch by hand. Production and local builds never
   touch the schema: apply production changes yourself with `npm run db:push` against
   production's connection string *before* merging to `main`, because the new code
-  queries the new columns as soon as it deploys.
+  queries the new columns as soon as it deploys. Give every table a single-column primary
+  key; for a join table use a serial `id` plus a unique index on the pair, not a composite
+  primary key. The preview push can't read composite primary keys back, so every later
+  preview build would fail.
 - **Cleanup:** `.github/workflows/preview-db-cleanup.yml` deletes a pull request's Neon
   branch when it closes. It needs a `NEON_PROJECT_ID` repository variable and a
   `NEON_API_KEY` repository secret. GitHub doesn't run it for a pull request closed

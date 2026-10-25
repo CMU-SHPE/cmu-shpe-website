@@ -11,10 +11,10 @@ CREATE TABLE "member_tokens" (
 );
 --> statement-breakpoint
 CREATE TABLE "member_topic_subscriptions" (
+	"id" serial PRIMARY KEY NOT NULL,
 	"member_id" integer NOT NULL,
 	"topic_id" integer NOT NULL,
-	"opted_in_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "member_topic_subscriptions_member_id_topic_id_pk" PRIMARY KEY("member_id","topic_id")
+	"opted_in_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "members" (
@@ -53,5 +53,7 @@ ALTER TABLE "member_tokens" ADD CONSTRAINT "member_tokens_member_id_members_id_f
 ALTER TABLE "member_topic_subscriptions" ADD CONSTRAINT "member_topic_subscriptions_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "member_topic_subscriptions" ADD CONSTRAINT "member_topic_subscriptions_topic_id_newsletter_topics_id_fk" FOREIGN KEY ("topic_id") REFERENCES "public"."newsletter_topics"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "member_tokens_member_purpose_idx" ON "member_tokens" USING btree ("member_id","purpose");--> statement-breakpoint
+CREATE UNIQUE INDEX "member_topic_subscriptions_member_topic_idx" ON "member_topic_subscriptions" USING btree ("member_id","topic_id");--> statement-breakpoint
+CREATE INDEX "member_topic_subscriptions_topic_idx" ON "member_topic_subscriptions" USING btree ("topic_id");--> statement-breakpoint
 CREATE INDEX "request_throttle_email_idx" ON "request_throttle" USING btree ("action","email","created_at");--> statement-breakpoint
 CREATE INDEX "request_throttle_ip_idx" ON "request_throttle" USING btree ("action","ip","created_at");

@@ -1,5 +1,5 @@
 {
-  "id": "7c1f4caa-c724-45aa-a880-d07a45f5fdd3",
+  "id": "dc5feae5-f80b-44a1-877f-e7a246e7c6c4",
   "prevId": "a0c2bba5-49c8-4500-a341-3d28ea4d3865",
   "version": "7",
   "dialect": "postgresql",
@@ -520,6 +520,12 @@
       "name": "member_topic_subscriptions",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
         "member_id": {
           "name": "member_id",
           "type": "integer",
@@ -540,7 +546,44 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "member_topic_subscriptions_member_topic_idx": {
+          "name": "member_topic_subscriptions_member_topic_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "topic_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "member_topic_subscriptions_topic_idx": {
+          "name": "member_topic_subscriptions_topic_idx",
+          "columns": [
+            {
+              "expression": "topic_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "member_topic_subscriptions_member_id_members_id_fk": {
           "name": "member_topic_subscriptions_member_id_members_id_fk",
@@ -569,15 +612,7 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "member_topic_subscriptions_member_id_topic_id_pk": {
-          "name": "member_topic_subscriptions_member_id_topic_id_pk",
-          "columns": [
-            "member_id",
-            "topic_id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
