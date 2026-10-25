@@ -20,7 +20,7 @@ vi.mock('@/lib/admin', () => ({ currentAdmin: mocks.currentAdmin }))
 vi.mock('@/lib/member', () => ({ currentMember: mocks.currentMember }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
-import LoginPage from './page'
+import LoginPage, { metadata } from './page'
 
 function page(params: Record<string, string> = {}) {
   return LoginPage({ searchParams: Promise.resolve(params) })
@@ -106,5 +106,11 @@ describe('LoginPage messages and links', () => {
       'href',
       '/join/resend',
     )
+  })
+})
+
+describe('LoginPage metadata', () => {
+  it('has its own title', () => {
+    expect(metadata.title).toBe('Sign in | SHPE @ Colorado Mesa University')
   })
 })

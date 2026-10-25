@@ -217,16 +217,27 @@ describe('authorizeCredentials', () => {
     })
     expect(fake.compare).toHaveBeenCalledTimes(1)
     expect(fake.compare).toHaveBeenCalledWith('member horse battery', mia.passwordHash)
-    expect(fake.state.ops.slice(-3)).toEqual(['find admin', 'find member', 'clear email attempts'])
+    expect(fake.state.ops.at(-1)).toBe('clear email attempts')
   })
 
-  it('signs in as the admin without looking at members when the email is an admin', async () => {
+  it('signs in as the admin when a member row has the same email', async () => {
     fake.state.admin = ana
     fake.state.member = { ...mia, email: ana.email }
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(credentials, null)).resolves.toMatchObject({ kind: 'admin', role: 'admin' })
-    expect(fake.state.ops).not.toContain('find member')
+    expect(fake.compare).toHaveBeenCalledTimes(1)
     expect(fake.compare).toHaveBeenCalledWith('correct horse battery', ana.passwordHash)
+  })
+
+  it('queries both tables for every email, so timing does not show which kind of account it is', async () => {
+    for (const arrange of [() => (fake.state.admin = ana), () => (fake.state.member = mia), () => {}]) {
+      fake.state.ops = []
+      fake.state.admin = null
+      fake.state.member = null
+      arrange()
+      await authorizeCredentials(credentials, null)
+      expect(fake.state.ops.filter((op) => op.startsWith('find')).sort()).toEqual(['find admin', 'find member'])
+    }
   })
 
   it('refuses an unconfirmed member with the right password, keeping the attempt', async () => {
@@ -246,7 +257,6 @@ describe('authorizeCredentials', () => {
 
   it('checks both tables and runs exactly one bcrypt compare against the dummy hash for an unknown email', async () => {
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
-    expect(fake.state.ops.slice(-2)).toEqual(['find admin', 'find member'])
     expect(fake.compare).toHaveBeenCalledTimes(1)
     expect(fake.compare.mock.calls[0][1]).toMatch(/^\$2b\$12\$/)
     expect(fake.compare.mock.calls[0][1]).not.toBe(mia.passwordHash)
