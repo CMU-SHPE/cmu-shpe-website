@@ -1,0 +1,34 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import AccountForm, { type AccountField } from '@/components/member/account-form'
+import AccountShell, { accountLinkClass } from '@/components/member/account-shell'
+import { cardClass } from '@/components/admin/styles'
+import { resendConfirmation } from './actions'
+
+export const metadata: Metadata = { title: 'Resend confirmation email | SHPE @ Colorado Mesa University' }
+
+const fields: AccountField[] = [{ name: 'email', label: 'Email', type: 'email', autoComplete: 'email' }]
+
+export default async function ResendConfirmationPage(props: { searchParams: Promise<{ sent?: string }> }) {
+  const { sent } = await props.searchParams
+
+  return (
+    <AccountShell
+      title="Resend confirmation email"
+      intro={<p>Enter the email you signed up with and we&apos;ll send a new confirmation link. Older links stop working.</p>}
+    >
+      {sent && (
+        <p role="status" className={`text-sm text-gray-700 dark:text-gray-300 ${cardClass}`}>
+          If an unconfirmed account exists for that email, we&apos;ve sent a new confirmation link. It works for 24 hours.
+        </p>
+      )}
+      <AccountForm action={resendConfirmation} fields={fields} submitLabel="Send a new link" pendingLabel="Sending…" />
+      <p className="text-sm text-gray-600 dark:text-gray-300">
+        Already confirmed?{' '}
+        <Link href="/login" className={accountLinkClass}>
+          Sign in
+        </Link>
+      </p>
+    </AccountShell>
+  )
+}
