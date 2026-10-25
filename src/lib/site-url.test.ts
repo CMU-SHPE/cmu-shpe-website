@@ -32,6 +32,29 @@ describe('siteUrl', () => {
     expect(siteUrl()).toBe('https://shpecmu.com')
   })
 
+  it('allows plain http for localhost in a local production build', () => {
+    stub({ SITE_URL: 'http://localhost:3000', NODE_ENV: 'production' })
+    expect(siteUrl()).toBe('http://localhost:3000')
+  })
+
+  it.each<[string, Record<string, string>, string]>([
+    ['not a URL', { SITE_URL: 'shpecmu.com' }, 'not a valid URL'],
+    ['a non-http scheme', { SITE_URL: 'javascript:alert(1)' }, 'http(s)'],
+    ['a path', { SITE_URL: 'https://shpecmu.com/app' }, 'bare origin'],
+    ['a query string', { SITE_URL: 'https://shpecmu.com/?x=1' }, 'bare origin'],
+    ['credentials', { SITE_URL: 'https://user:pw@shpecmu.com' }, 'bare origin'],
+    ['plain http in production', { SITE_URL: 'http://shpecmu.com', VERCEL_ENV: 'production' }, 'https'],
+    ['plain http in a production build', { SITE_URL: 'http://shpecmu.com', NODE_ENV: 'production' }, 'https'],
+  ])('rejects a SITE_URL with %s', (_, values, message) => {
+    stub(values)
+    expect(() => siteUrl()).toThrow(message)
+  })
+
+  it('accepts plain http SITE_URL outside production', () => {
+    stub({ SITE_URL: 'http://192.168.1.5:3000' })
+    expect(siteUrl()).toBe('http://192.168.1.5:3000')
+  })
+
   it.each<[string, Record<string, string>]>([
     ['local production build', { NODE_ENV: 'production' }],
     ['Vercel production without its domain', { VERCEL_ENV: 'production' }],

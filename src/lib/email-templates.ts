@@ -17,9 +17,14 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
+const MAX_GREETING_NAME_LENGTH = 100
+
+// Names are user input: collapsing line breaks and control characters stops a name from
+// forging extra lines or paragraphs in the email body.
 function greeting(name: string): string {
-  const trimmed = name.trim()
-  return trimmed ? `Hi ${trimmed},` : 'Hi,'
+  const collapsed = name.replace(/[\s\p{Cc}]+/gu, ' ').trim()
+  const clean = Array.from(collapsed).slice(0, MAX_GREETING_NAME_LENGTH).join('').trim()
+  return clean ? `Hi ${clean},` : 'Hi,'
 }
 
 function render(subject: string, name: string, paragraphs: Paragraph[]): EmailContent {
@@ -74,9 +79,10 @@ export function resetPassword(name: string, link: string): EmailContent {
   ])
 }
 
-export function passwordChanged(name: string): EmailContent {
+export function passwordChanged(name: string, contactLink: string): EmailContent {
   return render('Your SHPE @ CMU password was changed', name, [
     'The password for your SHPE @ CMU account was just changed, and you were signed out everywhere else.',
-    'If you made this change, there’s nothing else to do. If you didn’t, reset your password right away and reply to this email so we can help.',
+    'If you made this change, there’s nothing else to do. If you didn’t, reset your password right away from the sign-in page and contact us so we can help:',
+    { href: contactLink, label: 'Contact SHPE @ CMU' },
   ])
 }
