@@ -55,40 +55,41 @@ export async function clearLoginAttempts(email: string) {
   await getDb().delete(loginAttempts).where(eq(loginAttempts.email, email))
 }
 
+// Both tables are always queried, so the response time doesn't show whether an email is an admin's.
 async function findAccount(email: string) {
   const db = getDb()
-  const [admin] = await db
-    .select({
-      id: admins.id,
-      email: admins.email,
-      name: admins.name,
-      role: admins.role,
-      passwordHash: admins.passwordHash,
-    })
-    .from(admins)
-    .where(eq(admins.email, email))
-    .limit(1)
+  const [[admin], [member]] = await Promise.all([
+    db
+      .select({
+        id: admins.id,
+        email: admins.email,
+        name: admins.name,
+        role: admins.role,
+        passwordHash: admins.passwordHash,
+      })
+      .from(admins)
+      .where(eq(admins.email, email))
+      .limit(1),
+    db
+      .select({
+        id: members.id,
+        email: members.email,
+        name: members.name,
+        role: members.role,
+        passwordHash: members.passwordHash,
+        emailConfirmedAt: members.emailConfirmedAt,
+      })
+      .from(members)
+      .where(eq(members.email, email))
+      .limit(1),
+  ])
   if (admin) return { ...admin, kind: 'admin' as const, confirmed: true }
-
-  const [member] = await db
-    .select({
-      id: members.id,
-      email: members.email,
-      name: members.name,
-      role: members.role,
-      passwordHash: members.passwordHash,
-      emailConfirmedAt: members.emailConfirmedAt,
-    })
-    .from(members)
-    .where(eq(members.email, email))
-    .limit(1)
   if (member) return { ...member, kind: 'member' as const, confirmed: member.emailConfirmedAt !== null }
-
   return null
 }
 
 /**
- * Admins are looked up first so an admin email always signs in as the admin. Every
+ * An admin row wins over a member row with the same email. Every
  * path runs exactly one bcrypt compare, and an unconfirmed member gets the same
  * generic failure as a wrong password.
  */
