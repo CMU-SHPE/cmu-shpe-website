@@ -47,6 +47,11 @@ describe('getPrivacyPolicyVersion', () => {
     await expect(getPrivacyPolicyVersion()).resolves.toBe('January 5, 2027')
   })
 
+  it.each([[''], ['   ']])('falls back to the seeded date when the stored date is blank (%j)', async (value) => {
+    mocks.state.rows = [{ key: 'privacy.updated', value }]
+    await expect(getPrivacyPolicyVersion()).resolves.toBe(contentDefaults['privacy.updated'])
+  })
+
   it('falls back to the seeded date the page shows when there is no row', async () => {
     await expect(getPrivacyPolicyVersion()).resolves.toBe(contentDefaults['privacy.updated'])
   })

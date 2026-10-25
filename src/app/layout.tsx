@@ -50,7 +50,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             signOutAction={signOutAction}
           />
           <main className="min-h-screen">{children}</main>
-          <Footer editable={Boolean(admin)} />
+          <Footer editable={Boolean(admin)} signedIn={navbarUser !== null} />
         </ThemeProvider>
       </body>
     </html>

@@ -5,6 +5,7 @@ import {
   homePillars,
   homeStats,
   nationalStats,
+  newsletterTopics,
   officers,
   sponsorBenefits,
   sponsors,
@@ -20,6 +21,7 @@ export type OrderedTable =
   | typeof homePillars
   | typeof nationalStats
   | typeof sponsorBenefits
+  | typeof newsletterTopics
 
 export async function nextSortOrder(table: OrderedTable, where?: SQL) {
   const [row] = await getDb()

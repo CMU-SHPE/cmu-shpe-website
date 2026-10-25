@@ -19,10 +19,10 @@ export function escapeHtml(value: string): string {
 
 const MAX_GREETING_NAME_LENGTH = 100
 
-// Names are user input: collapsing line breaks and control characters stops a name from
-// forging extra lines or paragraphs in the email body.
+// Names are user input: collapsing line breaks, control and format characters (such as
+// right-to-left overrides) stops a name from forging lines or disguising text in the email.
 function greeting(name: string): string {
-  const collapsed = name.replace(/[\s\p{Cc}]+/gu, ' ').trim()
+  const collapsed = name.replace(/[\s\p{Cc}\p{Cf}]+/gu, ' ').trim()
   const clean = Array.from(collapsed).slice(0, MAX_GREETING_NAME_LENGTH).join('').trim()
   return clean ? `Hi ${clean},` : 'Hi,'
 }

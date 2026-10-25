@@ -50,10 +50,13 @@ describe('email templates', () => {
     expect(email.html).not.toContain('Reset my password')
   })
 
-  it('collapses line breaks and control characters in names and caps their length', () => {
+  it('collapses line breaks, control and format characters in names and caps their length', () => {
     const email = confirmEmail('Ana\n\nClick https://evil.example\u0007\r\nnow', LINK)
     expect(email.text.split('\n')[0]).toBe('Hi Ana Click https://evil.example now,')
     expect(email.html.split('\n')[0]).toBe('<p>Hi Ana Click https://evil.example now,</p>')
+
+    const disguised = confirmEmail('Ana\u202Emoc.live\u200B', LINK)
+    expect(disguised.text.split('\n')[0]).toBe('Hi Ana moc.live,')
 
     const long = confirmEmail('x'.repeat(500), LINK)
     expect(long.text.split('\n')[0]).toBe(`Hi ${'x'.repeat(100)},`)
