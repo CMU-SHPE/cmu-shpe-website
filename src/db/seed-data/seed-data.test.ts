@@ -76,7 +76,7 @@ describe('content defaults', () => {
       'Neon',
       'Resend',
       'deleted after 7 days',
-      'about 15 minutes',
+      'used for 15 minutes',
       'Delete my account',
       'strictly necessary',
       'analytics',
