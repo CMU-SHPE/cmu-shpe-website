@@ -30,7 +30,7 @@ function getMailer() {
   return cached
 }
 
-// Logs carry only the failure category: payloads hold confirmation and reset tokens.
+// Logs and errors never include the request payload: it holds confirmation and reset tokens.
 function fail(reason: string, detail?: string): never {
   console.error(detail ? `${LOG_TAG}: ${reason} (${detail})` : `${LOG_TAG}: ${reason}`)
   throw new EmailSendError(reason)
