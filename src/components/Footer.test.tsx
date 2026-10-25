@@ -12,7 +12,7 @@ import Footer from './Footer'
 
 describe('Footer', () => {
   it('offers sign in and joining to visitors', async () => {
-    render(await Footer({ editable: false }))
+    render(await Footer({ editable: false, signedIn: false }))
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: 'Join' })).toHaveAttribute('href', '/join')
     expect(screen.queryByRole('link', { name: 'Admin sign in' })).toBeNull()
@@ -20,14 +20,26 @@ describe('Footer', () => {
   })
 
   it('hides sign in and join once an admin is signed in', async () => {
-    render(await Footer({ editable: true }))
+    render(await Footer({ editable: true, signedIn: true }))
     expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Join' })).toBeNull()
     expect(screen.getByRole('link', { name: 'SHPE National →' })).toBeInTheDocument()
   })
 
-  it.each([[false], [true]])('always links the privacy policy and terms (editable: %s)', async (editable) => {
-    render(await Footer({ editable }))
+  it('hides sign in and join from a signed-in member without making the footer editable', async () => {
+    render(await Footer({ editable: false, signedIn: true }))
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Join' })).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.getByText('footer.copyright')).toBeInTheDocument()
+  })
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, true],
+  ])('always links the privacy policy and terms (editable: %s, signed in: %s)', async (editable, signedIn) => {
+    render(await Footer({ editable, signedIn }))
     expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
   })
