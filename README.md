@@ -5,10 +5,10 @@ Colorado Mesa University, served at [shpecmu.com](https://shpecmu.com).
 
 Built with [Next.js](https://nextjs.org) 16 (App Router), React 19, TypeScript and
 [Tailwind CSS](https://tailwindcss.com). Content lives in [Neon](https://neon.tech) Postgres
-through [Drizzle ORM](https://orm.drizzle.team), admin sign-in uses
-[Auth.js](https://authjs.dev), uploaded images go to
-[Vercel Blob](https://vercel.com/docs/vercel-blob), and the site is deployed on
-[Vercel](https://vercel.com).
+through [Drizzle ORM](https://orm.drizzle.team), admin and member sign-in use
+[Auth.js](https://authjs.dev), account emails are sent with [Resend](https://resend.com),
+uploaded images go to [Vercel Blob](https://vercel.com/docs/vercel-blob), and the site is
+deployed on [Vercel](https://vercel.com).
 
 ## What officers can do
 
@@ -26,7 +26,13 @@ Chapter officers sign in and edit the whole site without touching code:
 - **Page lists** — the home page stats and pillars, the SHPE National stats on the About
   page, and the sponsor benefits table.
 - **Site settings** — contact email, weekly meeting day, time and location, social links
-  (a blank link hides its icon) and the contact form's subject options.
+  (a blank link hides its icon), the contact form's subject options and the chapter's
+  mailing address for newsletters.
+- **Members** — search member accounts by name or email, see whether each confirmed their
+  email and how many newsletters they chose, and delete an account (see
+  [Member accounts](#member-accounts)).
+- **Newsletter topics** — add, edit, reorder and delete the topics members can choose.
+  Deleting a topic removes every member's choice of it.
 - **Admin accounts** — the master admin creates and removes the other admin accounts, and
   can allow individual admins to create accounts too. Those admins can only add regular
   admins and see the account list by name and role; email addresses, deleting accounts,
@@ -45,8 +51,12 @@ cp .env.example .env.local
 ```
 
 Fill in `.env.local`. Every variable is described in [`.env.example`](.env.example):
-`DATABASE_URL`, `AUTH_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD` and
-`BLOB_READ_WRITE_TOKEN` (plus `AUTH_TRUST_HOST` for `npm start` on localhost).
+`DATABASE_URL`, `AUTH_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD`,
+`BLOB_READ_WRITE_TOKEN`, `RESEND_API_KEY` and `RESEND_EMAIL_DOMAIN` (plus
+`AUTH_TRUST_HOST` for `npm start` on localhost). Without the Resend variables the site
+runs, but sign-up and password reset emails fail with an error. `SITE_URL` is optional
+locally: links in emails use `http://localhost:3000` under `npm run dev`, and a local
+`npm start` needs it set (for example `SITE_URL=http://localhost:3000`).
 
 ### First-time database setup
 
@@ -108,7 +118,7 @@ connection string, edits made locally change the live site.
    per line. The Privacy Policy and Terms of Use pages are required disclosures for member
    accounts: edit them to keep them accurate, but never blank a section.
 3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
-   lists and site settings.
+   lists, site settings, members and newsletter topics.
 4. Choose **Change password** in the admin sidebar to change your own password. The master
    admin can reset another admin's password from **Admin accounts** and share it with them
    directly. Either change signs that account out on every other device.
@@ -120,6 +130,29 @@ connection string, edits made locally change the live site.
 Images uploaded in the admin are stored in Vercel Blob. Fields that take an image also
 accept a path to a file in `public/` (for example `/officers/jeff.jpg`) or an `https://`
 link. Officers without a photo show their initials.
+
+## Member accounts
+
+Anyone 13 or older can create a member account to choose which newsletters they want.
+
+- **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
+  that works for 24 hours. The account can't sign in until the email is confirmed.
+  Didn't get it? `/join/resend` sends a new link. Accounts never confirmed are deleted
+  after 7 days.
+- **Signing in:** members use the same **Sign in** page as admins and land on `/account`.
+- **`/account`:** change name and password, choose newsletter topics, and **Delete my
+  account** (asks for the password and the word DELETE; it removes the account and its
+  newsletter choices right away).
+- **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour.
+  Admins don't get one; the master resets admin passwords from **Admin accounts**.
+- **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
+  also removes their newsletter choices and pending email links.
+- **Privacy Policy and Terms of Use** (`/privacy`, `/terms`) are linked from the footer
+  and edited in place like other page text. They are required disclosures for member
+  accounts: keep them accurate and never blank a section. New sign-ups record the
+  Privacy Policy's "Last updated" date as the version they agreed to.
+- **Newsletters aren't sent yet.** Members' topic choices are saved for when sending is
+  added, and sending will require the **Mailing address** in **Site settings** (CAN-SPAM).
 
 ## Scripts
 
@@ -140,8 +173,9 @@ link. Officers without a photo show their initials.
 
 ```
 src/
-  app/          Routes (App Router): the public pages, /login, and the /admin pages
-                with their server actions
+  app/          Routes (App Router): the public pages, /login, the member pages
+                (/join, /account, /forgot-password, /reset-password, /privacy,
+                /terms), and the /admin pages, each with their server actions
   components/   Shared UI: Navbar, Footer, ThemeProvider (dark mode), the inline
                 editor (editable.tsx), and admin form components
   db/           Drizzle schema, the Neon client, and the seed script with its data
@@ -166,9 +200,12 @@ custom domain `shpecmu.com` is configured in the Vercel project settings rather 
 `CNAME` file. `.github/workflows/ci.yml` only runs checks (lint/test/build) — it does
 not deploy anything.
 
-The Vercel project needs `DATABASE_URL`, `AUTH_SECRET` and `BLOB_READ_WRITE_TOKEN`.
-`MASTER_EMAIL` and `MASTER_PASSWORD` are only read by `npm run db:seed` and
-`npm run db:reset-master`.
+The Vercel project needs `DATABASE_URL`, `AUTH_SECRET`, `BLOB_READ_WRITE_TOKEN`,
+`RESEND_API_KEY` and `RESEND_EMAIL_DOMAIN` (the verified Resend domain emails are sent
+from). Links in emails use the deployment's own URL; set `SITE_URL` (an `https://`
+address) only for Production, and only if that URL should differ from the project's
+production domain. `MASTER_EMAIL` and `MASTER_PASSWORD` are only read by
+`npm run db:seed` and `npm run db:reset-master`.
 
 ### Preview databases
 
