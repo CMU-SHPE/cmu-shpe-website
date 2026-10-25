@@ -117,6 +117,7 @@ link. Officers without a photo show their initials.
 |---|---|
 | `npm run dev` | Start the local dev server |
 | `npm run build` | Build the site for production (`.next/`) |
+| `npm run vercel-build` | Vercel's build: on previews, apply the schema to the preview database, then build |
 | `npm start` | Serve the production build locally (`next start`) |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run the test suite ([Vitest](https://vitest.dev) + React Testing Library) |
@@ -173,9 +174,13 @@ changes the live site.
 - **Sign-in:** Preview must have its own `AUTH_SECRET`. A preview's copy can hold an old
   password hash, and a session signed with production's secret would be accepted by
   production.
-- **Schema changes:** a pull request that changes `src/db/schema.ts` must also apply the
-  change to its preview branch with `npm run db:push` against that branch's connection
-  string, or its previews will fail.
+- **Schema changes:** Vercel runs `npm run vercel-build` instead of `build`. On preview
+  deployments it applies `src/db/schema.ts` to that preview's Neon branch before building.
+  If a change would delete data already in the preview's tables, or drizzle-kit can't
+  tell a rename from a drop-and-create, nothing is applied and the preview build fails;
+  apply that change to the preview branch by hand. Production and
+  local builds never touch the schema: apply production changes yourself with
+  `npm run db:push` against production's connection string.
 - **Cleanup:** `.github/workflows/preview-db-cleanup.yml` deletes a pull request's Neon
   branch when it closes. It needs a `NEON_PROJECT_ID` repository variable and a
   `NEON_API_KEY` repository secret. GitHub doesn't run it for a pull request closed
