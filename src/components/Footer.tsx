@@ -5,7 +5,7 @@ import { navLinks } from '@/lib/nav'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
 import { InstagramIcon, LinkedInIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
 
-export default async function Footer({ editable }: { editable: boolean }) {
+export default async function Footer({ editable, signedIn }: { editable: boolean; signedIn: boolean }) {
   const [content, settings] = await Promise.all([
     getSiteContent(contentKeysFor('footer')),
     getSiteSettings(),
@@ -122,7 +122,7 @@ export default async function Footer({ editable }: { editable: boolean }) {
             className="text-gray-400 text-sm"
           />
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-            {!editable && (
+            {!signedIn && (
               <>
                 <Link
                   href="/login"

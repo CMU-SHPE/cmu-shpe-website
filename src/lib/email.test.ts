@@ -165,6 +165,17 @@ describe('sendEmail', () => {
     timeout.mockRestore()
   })
 
+  it('treats a send that succeeded as sent even if the timeout fired afterwards', async () => {
+    configure()
+    mocks.send.mockImplementation(async (_payload, options) => {
+      Object.defineProperty(options!.signal!, 'aborted', { value: true })
+      return { data: { id: 'email_1' }, error: null, headers: null }
+    })
+    const { sendEmail } = await load()
+    await expect(sendEmail(message)).resolves.toBeUndefined()
+    expect(consoleError).not.toHaveBeenCalled()
+  })
+
   it('reports a thrown abort as a timeout', async () => {
     configure()
     mocks.send.mockImplementation(async (_payload, options) => {

@@ -102,10 +102,11 @@ connection string, edits made locally change the live site.
 
 ## Editing the site
 
-1. Open any page and choose **Admin sign in** in the footer (or go to `/login`).
+1. Open any page and choose **Sign in** in the footer (or go to `/login`).
 2. While signed in, click any heading or paragraph to edit it in place, then choose
    **Save changes** (or **Discard**). Lists such as the About page values take one item
-   per line.
+   per line. The Privacy Policy and Terms of Use pages are required disclosures for member
+   accounts: edit them to keep them accurate, but never blank a section.
 3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
    lists and site settings.
 4. Choose **Change password** in the admin sidebar to change your own password. The master

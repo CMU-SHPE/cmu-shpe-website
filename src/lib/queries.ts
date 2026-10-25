@@ -54,9 +54,10 @@ export async function getSiteContentWithDefaults<K extends ContentKey>(
   >
 }
 
+// Consent records need a version even if an admin blanked the date on the page.
 export async function getPrivacyPolicyVersion(): Promise<string> {
   const content = await getSiteContentWithDefaults(['privacy.updated'])
-  return content['privacy.updated']
+  return content['privacy.updated'].trim() || contentDefaults['privacy.updated']
 }
 
 export async function getSponsors() {

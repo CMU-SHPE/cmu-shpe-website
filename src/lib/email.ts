@@ -73,6 +73,7 @@ export async function sendEmail({ to, subject, text, html }: EmailMessage): Prom
   }
 
   // The SDK reports an aborted fetch as an ordinary { error } result, not a throw.
-  if (signal.aborted) fail('timeout')
-  if (result.error) fail(result.error.name, `status ${result.error.statusCode ?? 'unknown'}`)
+  if (result.error) {
+    fail(signal.aborted ? 'timeout' : result.error.name, `status ${result.error.statusCode ?? 'unknown'}`)
+  }
 }

@@ -32,6 +32,19 @@ describe('DeleteButton', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
+  it('adds a warning about what else is removed to the confirmation', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(
+      <form>
+        <DeleteButton name="Events" warning="Members lose this choice." />
+      </form>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Events' }))
+
+    expect(confirm).toHaveBeenCalledWith("Delete Events? Members lose this choice. This can't be undone.")
+  })
+
   it('does not submit when the admin cancels', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const onSubmit = renderInForm()
