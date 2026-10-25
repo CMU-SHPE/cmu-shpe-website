@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ requireMember: vi.fn() }))
 
 vi.mock('@/lib/member', () => ({ requireMember: mocks.requireMember }))
 
-import AccountPage from './page'
+import AccountPage, { metadata } from './page'
 
 beforeEach(() => {
   mocks.requireMember.mockReset()
@@ -22,5 +22,11 @@ describe('AccountPage', () => {
     render(await AccountPage())
     expect(screen.getByRole('heading', { level: 1, name: 'Your account' })).toBeInTheDocument()
     expect(screen.getByText('Mia')).toBeInTheDocument()
+  })
+})
+
+describe('AccountPage metadata', () => {
+  it('has its own title', () => {
+    expect(metadata.title).toBe('Your account | SHPE @ Colorado Mesa University')
   })
 })

@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import { requireMember } from '@/lib/member'
 import { cardClass, mutedTextClass, pageHeadingClass } from '@/components/admin/styles'
+
+export const metadata: Metadata = { title: 'Your account | SHPE @ Colorado Mesa University' }
 
 export default async function AccountPage() {
   const member = await requireMember()
