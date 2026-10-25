@@ -12,11 +12,11 @@ import {
 import { requireAdmin } from '@/lib/admin'
 import { HTTP_URL_INPUT } from '@/lib/form-fields'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
-import { MAX_CONTACT_SUBJECTS, MAX_CONTACT_SUBJECT_LENGTH } from '@/lib/settings-schema'
+import { MAX_CONTACT_SUBJECTS, MAX_CONTACT_SUBJECT_LENGTH, MAX_MAILING_ADDRESS_LENGTH } from '@/lib/settings-schema'
 import { saveSettings } from './actions'
 
 const errorMessages: Record<string, string> = {
-  invalid: `Please check the fields — the email must be valid, links must start with http:// or https://, and the subject list needs 1–${MAX_CONTACT_SUBJECTS} options of up to ${MAX_CONTACT_SUBJECT_LENGTH} characters.`,
+  invalid: `Please check the fields — the email must be valid, links must start with http:// or https://, the mailing address can be up to ${MAX_MAILING_ADDRESS_LENGTH} characters, and the subject list needs 1–${MAX_CONTACT_SUBJECTS} options of up to ${MAX_CONTACT_SUBJECT_LENGTH} characters.`,
 }
 
 const socialFields = [
@@ -96,6 +96,23 @@ export default async function AdminSettingsPage(props: {
                 className={inputClass}
               />
             </label>
+            <div className="sm:col-span-2">
+              <label htmlFor="mailingAddress" className={labelClass}>
+                Mailing address
+              </label>
+              <textarea
+                id="mailingAddress"
+                name="mailingAddress"
+                rows={3}
+                maxLength={MAX_MAILING_ADDRESS_LENGTH}
+                defaultValue={settings?.mailingAddress ?? ''}
+                aria-describedby="mailingAddress-help"
+                className={inputClass}
+              />
+              <p id="mailingAddress-help" className={`mt-1 ${mutedTextClass}`}>
+                Required before newsletters can be sent (CAN-SPAM). Shown in every newsletter.
+              </p>
+            </div>
           </div>
         </section>
 

@@ -18,7 +18,18 @@ describe('CONTENT_KEYS', () => {
   it('marks only the list and line-break keys as multiline', () => {
     const multiline = CONTENT_KEYS.filter((entry) => entry.multiline).map((entry) => entry.key)
     expect(multiline.sort()).toEqual(
-      ['about.joinReasons.items', 'about.values.items', 'contact.subjects', 'footer.tagline'].sort(),
+      [
+        'about.joinReasons.items',
+        'about.values.items',
+        'contact.subjects',
+        'footer.tagline',
+        'privacy.collect.items',
+        'privacy.use.items',
+        'privacy.processors.items',
+        'privacy.retention.items',
+        'privacy.choices.items',
+        'terms.use.items',
+      ].sort(),
     )
   })
 })

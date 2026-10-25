@@ -121,15 +121,35 @@ export default async function Footer({ editable }: { editable: boolean }) {
             editable={editable}
             className="text-gray-400 text-sm"
           />
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             {!editable && (
-              <Link
-                href="/login"
-                className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
-              >
-                Admin sign in
-              </Link>
+              <>
+                <Link
+                  href="/login"
+                  className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/join"
+                  className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+                >
+                  Join
+                </Link>
+              </>
             )}
+            <Link
+              href="/privacy"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              Terms
+            </Link>
             <a
               href="https://shpe.org"
               target="_blank"
