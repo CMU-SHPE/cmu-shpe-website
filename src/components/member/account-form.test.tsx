@@ -77,6 +77,22 @@ describe('AccountForm', () => {
     expect(summary).not.toHaveAttribute('aria-live')
   })
 
+  it('describes the focused summary with its field errors, so focus reads them and not only the label', async () => {
+    renderForm(async () => ({ errors: { email: 'Enter a valid email address.' } }))
+    fill()
+    const summary = await screen.findByRole('group', { name: 'There is a problem' })
+    await waitFor(() => expect(summary).toHaveFocus())
+    expect(summary).toHaveAccessibleDescription(expect.stringContaining('Enter a valid email address.'))
+  })
+
+  it('describes the focused summary with a form-level error', async () => {
+    renderForm(async () => ({ formError: "We couldn't send the email right now, try again later." }))
+    fill()
+    const summary = await screen.findByRole('group', { name: 'There is a problem' })
+    await waitFor(() => expect(summary).toHaveFocus())
+    expect(summary).toHaveAccessibleDescription(expect.stringContaining("We couldn't send the email right now"))
+  })
+
   it('moves focus to the summary again on a repeated failure', async () => {
     renderForm(async () => ({ formError: 'Try again.' }))
     fill()
