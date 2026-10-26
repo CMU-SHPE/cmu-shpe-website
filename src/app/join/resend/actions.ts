@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { members } from '@/db/schema'
@@ -30,6 +31,20 @@ export async function resendConfirmation(_state: FormState, formData: FormData):
     redirect('/join/resend?sent=1')
   }
 
+  // Looking up and emailing only a real unconfirmed account takes longer, so it all
+  // happens after responding: otherwise response time would reveal which addresses
+  // have accounts.
+  after(async () => {
+    try {
+      await sendConfirmationIfUnconfirmed(email, base)
+    } catch (error) {
+      console.error(error instanceof EmailSendError ? 'EMAIL SEND FAILED: confirm_email (resend)' : 'RESEND CONFIRMATION FAILED')
+    }
+  })
+  redirect('/join/resend?sent=1')
+}
+
+async function sendConfirmationIfUnconfirmed(email: string, base: string) {
   const db = getDb()
   await purgeStaleUnconfirmedMembers(db)
   const [member] = await db
@@ -37,16 +52,9 @@ export async function resendConfirmation(_state: FormState, formData: FormData):
     .from(members)
     .where(and(eq(members.email, email), isNull(members.emailConfirmedAt)))
     .limit(1)
+  if (!member) return
 
-  if (member) {
-    const { token, row } = newMemberToken(member.id, 'confirm_email')
-    await db.batch([deleteMemberTokens(db, member.id, 'confirm_email'), insertMemberToken(db, row)])
-    try {
-      await sendEmail({ to: email, ...confirmEmail(member.name, `${base}/join/confirm?token=${token}`) })
-    } catch (error) {
-      if (!(error instanceof EmailSendError)) throw error
-      console.error('EMAIL SEND FAILED: confirm_email (resend)')
-    }
-  }
-  redirect('/join/resend?sent=1')
+  const { token, row } = newMemberToken(member.id, 'confirm_email')
+  await db.batch([deleteMemberTokens(db, member.id, 'confirm_email'), insertMemberToken(db, row)])
+  await sendEmail({ to: email, ...confirmEmail(member.name, `${base}/join/confirm?token=${token}`) })
 }
