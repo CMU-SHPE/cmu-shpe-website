@@ -42,8 +42,10 @@ function render(subject: string, name: string, paragraphs: Paragraph[]): EmailCo
   return { subject, text: `${text}\n`, html }
 }
 
-export function confirmEmail(name: string, link: string): EmailContent {
-  return render('Confirm your email for SHPE @ CMU', name, [
+// No name: until the address is confirmed, the name is whatever the sign-up typed, and
+// greeting with it would let anyone put their own words in an email from the club.
+export function confirmEmail(link: string): EmailContent {
+  return render('Confirm your email for SHPE @ CMU', '', [
     'Thanks for creating an account with SHPE @ CMU. Confirm your email address to finish signing up.',
     { href: link, label: 'Confirm my email' },
     'This link expires in 24 hours. If you didn’t create an account, you can ignore this email and no account will be activated.',

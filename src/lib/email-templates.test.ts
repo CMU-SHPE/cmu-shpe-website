@@ -12,7 +12,6 @@ describe('escapeHtml', () => {
 
 describe('email templates', () => {
   const rendered = {
-    confirmEmail: confirmEmail(HOSTILE, LINK),
     accountExists: accountExists(HOSTILE, 'https://shpecmu.com/login', LINK),
     adminAccountExists: adminAccountExists(HOSTILE, 'https://shpecmu.com/login'),
     resetPassword: resetPassword(HOSTILE, LINK),
@@ -27,13 +26,19 @@ describe('email templates', () => {
     expect(email.subject).not.toContain('script')
   })
 
+  it('greets a confirmation email without a name, since nothing about an unconfirmed sign-up is verified', () => {
+    const email = confirmEmail(LINK)
+    expect(email.text.startsWith('Hi,\n')).toBe(true)
+    expect(email.html.startsWith('<p>Hi,</p>\n')).toBe(true)
+  })
+
   it('escapes links inside href attributes and includes them verbatim in text', () => {
-    expect(rendered.confirmEmail.html).toContain('href="https://shpecmu.com/join/confirm?token=abc&amp;x=1"')
-    expect(rendered.confirmEmail.text).toContain(LINK)
+    expect(confirmEmail(LINK).html).toContain('href="https://shpecmu.com/join/confirm?token=abc&amp;x=1"')
+    expect(confirmEmail(LINK).text).toContain(LINK)
   })
 
   it('states each link lifetime', () => {
-    expect(rendered.confirmEmail.text).toContain('expires in 24 hours')
+    expect(confirmEmail(LINK).text).toContain('expires in 24 hours')
     expect(rendered.resetPassword.text).toContain('expires in 1 hour')
   })
 
@@ -51,14 +56,14 @@ describe('email templates', () => {
   })
 
   it('collapses line breaks, control and format characters in names and caps their length', () => {
-    const email = confirmEmail('Ana\n\nClick https://evil.example\u0007\r\nnow', LINK)
+    const email = resetPassword('Ana\n\nClick https://evil.example\u0007\r\nnow', LINK)
     expect(email.text.split('\n')[0]).toBe('Hi Ana Click https://evil.example now,')
     expect(email.html.split('\n')[0]).toBe('<p>Hi Ana Click https://evil.example now,</p>')
 
-    const disguised = confirmEmail('Ana\u202Emoc.live\u200B', LINK)
+    const disguised = resetPassword('Ana\u202Emoc.live\u200B', LINK)
     expect(disguised.text.split('\n')[0]).toBe('Hi Ana moc.live,')
 
-    const long = confirmEmail('x'.repeat(500), LINK)
+    const long = resetPassword('x'.repeat(500), LINK)
     expect(long.text.split('\n')[0]).toBe(`Hi ${'x'.repeat(100)},`)
   })
 
@@ -69,6 +74,6 @@ describe('email templates', () => {
   })
 
   it('falls back to a generic greeting for a blank name', () => {
-    expect(confirmEmail('   ', LINK).text.startsWith('Hi,\n')).toBe(true)
+    expect(resetPassword('   ', LINK).text.startsWith('Hi,\n')).toBe(true)
   })
 })

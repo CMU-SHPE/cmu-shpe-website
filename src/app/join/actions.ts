@@ -67,7 +67,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
       deleteMemberTokens(db, member.id, 'confirm_email'),
       insertMemberToken(db, row),
     ])
-    return confirmEmail(name, confirmLink(base, token))
+    return confirmEmail(confirmLink(base, token))
   }
 
   const newMemberId = sql`(select ${members.id} from ${members} where ${members.email} = ${email})`
@@ -79,7 +79,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
     if (!retried && isUniqueViolation(error)) return prepareSignUpEmail(db, signUp, true)
     throw error
   }
-  return confirmEmail(name, confirmLink(base, token))
+  return confirmEmail(confirmLink(base, token))
 }
 
 /**

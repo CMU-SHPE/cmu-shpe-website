@@ -48,7 +48,7 @@ async function sendConfirmationIfUnconfirmed(email: string, base: string) {
   const db = getDb()
   await purgeStaleUnconfirmedMembers(db)
   const [member] = await db
-    .select({ id: members.id, name: members.name })
+    .select({ id: members.id })
     .from(members)
     .where(and(eq(members.email, email), isNull(members.emailConfirmedAt)))
     .limit(1)
@@ -56,5 +56,5 @@ async function sendConfirmationIfUnconfirmed(email: string, base: string) {
 
   const { token, row } = newMemberToken(member.id, 'confirm_email')
   await db.batch([deleteMemberTokens(db, member.id, 'confirm_email'), insertMemberToken(db, row)])
-  await sendEmail({ to: email, ...confirmEmail(member.name, `${base}/join/confirm?token=${token}`) })
+  await sendEmail({ to: email, ...confirmEmail(`${base}/join/confirm?token=${token}`) })
 }

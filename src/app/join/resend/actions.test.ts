@@ -99,6 +99,8 @@ describe('resendConfirmation', () => {
     expect(insert.values).toMatchObject({ memberId: 7, purpose: 'confirm_email' })
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
     expect(mocks.sendEmail.mock.calls[0][0].text).toMatch(/\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
+    expect(mocks.sendEmail.mock.calls[0][0].text.startsWith('Hi,\n')).toBe(true)
+    expect(mocks.sendEmail.mock.calls[0][0].text).not.toContain('Mia')
   })
 
   it('responds before looking anything up, then sends only to an unconfirmed member', async () => {

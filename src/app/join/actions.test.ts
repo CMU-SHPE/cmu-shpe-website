@@ -181,7 +181,8 @@ describe('signUp branches', () => {
     expect(batch[1].values).toMatchObject({ purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
     expect(mocks.sendEmail.mock.calls[0][0]).toMatchObject({ subject: 'Confirm your email for SHPE @ CMU' })
     expect(sentText()).toMatch(/https:\/\/shpe\.test\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
-    expect(sentText()).toContain('Hi New Name,')
+    expect(sentText().startsWith('Hi,\n')).toBe(true)
+    expect(sentText()).not.toContain('New Name')
   })
 
   it('takes over an unconfirmed account: new details, old links revoked, fresh link sent', async () => {
@@ -197,6 +198,8 @@ describe('signUp branches', () => {
     expect(render(batch[1].where!).params).toEqual([7, 'confirm_email'])
     expect(batch[2].values).toMatchObject({ memberId: 7, purpose: 'confirm_email' })
     expect(sentText()).toContain('/join/confirm?token=')
+    expect(sentText().startsWith('Hi,\n')).toBe(true)
+    expect(sentText()).not.toMatch(/New Name|Stored Name/)
   })
 
   it('leaves a confirmed account alone and emails its owner by their stored name', async () => {
