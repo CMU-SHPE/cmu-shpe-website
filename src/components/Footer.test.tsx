@@ -11,6 +11,13 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {} }), unstabl
 import Footer from './Footer'
 
 describe('Footer', () => {
+  it('colours the SHPE wordmark with the tint that passes contrast on maroon', async () => {
+    render(await Footer({ editable: false, signedIn: false }))
+    const wordmark = screen.getByText('SHPE')
+    expect(wordmark).toHaveClass('text-shpe-red-on-maroon')
+    expect(wordmark).not.toHaveClass('text-shpe-red')
+  })
+
   it('offers sign in and joining to visitors', async () => {
     render(await Footer({ editable: false, signedIn: false }))
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')

@@ -79,7 +79,7 @@ export default function Navbar({
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2 group">
-            <span className="text-shpe-red font-black text-2xl group-hover:text-red-400 transition-colors duration-200">
+            <span className="text-shpe-red-on-maroon font-black text-2xl group-hover:text-shpe-red-on-maroon-hover transition-colors duration-200">
               SHPE
             </span>
             <span className="text-shpe-gold font-bold text-xl">@</span>

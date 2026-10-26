@@ -41,7 +41,7 @@ export default async function Home() {
               />
             </div>
             <h1 className="text-6xl md:text-8xl font-black text-white leading-none mb-6">
-              <span className="text-shpe-red">SHPE</span>{' '}
+              <span className="text-shpe-red-on-maroon">SHPE</span>{' '}
               <span className="text-shpe-gold">@</span> CMU
             </h1>
             <Editable

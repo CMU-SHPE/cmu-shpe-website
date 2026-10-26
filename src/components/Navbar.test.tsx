@@ -5,6 +5,14 @@ import Navbar from './Navbar'
 const signOutAction = vi.fn(async () => {})
 
 describe('Navbar', () => {
+  it('colours the SHPE wordmark with the tint that passes contrast on maroon', () => {
+    render(<Navbar user={null} signOutAction={signOutAction} />)
+
+    const wordmark = screen.getByText('SHPE')
+    expect(wordmark).toHaveClass('text-shpe-red-on-maroon')
+    expect(wordmark).not.toHaveClass('text-shpe-red')
+  })
+
   it('shows no admin controls when signed out', () => {
     render(<Navbar user={null} signOutAction={signOutAction} />)
     fireEvent.click(screen.getByRole('button', { name: 'Toggle menu' }))

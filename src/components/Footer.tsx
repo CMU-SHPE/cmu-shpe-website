@@ -18,7 +18,7 @@ export default async function Footer({ editable, signedIn }: { editable: boolean
           {/* Brand */}
           <div>
             <div className="flex items-center mb-4 space-x-1">
-              <span className="text-shpe-red font-black text-2xl">SHPE</span>
+              <span className="text-shpe-red-on-maroon font-black text-2xl">SHPE</span>
               <span className="text-shpe-gold font-bold text-xl">@</span>
               <span className="text-white font-bold text-lg">CMU</span>
             </div>
