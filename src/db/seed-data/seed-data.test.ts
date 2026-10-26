@@ -75,7 +75,7 @@ describe('content defaults', () => {
       'Vercel',
       'Neon',
       'Resend',
-      'deleted after 7 days',
+      'kept for 7 days',
       'used for 15 minutes',
       'Server logs',
       'Delete my account',
