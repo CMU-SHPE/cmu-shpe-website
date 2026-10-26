@@ -12,22 +12,24 @@ import {
   primaryButtonClass,
   sectionHeadingClass,
 } from '@/components/admin/styles'
-import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
+import { MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
 import { WINDOW_MINUTES } from '@/lib/login-throttle'
 import { requireMember } from '@/lib/member'
-import { DELETE_CONFIRMATION_WORD, MAX_MEMBER_NAME_LENGTH, getMemberTopicIds } from '@/lib/member-account'
+import { DELETE_CONFIRMATION_WORD, MAX_MEMBER_NAME_LENGTH, NAME_ERROR, getMemberTopicIds } from '@/lib/member-account'
+import { PASSWORD_ERROR, PASSWORD_REQUIREMENTS } from '@/lib/member-accounts'
 import { getNewsletterTopics } from '@/lib/newsletter-topics'
 import { changePassword, deleteAccount, saveTopics, updateName } from './actions'
 
 export const metadata: Metadata = { title: 'Your account | SHPE @ Colorado Mesa University' }
 
 const STATUS_ID = 'account-status'
+const NEW_PASSWORD_HINT_ID = 'new-password-hint'
 const throttled = `Too many attempts. Wait ${WINDOW_MINUTES} minutes and try again.`
 
 const errorMessages: Record<string, string> = {
-  name: `Enter your name, up to ${MAX_MEMBER_NAME_LENGTH} characters, on one line.`,
+  name: NAME_ERROR,
   'password-invalid': 'Please enter your current password.',
-  'password-password': `New passwords must be at least ${MIN_PASSWORD_LENGTH} characters and at most ${MAX_PASSWORD_BYTES} bytes. Accented letters and emoji count as 2 to 4 bytes each.`,
+  'password-password': PASSWORD_ERROR,
   'password-mismatch': 'The new password and its confirmation do not match.',
   'password-same': 'Choose a new password that is different from your current one.',
   'password-current': 'Your current password is incorrect.',
@@ -77,6 +79,7 @@ export default async function AccountPage(props: {
 
   const banner = (
     <StatusBanner
+      live={false}
       saved={knownSaved}
       error={error}
       errorMessages={errorMessages}
@@ -192,18 +195,21 @@ export default async function AccountPage(props: {
               />
             </label>
             <label className={labelClass}>
-              New password ({MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_BYTES} characters)
+              New password
               <input
                 name="newPassword"
                 type="password"
                 required
                 minLength={MIN_PASSWORD_LENGTH}
-                maxLength={MAX_PASSWORD_BYTES}
                 autoComplete="new-password"
                 className={inputClass}
                 {...fieldState('newPassword')}
+                aria-describedby={invalid.has('newPassword') ? `${STATUS_ID} ${NEW_PASSWORD_HINT_ID}` : NEW_PASSWORD_HINT_ID}
               />
             </label>
+            <p id={NEW_PASSWORD_HINT_ID} className={`-mt-2 ${mutedTextClass}`}>
+              {PASSWORD_REQUIREMENTS}
+            </p>
             <label className={labelClass}>
               Confirm new password
               <input
@@ -211,7 +217,6 @@ export default async function AccountPage(props: {
                 type="password"
                 required
                 minLength={MIN_PASSWORD_LENGTH}
-                maxLength={MAX_PASSWORD_BYTES}
                 autoComplete="new-password"
                 className={inputClass}
                 {...fieldState('confirmPassword')}

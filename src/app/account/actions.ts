@@ -22,6 +22,7 @@ import {
   parseTopicSelection,
 } from '@/lib/member-account'
 import { memberDeletion } from '@/lib/member-admin'
+import { deleteMemberTokens } from '@/lib/member-tokens'
 import { countExistingTopics } from '@/lib/newsletter-topics'
 import { siteUrl } from '@/lib/site-url'
 
@@ -71,10 +72,13 @@ export async function changePassword(formData: FormData) {
     redirect('/account?error=password-current')
   }
 
-  await getDb()
-    .update(members)
-    .set({ passwordHash: await bcrypt.hash(parsed.data.newPassword, 12), passwordChangedAt: new Date() })
-    .where(eq(members.id, member.id))
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12)
+  const db = getDb()
+  // A reset link emailed before this change would otherwise still set a password for the next hour.
+  await db.batch([
+    db.update(members).set({ passwordHash, passwordChangedAt: new Date() }).where(eq(members.id, member.id)),
+    deleteMemberTokens(db, member.id, 'reset_password'),
+  ])
   await clearLoginAttempts(member.email)
   await notifyPasswordChanged(member)
 

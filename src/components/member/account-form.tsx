@@ -11,9 +11,13 @@ export type AccountField = {
   type: 'text' | 'email' | 'password' | 'checkbox'
   autoComplete?: string
   hint?: string
+  maxLength?: number
 }
 
 type AttemptState = FormState & { attempt: number }
+
+// Not a live region: focus moves here after each failed attempt, and a live role would read it twice.
+const ERROR_SUMMARY_LABEL = 'There is a problem'
 
 const errorTextClass = 'mt-1 text-sm text-red-700 dark:text-red-400'
 
@@ -38,7 +42,8 @@ function ErrorSummary({
   return (
     <div
       ref={ref}
-      role="alert"
+      role="group"
+      aria-label={ERROR_SUMMARY_LABEL}
       tabIndex={-1}
       className={`rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400 ${focusRingClass}`}
     >
@@ -145,6 +150,7 @@ export default function AccountForm({
                 {...shared}
                 type={field.type}
                 autoComplete={field.autoComplete}
+                maxLength={field.maxLength}
                 defaultValue={field.type === 'password' ? undefined : state.values?.[field.name]}
                 className={inputClass}
               />

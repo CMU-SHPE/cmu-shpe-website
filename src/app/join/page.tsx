@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import AccountForm, { type AccountField } from '@/components/member/account-form'
 import AccountShell, { accountLinkClass } from '@/components/member/account-shell'
+import { MAX_MEMBER_NAME_LENGTH } from '@/lib/member-account'
 import { PASSWORD_REQUIREMENTS } from '@/lib/member-accounts'
 import { signUp } from './actions'
 
 export const metadata: Metadata = { title: 'Create an account | SHPE @ Colorado Mesa University' }
 
 const fields: AccountField[] = [
-  { name: 'name', label: 'Name', type: 'text', autoComplete: 'name' },
+  { name: 'name', label: 'Name', type: 'text', autoComplete: 'name', maxLength: MAX_MEMBER_NAME_LENGTH },
   { name: 'email', label: 'Email', type: 'email', autoComplete: 'email' },
   { name: 'password', label: 'Password', type: 'password', autoComplete: 'new-password', hint: PASSWORD_REQUIREMENTS },
   { name: 'confirmPassword', label: 'Confirm password', type: 'password', autoComplete: 'new-password' },

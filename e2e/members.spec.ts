@@ -18,6 +18,8 @@ async function open(page: Page, path: string) {
 
 // Next's route announcer is also role="alert", but lives outside <main>.
 const pageAlert = (page: Page) => page.locator('main').getByRole('alert')
+// The form error summary takes focus instead of being a live region.
+const formErrors = (page: Page) => page.locator('main').getByRole('group', { name: 'There is a problem' })
 
 async function fillSignUp(page: Page, email: string, overrides: { ageConfirmed?: boolean } = {}) {
   await page.getByLabel('Name', { exact: true }).fill('E2E Preview Tester')
@@ -36,8 +38,10 @@ async function signUpOutcome(page: Page, email: string) {
   await open(page, '/join')
   await fillSignUp(page, email)
   await submitSignUp(page)
-  await Promise.race([page.waitForURL('**/join/check-email'), pageAlert(page).waitFor()])
-  await expect(page.locator('main').getByRole(page.url().endsWith('/join/check-email') ? 'status' : 'alert')).toBeVisible()
+  await Promise.race([page.waitForURL('**/join/check-email'), formErrors(page).waitFor()])
+  await expect(
+    page.url().endsWith('/join/check-email') ? page.locator('main').getByRole('status') : formErrors(page),
+  ).toBeVisible()
   return { path: new URL(page.url()).pathname, text: (await page.locator('main').innerText()).trim() }
 }
 
@@ -123,7 +127,7 @@ test.describe('sign-up form', () => {
     await open(page, '/join')
     await submitSignUp(page)
 
-    const summary = pageAlert(page)
+    const summary = formErrors(page)
     await expect(summary).toBeVisible()
     await expect(summary).toBeFocused()
     await expect(page).toHaveURL((url) => url.pathname === '/join')
@@ -144,7 +148,7 @@ test.describe('sign-up form', () => {
     await fillSignUp(page, email, { ageConfirmed: false })
     await submitSignUp(page)
 
-    await expect(pageAlert(page)).toContainText('You must be 13 or older')
+    await expect(formErrors(page)).toContainText('You must be 13 or older')
     await expect(page).toHaveURL((url) => url.pathname === '/join')
     await expect(page.getByLabel('I am 13 or older')).toHaveAttribute('aria-invalid', 'true')
     await expect(page.getByLabel('Email', { exact: true })).toHaveValue(email)
@@ -224,7 +228,7 @@ test.describe('password reset links', () => {
     await page.getByLabel('Confirm new password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Save new password' }).click()
 
-    await expect(pageAlert(page)).toContainText('expired or was already used')
+    await expect(formErrors(page)).toContainText('expired or was already used')
     await expect(page).toHaveURL((url) => url.pathname === '/reset-password')
   })
 })

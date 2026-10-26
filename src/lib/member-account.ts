@@ -5,6 +5,7 @@ import { memberTopicSubscriptions, members } from '@/db/schema'
 import { recordId } from './form-fields'
 
 export const MAX_MEMBER_NAME_LENGTH = 100
+export const NAME_ERROR = `Enter your name, on one line and up to ${MAX_MEMBER_NAME_LENGTH} characters.`
 const MAX_TOPIC_SELECTION = 200
 export const DELETE_CONFIRMATION_WORD = 'DELETE'
 
