@@ -31,6 +31,7 @@ function ErrorSummary({
   fieldId: (name: string) => string
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const contentId = useId()
   const fieldErrors = fields.filter((field) => state.errors?.[field.name])
   const hasErrors = Boolean(state.formError) || fieldErrors.length > 0
 
@@ -44,24 +45,28 @@ function ErrorSummary({
       ref={ref}
       role="group"
       aria-label={ERROR_SUMMARY_LABEL}
+      aria-describedby={contentId}
       tabIndex={-1}
       className={`rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400 ${focusRingClass}`}
     >
-      {state.formError && <p>{state.formError}</p>}
-      {fieldErrors.length > 0 && (
-        <>
-          <p className="font-semibold">Please fix the following:</p>
-          <ul className="mt-1 list-disc pl-5">
-            {fieldErrors.map((field) => (
-              <li key={field.name}>
-                <a href={`#${fieldId(field.name)}`} className={`underline ${focusRingClass}`}>
-                  {state.errors?.[field.name]}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      {/* Some screen readers read only a focused group's label, so the errors are also its description. */}
+      <div id={contentId}>
+        {state.formError && <p>{state.formError}</p>}
+        {fieldErrors.length > 0 && (
+          <>
+            <p className="font-semibold">Please fix the following:</p>
+            <ul className="mt-1 list-disc pl-5">
+              {fieldErrors.map((field) => (
+                <li key={field.name}>
+                  <a href={`#${fieldId(field.name)}`} className={`underline ${focusRingClass}`}>
+                    {state.errors?.[field.name]}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
     </div>
   )
 }
