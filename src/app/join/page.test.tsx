@@ -10,6 +10,7 @@ describe('JoinPage', () => {
     render(<JoinPage />)
     expect(screen.getByRole('heading', { level: 1, name: 'Create an account' })).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveAttribute('autocomplete', 'name')
+    expect(screen.getByLabelText('Name')).toHaveAttribute('maxlength', '100')
     expect(screen.getByLabelText('Email')).toHaveAttribute('type', 'email')
     expect(screen.getByLabelText('Password')).toHaveAccessibleDescription(/At least 12 characters/)
     expect(screen.getByLabelText('Confirm password')).toHaveAttribute('autocomplete', 'new-password')

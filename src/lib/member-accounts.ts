@@ -4,12 +4,13 @@ import type { Db } from '@/db'
 import { memberTokens, members } from '@/db/schema'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, adminPassword } from '@/lib/admin-account'
 import { emailAddress } from '@/lib/form-fields'
-import { MAX_MEMBER_NAME_LENGTH, memberName } from '@/lib/member-account'
+import { NAME_ERROR, memberName } from '@/lib/member-account'
 import { memberTokenParam } from '@/lib/member-tokens'
 
 export const UNCONFIRMED_RETENTION_DAYS = 7
 
 export const PASSWORD_REQUIREMENTS = `At least ${MIN_PASSWORD_LENGTH} characters, and no more than ${MAX_PASSWORD_BYTES} bytes (about ${MAX_PASSWORD_BYTES} plain letters, fewer with emoji or accents).`
+export const PASSWORD_ERROR = `Choose a password with ${PASSWORD_REQUIREMENTS.charAt(0).toLowerCase()}${PASSWORD_REQUIREMENTS.slice(1)}`
 
 export const SEND_FAILED_MESSAGE = "We couldn't send the email right now, try again later."
 
@@ -45,9 +46,9 @@ const passwordResetSchema = z
   .refine((input) => input.password === input.confirmPassword, { path: ['confirmPassword'] })
 
 const FIELD_MESSAGES: Record<string, string> = {
-  name: `Enter your name, on one line and up to ${MAX_MEMBER_NAME_LENGTH} characters.`,
+  name: NAME_ERROR,
   email: 'Enter a valid email address.',
-  password: `Choose a password with ${PASSWORD_REQUIREMENTS.charAt(0).toLowerCase()}${PASSWORD_REQUIREMENTS.slice(1)}`,
+  password: PASSWORD_ERROR,
   confirmPassword: "The two passwords don't match.",
   ageConfirmed: 'You must be 13 or older to create an account.',
   termsAccepted: 'You need to agree to the Terms of Use and Privacy Policy to create an account.',

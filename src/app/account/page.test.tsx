@@ -101,6 +101,15 @@ describe('AccountPage', () => {
     expect(document.activeElement).toBe(document.getElementById('account-status'))
   })
 
+  it('states the shared password rule without a character cap, since the limit is in bytes', async () => {
+    await renderPage({ error: 'password-password' })
+    const newPassword = screen.getByLabelText('New password')
+    expect(newPassword).not.toHaveAttribute('maxlength')
+    expect(screen.getByLabelText('Confirm new password')).not.toHaveAttribute('maxlength')
+    expect(newPassword).toHaveAttribute('aria-invalid', 'true')
+    expect(newPassword).toHaveAccessibleDescription(/^Choose a password with at least 12 characters.*At least 12 characters/)
+  })
+
   it('marks the delete confirmation when the word was wrong', async () => {
     await renderPage({ error: 'delete-confirm' })
     expect(screen.getByRole('textbox', { name: 'Type DELETE to confirm' })).toHaveAttribute('aria-invalid', 'true')

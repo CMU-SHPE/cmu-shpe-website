@@ -11,6 +11,7 @@ export type AccountField = {
   type: 'text' | 'email' | 'password' | 'checkbox'
   autoComplete?: string
   hint?: string
+  maxLength?: number
 }
 
 type AttemptState = FormState & { attempt: number }
@@ -145,6 +146,7 @@ export default function AccountForm({
                 {...shared}
                 type={field.type}
                 autoComplete={field.autoComplete}
+                maxLength={field.maxLength}
                 defaultValue={field.type === 'password' ? undefined : state.values?.[field.name]}
                 className={inputClass}
               />
