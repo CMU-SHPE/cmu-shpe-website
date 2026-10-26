@@ -7,10 +7,11 @@ import { listTopics } from './topic-list'
 import UnsubscribeForms from './unsubscribe-forms'
 
 // The token is in the URL, so it must not leak to other sites through the Referer header.
+// Not 'no-referrer': that makes browsers send Origin: null, which Next refuses for server actions.
 export const metadata: Metadata = {
-  title: 'Unsubscribe | SHPE @ CMU',
+  title: 'Unsubscribe | SHPE @ Colorado Mesa University',
   robots: { index: false, follow: false },
-  referrer: 'no-referrer',
+  referrer: 'same-origin',
 }
 
 /**

@@ -107,4 +107,15 @@ test.describe.serial('a working unsubscribe link', () => {
     await expect(page.locator('main').getByRole('status')).toContainText('already unsubscribed')
     await expect(page.getByRole('button', { name: /^Unsubscribe from (?!all newsletters)/ })).toHaveCount(0)
   })
+
+  // Exercises the page's server action, which the one-click POST above does not.
+  test('the page form unsubscribes from everything that is left', async ({ page }) => {
+    await open(page, path)
+    const all = page.getByRole('button', { name: 'Unsubscribe from all newsletters' })
+    test.skip((await all.count()) === 0, 'The member has no other subscriptions left to remove')
+    await all.click()
+    await expect(page.locator('main')).toContainText(/You’re unsubscribed from .+\.|already unsubscribed/)
+    await open(page, path)
+    await expect(page.locator('main').getByRole('status')).toContainText('already unsubscribed from all')
+  })
 })

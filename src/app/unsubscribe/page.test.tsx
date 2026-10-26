@@ -12,7 +12,7 @@ const fake = vi.hoisted(() => ({ current: null as unknown }))
 vi.mock('@/db', () => ({ getDb: () => fake.current }))
 vi.mock('./actions', () => ({ unsubscribeFromPage: vi.fn() }))
 
-import UnsubscribePage from './page'
+import UnsubscribePage, { metadata } from './page'
 
 let db: ReturnType<typeof createFakeUnsubscribeDb>
 let token: string
@@ -34,6 +34,11 @@ afterEach(() => {
 })
 
 describe('UnsubscribePage', () => {
+  it('keeps the token out of cross-site Referer headers while same-origin form posts keep their Origin', () => {
+    expect(metadata.referrer).toBe('same-origin')
+    expect(metadata.robots).toEqual({ index: false, follow: false })
+  })
+
   it('shows the forms for a valid token without deleting or inserting anything', async () => {
     await renderPage({ token })
     expect(screen.getByRole('heading', { name: 'Unsubscribe from SHPE @ CMU newsletters' })).toBeInTheDocument()
