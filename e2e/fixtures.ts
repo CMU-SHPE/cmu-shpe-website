@@ -1,28 +1,31 @@
-import { test as base, expect, type Page } from '@playwright/test'
+import { test as base, expect, type BrowserContext, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
 /**
  * The protection bypass secret is attached only to requests for the preview's own origin,
  * never to third-party requests the page makes (fonts, images, social embeds).
  */
+export async function installBypass(context: BrowserContext, baseURL: string | undefined) {
+  const secret = process.env.VERCEL_BYPASS
+  if (!secret || !baseURL) return
+  const origin = new URL(baseURL).origin
+  let cookieRequested = false
+  await context.route(
+    (url) => url.origin === origin,
+    async (route) => {
+      const headers: Record<string, string> = { ...route.request().headers(), 'x-vercel-protection-bypass': secret }
+      if (!cookieRequested) {
+        cookieRequested = true
+        headers['x-vercel-set-bypass-cookie'] = 'true'
+      }
+      await route.continue({ headers })
+    },
+  )
+}
+
 export const test = base.extend({
   context: async ({ context, baseURL }, provide) => {
-    const secret = process.env.VERCEL_BYPASS
-    if (secret && baseURL) {
-      const origin = new URL(baseURL).origin
-      let cookieRequested = false
-      await context.route(
-        (url) => url.origin === origin,
-        async (route) => {
-          const headers = { ...route.request().headers(), 'x-vercel-protection-bypass': secret }
-          if (!cookieRequested) {
-            cookieRequested = true
-            headers['x-vercel-set-bypass-cookie'] = 'true'
-          }
-          await route.continue({ headers })
-        },
-      )
-    }
+    await installBypass(context, baseURL)
     await provide(context)
   },
 })

@@ -198,12 +198,14 @@ Runs in `.github/workflows/ci.yml` on every push to `main` and every pull reques
 
 ### Preview smoke tests
 
-`e2e/` holds Playwright tests for the member sign-up pages, the sign-in redirects and an
-axe accessibility scan of each account page in light and dark mode. They run by hand
-against a **preview** deployment, never in CI and never against production: the config
-refuses any URL that isn't a Vercel preview or localhost. They create unconfirmed
-accounts for `delivered+…@resend.dev` (Resend's test inbox), which are purged
-after 7 days like any other unconfirmed account.
+`e2e/` holds Playwright tests for sign-up, the resend-confirmation and forgot-password
+forms (which must answer known and unknown addresses alike), broken confirmation and
+reset links, the signed-out redirects from `/account` and `/admin`, the Privacy and Terms
+links, and an axe WCAG 2.1 AA scan of each account page in light and dark mode. They run
+by hand against a **preview** deployment, never in CI and never against production: the
+config refuses any URL that isn't a Vercel preview or localhost. They create unconfirmed
+accounts for `delivered+…@resend.dev` (Resend's test inbox), which are deleted like any
+other unconfirmed account once they are 7 days old.
 
 ```bash
 npx playwright install chromium   # once
