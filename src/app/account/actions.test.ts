@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { SQL } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Statement = { sql: string; params: unknown[] }
@@ -77,18 +78,27 @@ vi.mock('@/db', async () => {
   mocks.db = new Proxy(real, {
     get(target, property, receiver) {
       if (property === 'batch') {
-        return async (queries: { toSQL: () => Statement }[]) => {
+        return async (queries: { toSQL: () => Statement; updateValues?: Record<string, unknown> }[]) => {
           mocks.state.calls.push('batch')
           mocks.state.batches.push(queries.map((query) => query.toSQL()))
+          for (const query of queries) if (query.updateValues) mocks.state.updates.push(query.updateValues)
           return queries.map(() => [])
         }
       }
       if (property === 'update') {
-        return () => ({
+        return (table: typeof schema.members) => ({
           set: (values: Record<string, unknown>) => ({
-            where: async () => {
-              mocks.state.calls.push('update')
-              mocks.state.updates.push(values)
+            where: (condition: SQL | undefined) => {
+              const query = real.update(table).set(values).where(condition)
+              return {
+                updateValues: values,
+                toSQL: () => query.toSQL(),
+                then: (resolve: () => void) => {
+                  mocks.state.calls.push('update')
+                  mocks.state.updates.push(values)
+                  resolve()
+                },
+              }
             },
           }),
         })
@@ -208,6 +218,15 @@ describe('changePassword', () => {
       password: NEW,
       redirectTo: '/account?saved=password',
     })
+  })
+
+  it('cancels pending reset links in the same batch as the password change', async () => {
+    expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?saved=password')
+    expect(mocks.state.batches).toHaveLength(1)
+    const [update, cancelResets] = mocks.state.batches[0]
+    expect(update.sql).toMatch(/^update "members" set "password_hash" = \$1, "password_changed_at" = \$2 where/)
+    expect(cancelResets.sql).toMatch(/^delete from "member_tokens" where/)
+    expect(cancelResets.params).toEqual([7, 'reset_password'])
   })
 
   it('still finishes the change when the notice fails, logging only a tag', async () => {
