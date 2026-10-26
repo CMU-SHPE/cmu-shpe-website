@@ -66,7 +66,7 @@ describe('parseSignUp', () => {
   })
 
   it('rejects names with line breaks or control characters, and empty or long names', () => {
-    for (const name of ['Mia\nMember', 'Mia\r\nBcc: x@y.z', 'Mia\u0000', 'Mia Member', '   ', 'a'.repeat(101)]) {
+    for (const name of ['Mia\nMember', 'Mia\r\nBcc: x@y.z', 'Mia\u0000', 'Mia\u2028Member', 'Mia\u2029Member', '   ', 'a'.repeat(101)]) {
       expect(parseSignUp(signUp({ name }))).toMatchObject({ success: false, errors: { name: expect.any(String) } })
     }
     expect(parseSignUp(signUp({ name: 'a'.repeat(100) })).success).toBe(true)

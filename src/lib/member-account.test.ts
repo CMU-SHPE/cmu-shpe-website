@@ -19,6 +19,8 @@ describe('memberName', () => {
     ['a newline', 'Ana\nAdmin'],
     ['a tab', 'Ana\tLopez'],
     ['a control character', 'Ana\u0007'],
+    ['a Unicode line separator', 'Ana\u2028Admin'],
+    ['a Unicode paragraph separator', 'Ana\u2029Admin'],
   ])('rejects a name that is %s', (_, value) => {
     expect(memberName.safeParse(value).success).toBe(false)
   })

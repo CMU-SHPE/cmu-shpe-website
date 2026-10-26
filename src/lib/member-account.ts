@@ -8,14 +8,15 @@ export const MAX_MEMBER_NAME_LENGTH = 100
 const MAX_TOPIC_SELECTION = 200
 export const DELETE_CONFIRMATION_WORD = 'DELETE'
 
-// Names are shown to admins and put into emails, so line breaks and other control
-// characters are refused rather than silently rewritten.
+// Names are shown to admins and put into emails, so line breaks (including the Unicode
+// line and paragraph separators) and other control characters are refused rather than
+// silently rewritten.
 export const memberName = z
   .string()
   .trim()
   .min(1)
   .max(MAX_MEMBER_NAME_LENGTH)
-  .refine((value) => !/\p{Cc}/u.test(value))
+  .refine((value) => !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value))
 
 export function parseNameForm(formData: FormData) {
   return memberName.safeParse(formData.get('name'))
