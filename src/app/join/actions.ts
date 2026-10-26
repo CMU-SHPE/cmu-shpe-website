@@ -39,7 +39,9 @@ function confirmLink(base: string, token: string) {
 /**
  * Picks the one email this sign-up sends. An existing account is never changed or
  * revealed; an unconfirmed one is taken over by the newest sign-up, so registering
- * someone else's address first can't lock them out of it.
+ * someone else's address first can't lock them out of it. Confirming then needs that
+ * newest sign-up's password, so the owner clicking the link can't activate someone
+ * else's.
  */
 async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Promise<EmailContent> {
   const { name, email, passwordHash, privacyPolicyVersion, base } = signUp

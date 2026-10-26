@@ -207,6 +207,7 @@ test.describe('confirmation links', () => {
 
   test('a well-formed but unknown or expired token is refused when the button is pressed', async ({ page }) => {
     await open(page, `/join/confirm?token=${WELL_FORMED_UNKNOWN_TOKEN}`)
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Confirm my email' }).click()
     await expect(page).toHaveURL((url) => url.pathname === '/join/confirm' && url.searchParams.get('invalid') === '1')
     await expect(pageAlert(page)).toContainText('expired, was already used')

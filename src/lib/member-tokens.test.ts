@@ -8,12 +8,28 @@ const fake = vi.hoisted(() => {
     stored: new Map<string, { memberId: number; purpose: string; expired: boolean }>(),
     statements: [] as { sql: string; params: unknown[] }[],
     returningCalls: 0,
+    selectCalls: 0,
   }
   return { state }
 })
 
 vi.mock('@/db', () => ({
   getDb: () => ({
+    select: () => ({
+      from: () => ({
+        where: (condition: SQL) => ({
+          limit: async () => {
+            fake.state.selectCalls += 1
+            const query = new PgDialect().sqlToQuery(condition)
+            fake.state.statements.push(query)
+            const [hash, purpose] = query.params as [string, string]
+            const row = fake.state.stored.get(hash)
+            if (!row || row.purpose !== purpose || row.expired) return []
+            return [{ memberId: row.memberId }]
+          },
+        }),
+      }),
+    }),
     delete: () => ({
       where: (condition: SQL) => ({
         returning: async () => {
@@ -31,12 +47,13 @@ vi.mock('@/db', () => ({
   }),
 }))
 
-import { TOKEN_TTL_MS, consumeMemberToken, hashToken, newMemberToken } from './member-tokens'
+import { TOKEN_TTL_MS, consumeMemberToken, findMemberToken, hashToken, newMemberToken } from './member-tokens'
 
 beforeEach(() => {
   fake.state.stored.clear()
   fake.state.statements = []
   fake.state.returningCalls = 0
+  fake.state.selectCalls = 0
 })
 
 function store(memberId: number, purpose: 'confirm_email' | 'reset_password', expired = false) {
@@ -95,5 +112,32 @@ describe('consumeMemberToken', () => {
       await expect(consumeMemberToken(token, 'confirm_email')).resolves.toBeNull()
     }
     expect(fake.state.returningCalls).toBe(0)
+  })
+})
+
+describe('findMemberToken', () => {
+  it('matches the same hash, purpose and unexpired database time as consuming, without using the token up', async () => {
+    const token = store(7, 'confirm_email')
+    await expect(findMemberToken(token, 'confirm_email')).resolves.toBe(7)
+    await expect(findMemberToken(token, 'confirm_email')).resolves.toBe(7)
+    expect(fake.state.returningCalls).toBe(0)
+    const [{ sql, params }] = fake.state.statements
+    expect(sql).toBe(
+      '("member_tokens"."token_hash" = $1 and "member_tokens"."purpose" = $2 and "member_tokens"."expires_at" > now())',
+    )
+    expect(params).toEqual([hashToken(token), 'confirm_email'])
+    await expect(consumeMemberToken(token, 'confirm_email')).resolves.toBe(7)
+  })
+
+  it('refuses an expired token or one issued for the other purpose', async () => {
+    await expect(findMemberToken(store(7, 'confirm_email', true), 'confirm_email')).resolves.toBeNull()
+    await expect(findMemberToken(store(7, 'confirm_email'), 'reset_password')).resolves.toBeNull()
+  })
+
+  it('rejects malformed tokens without touching the database', async () => {
+    for (const token of ['', 'short', 'a'.repeat(44), `${'a'.repeat(42)}=`, `${'a'.repeat(42)}/`]) {
+      await expect(findMemberToken(token, 'confirm_email')).resolves.toBeNull()
+    }
+    expect(fake.state.selectCalls).toBe(0)
   })
 })

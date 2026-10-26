@@ -47,14 +47,16 @@ vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendEmail: fake.sendEmail,
 }))
-vi.mock('bcryptjs', () => ({ default: { hash: fake.hash } }))
+vi.mock('bcryptjs', () => ({
+  default: { hash: fake.hash, compare: async (password: string, hash: string) => hash.endsWith(`$hash-of:${password}`) },
+}))
 vi.mock('@/lib/queries', () => ({ getPrivacyPolicyVersion: async () => 'October 2026' }))
 vi.mock('next/headers', () => ({ headers: fake.headers }))
 vi.mock('next/navigation', () => ({ redirect: fake.redirect }))
 
 import { members, memberTokens, requestThrottle } from '@/db/schema'
 import { hashToken, newMemberToken } from '@/lib/member-tokens'
-import { recordRequest } from '@/lib/request-throttle'
+import { recordRequest, type ThrottledAction } from '@/lib/request-throttle'
 import { confirmMemberEmail } from './confirm/actions'
 import { signUp } from './actions'
 
@@ -117,10 +119,17 @@ function createDb() {
     set: (values: Partial<MemberRow>) => ({
       where: (condition: SQL): Write => () => {
         if (tableName(table) !== 'members') throw new Error('unexpected update')
-        const [id] = params(condition)
+        const [id, passwordHash] = params(condition)
         const onlyUnconfirmed = /"email_confirmed_at" is null/.test(sqlText(condition))
+        const onlySameHash = /"password_hash" = \$2/.test(sqlText(condition))
         for (const row of state.members) {
-          if (row.id === id && (!onlyUnconfirmed || row.emailConfirmedAt === null)) Object.assign(row, values)
+          if (
+            row.id === id &&
+            (!onlyUnconfirmed || row.emailConfirmedAt === null) &&
+            (!onlySameHash || row.passwordHash === passwordHash)
+          ) {
+            Object.assign(row, values)
+          }
         }
       },
     }),
@@ -174,6 +183,19 @@ function createDb() {
           ).length
           return Promise.resolve([{ [key]: total }])
         }
+        if (table === 'member_tokens') {
+          const [tokenHash, purpose] = params(condition)
+          return {
+            limit: async () =>
+              state.tokens
+                .filter((row) => row.tokenHash === tokenHash && row.purpose === purpose && row.expiresAt.getTime() > Date.now())
+                .map((row) => ({ memberId: row.memberId })),
+          }
+        }
+        if (table === 'members' && /"members"."id" = /.test(sqlText(condition))) {
+          const [id] = params(condition)
+          return { limit: async () => state.members.filter((row) => row.id === id) }
+        }
         const [email] = params(condition)
         return {
           limit: async () => {
@@ -205,6 +227,9 @@ function createDb() {
 }
 
 const PASSWORD = 'correct horse battery'
+const SECOND_PASSWORD = 'another long password'
+const PASSWORD_MISMATCH =
+  "That password doesn't match this sign-up. If you didn't make the most recent sign-up for this email, sign up again with the password you want."
 const SIGN_UP_TIME = new Date('2026-10-24T18:00:00.000Z')
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -237,11 +262,12 @@ function lastEmailedToken(): string {
   return match[1]
 }
 
-async function confirm(token: unknown) {
+async function confirm(token: unknown, password = PASSWORD) {
   const formData = new FormData()
   if (token !== undefined) formData.set('token', token as string | Blob)
-  return confirmMemberEmail(formData).then(
-    () => 'returned',
+  formData.set('password', password)
+  return confirmMemberEmail({}, formData).then(
+    (state) => state,
     (error: Error) => error.message,
   )
 }
@@ -319,14 +345,55 @@ describe('the confirmation link a sign-up emails', () => {
   it('is revoked by a later sign-up for the same unconfirmed address, whose own link then works', async () => {
     await submitSignUp()
     const first = lastEmailedToken()
-    await submitSignUp({ name: 'Second Try', password: 'another long password', confirmPassword: 'another long password' })
+    await submitSignUp({ name: 'Second Try', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
     const second = lastEmailedToken()
 
-    await expect(confirm(first)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
-    await expect(confirm(second)).resolves.toBe('REDIRECT /login?confirmed=1')
+    await expect(confirm(first, SECOND_PASSWORD)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
+    await expect(confirm(second, SECOND_PASSWORD)).resolves.toBe('REDIRECT /login?confirmed=1')
     expect(fake.state.members).toEqual([
-      expect.objectContaining({ id: 1, name: 'Second Try', passwordHash: '$2b$12$hash-of:another long password' }),
+      expect.objectContaining({ id: 1, name: 'Second Try', passwordHash: `$2b$12$hash-of:${SECOND_PASSWORD}` }),
     ])
+  })
+
+  it('needs the password of the latest sign-up, so someone who overwrote the owner\'s sign-up is not activated by their click', async () => {
+    await submitSignUp()
+    await submitSignUp({ name: 'Second Try', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
+    const link = lastEmailedToken()
+
+    await expect(confirm(link, PASSWORD)).resolves.toEqual({ formError: PASSWORD_MISMATCH })
+    expect(fake.state.members[0].emailConfirmedAt).toBeNull()
+    expect(fake.state.tokens).toEqual([expect.objectContaining({ tokenHash: hashToken(link) })])
+
+    await expect(confirm(link, SECOND_PASSWORD)).resolves.toBe('REDIRECT /login?confirmed=1')
+    expect(fake.state.members[0].emailConfirmedAt).toEqual(SIGN_UP_TIME)
+    expect(fake.state.tokens).toEqual([])
+  })
+
+  it('stays usable after a wrong password, and confirms with the right one', async () => {
+    await submitSignUp()
+    const link = lastEmailedToken()
+
+    await expect(confirm(link, 'not the password at all')).resolves.toEqual({ formError: PASSWORD_MISMATCH })
+    expect(fake.state.members[0].emailConfirmedAt).toBeNull()
+    expect(fake.state.tokens).toHaveLength(1)
+
+    await expect(confirm(link)).resolves.toBe('REDIRECT /login?confirmed=1')
+    expect(fake.state.members[0].emailConfirmedAt).toEqual(SIGN_UP_TIME)
+  })
+
+  it('stops checking passwords after 5 tries for the address, even the right one, until the window passes', async () => {
+    await submitSignUp()
+    const link = lastEmailedToken()
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(confirm(link, `wrong guess ${attempt}`)).resolves.toEqual({ formError: PASSWORD_MISMATCH })
+    }
+
+    await expect(confirm(link)).resolves.toEqual({ formError: 'Too many attempts. Wait 15 minutes and try again.' })
+    expect(fake.state.members[0].emailConfirmedAt).toBeNull()
+    expect(fake.state.tokens).toHaveLength(1)
+
+    vi.setSystemTime(SIGN_UP_TIME.getTime() + 15 * 60 * 1000 + 1)
+    await expect(confirm(link)).resolves.toBe('REDIRECT /login?confirmed=1')
   })
 
   it('cannot be swapped for a password reset token of the same member', async () => {
@@ -469,7 +536,7 @@ describe('sign-up refuses bad input before doing anything', () => {
 })
 
 describe('recordRequest against stored rows', () => {
-  const record = (action: 'signup' | 'forgot_password' | 'resend_confirmation', email: string, ip: string | null = null) =>
+  const record = (action: ThrottledAction, email: string, ip: string | null = null) =>
     recordRequest(action, email, ip).then((result) => result.throttled)
 
   it('allows 5 requests per address in 15 minutes and refuses the 6th', async () => {
@@ -481,6 +548,7 @@ describe('recordRequest against stored rows', () => {
     for (let n = 1; n <= 6; n += 1) await record('signup', 'mia@example.com', '203.0.113.7')
     await expect(record('forgot_password', 'mia@example.com', '203.0.113.7')).resolves.toBe(false)
     await expect(record('resend_confirmation', 'mia@example.com', '203.0.113.7')).resolves.toBe(false)
+    await expect(record('confirm_email', 'mia@example.com', '203.0.113.7')).resolves.toBe(false)
   })
 
   it('allows 20 requests per ip across addresses and refuses the 21st', async () => {

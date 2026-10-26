@@ -3,7 +3,7 @@ import { getDb } from '@/db'
 import { requestThrottle } from '@/db/schema'
 import { WINDOW_MINUTES, isThrottled } from '@/lib/login-throttle'
 
-export type ThrottledAction = 'signup' | 'resend_confirmation' | 'forgot_password'
+export type ThrottledAction = 'signup' | 'resend_confirmation' | 'forgot_password' | 'confirm_email'
 
 /**
  * Like recordLoginAttempt, but per action and in its own table, so emailing an admin's

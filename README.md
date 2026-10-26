@@ -139,9 +139,12 @@ Anyone 13 or older can create a member account to choose which newsletters they 
 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
-  Didn't get it? `/join/resend` sends a new link. Accounts never confirmed are deleted
-  once they are 7 days old and have no unexpired link; there is no scheduled job, so this
-  happens the next time anyone signs up or asks for a new link.
+  Confirming asks for the password chosen at sign-up, so if someone else signed up with
+  the same address later, the owner's click can't activate the account with that person's
+  password; a wrong password leaves the link working. Didn't get it? `/join/resend` sends
+  a new link. Accounts never confirmed are deleted once they are 7 days old and have no
+  unexpired link; there is no scheduled job, so this happens the next time anyone signs
+  up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`.
 - **`/account`:** change name and password, choose newsletter topics, and **Delete my
   account** (asks for the password and the word DELETE; it removes the account and its

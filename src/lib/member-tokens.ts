@@ -41,6 +41,28 @@ export function deleteMemberTokens(db: Db, memberId: number, purpose: MemberToke
   return db.delete(memberTokens).where(and(eq(memberTokens.memberId, memberId), eq(memberTokens.purpose, purpose)))
 }
 
+function unexpiredTokenMatching(token: string, purpose: MemberTokenPurpose) {
+  return and(
+    eq(memberTokens.tokenHash, hashToken(token)),
+    eq(memberTokens.purpose, purpose),
+    gt(memberTokens.expiresAt, sql`now()`),
+  )
+}
+
+/**
+ * Reads without using up the link, so a check that has to pass first (such as the
+ * sign-up password) can fail and leave the link working.
+ */
+export async function findMemberToken(token: string, purpose: MemberTokenPurpose): Promise<number | null> {
+  if (!memberTokenParam.safeParse(token).success) return null
+  const [row] = await getDb()
+    .select({ memberId: memberTokens.memberId })
+    .from(memberTokens)
+    .where(unexpiredTokenMatching(token, purpose))
+    .limit(1)
+  return row?.memberId ?? null
+}
+
 /**
  * One DELETE ... RETURNING, so two requests racing with the same link can't both use it,
  * and expiry is judged by the database clock.
@@ -49,13 +71,7 @@ export async function consumeMemberToken(token: string, purpose: MemberTokenPurp
   if (!memberTokenParam.safeParse(token).success) return null
   const [row] = await getDb()
     .delete(memberTokens)
-    .where(
-      and(
-        eq(memberTokens.tokenHash, hashToken(token)),
-        eq(memberTokens.purpose, purpose),
-        gt(memberTokens.expiresAt, sql`now()`),
-      ),
-    )
+    .where(unexpiredTokenMatching(token, purpose))
     .returning({ memberId: memberTokens.memberId })
   return row?.memberId ?? null
 }
