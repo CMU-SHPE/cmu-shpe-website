@@ -79,6 +79,7 @@ export default async function AccountPage(props: {
 
   const banner = (
     <StatusBanner
+      live={false}
       saved={knownSaved}
       error={error}
       errorMessages={errorMessages}

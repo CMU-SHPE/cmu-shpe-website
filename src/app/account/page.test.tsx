@@ -85,15 +85,18 @@ describe('AccountPage', () => {
     expect(within(form).getByRole('textbox', { name: 'Type DELETE to confirm' })).toBeRequired()
   })
 
-  it('moves focus to a saved message and announces it', async () => {
+  it('moves focus to a saved message without also making it a live region', async () => {
     await renderPage({ saved: 'topics' })
-    expect(screen.getByRole('status')).toHaveTextContent('Your newsletter choices were saved.')
-    expect(document.activeElement).toBe(document.getElementById('account-status'))
+    const banner = document.getElementById('account-status')
+    expect(banner).toHaveTextContent('Your newsletter choices were saved.')
+    expect(document.activeElement).toBe(banner)
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('marks the field an error is about and links it to the message', async () => {
     await renderPage({ error: 'password-current' })
-    expect(screen.getByRole('alert')).toHaveTextContent('Your current password is incorrect.')
+    expect(document.getElementById('account-status')).toHaveTextContent('Your current password is incorrect.')
+    expect(screen.queryByRole('alert')).toBeNull()
     const current = screen.getByLabelText('Current password')
     expect(current).toHaveAttribute('aria-invalid', 'true')
     expect(current).toHaveAccessibleDescription('Your current password is incorrect.')
@@ -117,6 +120,6 @@ describe('AccountPage', () => {
 
   it('shows no banner for an unknown saved value', async () => {
     await renderPage({ saved: 'whatever' })
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(document.getElementById('account-status')).toBeNull()
   })
 })

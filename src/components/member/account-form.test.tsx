@@ -29,7 +29,7 @@ describe('AccountForm', () => {
     const password = screen.getByLabelText('Password')
     expect(password).toHaveAttribute('autocomplete', 'new-password')
     expect(password).toHaveAccessibleDescription('At least 12 characters.')
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'There is a problem' })).not.toBeInTheDocument()
   })
 
   it('after a failed submit, focuses the error summary, marks the fields, and keeps what was typed except the password', async () => {
@@ -40,7 +40,7 @@ describe('AccountForm', () => {
     renderForm(action)
     fill()
 
-    const summary = await screen.findByRole('alert')
+    const summary = await screen.findByRole('group', { name: 'There is a problem' })
     await waitFor(() => expect(summary).toHaveFocus())
     expect(summary).toHaveTextContent('Enter a valid email address.')
     expect(screen.getByRole('link', { name: 'Choose a longer password.' }).getAttribute('href')).toBe(
@@ -62,18 +62,28 @@ describe('AccountForm', () => {
   it('shows a form-level error such as a failed send in the summary', async () => {
     renderForm(async () => ({ formError: "We couldn't send the email right now, try again later." }))
     fill()
-    const summary = await screen.findByRole('alert')
+    const summary = await screen.findByRole('group', { name: 'There is a problem' })
     expect(summary).toHaveTextContent("We couldn't send the email right now")
     await waitFor(() => expect(summary).toHaveFocus())
+  })
+
+  it('does not also make the focused summary a live region, so it is read once', async () => {
+    renderForm(async () => ({ formError: 'Try again.' }))
+    fill()
+    const summary = await screen.findByRole('group', { name: 'There is a problem' })
+    await waitFor(() => expect(summary).toHaveFocus())
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(summary).not.toHaveAttribute('aria-live')
   })
 
   it('moves focus to the summary again on a repeated failure', async () => {
     renderForm(async () => ({ formError: 'Try again.' }))
     fill()
-    const summary = await screen.findByRole('alert')
+    const summary = await screen.findByRole('group', { name: 'There is a problem' })
     await waitFor(() => expect(summary).toHaveFocus())
     screen.getByLabelText('Name').focus()
     fireEvent.submit(screen.getByRole('button', { name: 'Create account' }).closest('form')!)
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveFocus())
+    await waitFor(() => expect(screen.getByRole('group', { name: 'There is a problem' })).toHaveFocus())
   })
 })

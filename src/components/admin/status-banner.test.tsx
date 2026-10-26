@@ -30,4 +30,11 @@ describe('StatusBanner', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
+
+  it('drops the live role when the caller moves focus to it instead', () => {
+    const { rerender } = render(<StatusBanner error="duplicate" errorMessages={errorMessages} live={false} />)
+    expect(screen.getByText('An account with that email already exists.')).not.toHaveAttribute('role')
+    rerender(<StatusBanner saved="1" errorMessages={errorMessages} savedMessage="Officer saved." live={false} />)
+    expect(screen.getByText('Officer saved.')).not.toHaveAttribute('role')
+  })
 })
