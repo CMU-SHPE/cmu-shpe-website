@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { cardClass } from '@/components/admin/styles'
 import AccountForm, { type AccountField } from '@/components/member/account-form'
 import AccountShell, { accountLinkClass } from '@/components/member/account-shell'
-import { memberTokenParam } from '@/lib/member-tokens'
+import { findMemberEmailForToken, memberTokenParam } from '@/lib/member-tokens'
 import { confirmMemberEmail } from './actions'
 
 export const metadata: Metadata = { title: 'Confirm your email | SHPE @ Colorado Mesa University' }
@@ -14,7 +14,7 @@ const fields: AccountField[] = [
 
 /**
  * Opening the link only shows a form. Mail scanners fetch links in incoming email, so
- * the token is used up by the form's POST, never by the GET.
+ * the token is used up by the form's POST, never by the GET, which only reads it.
  */
 export default async function ConfirmEmailPage(props: {
   searchParams: Promise<{ token?: string; invalid?: string }>
@@ -37,6 +37,8 @@ export default async function ConfirmEmailPage(props: {
     )
   }
 
+  const email = await findMemberEmailForToken(validToken, 'confirm_email')
+
   return (
     <AccountShell
       title="Confirm your email"
@@ -51,6 +53,7 @@ export default async function ConfirmEmailPage(props: {
         action={confirmMemberEmail}
         fields={fields}
         hidden={{ token: validToken }}
+        username={email ?? undefined}
         submitLabel="Confirm my email"
         pendingLabel="Confirming…"
       />

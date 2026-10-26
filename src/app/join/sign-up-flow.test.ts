@@ -23,6 +23,7 @@ const fake = vi.hoisted(() => {
     nextMemberId: 1,
     hashes: 0,
     accountLookups: 0,
+    afterConsume: null as null | (() => Promise<unknown>),
   }
   return {
     state,
@@ -117,20 +118,22 @@ function createDb() {
 
   const update = (table: unknown) => ({
     set: (values: Partial<MemberRow>) => ({
-      where: (condition: SQL): Write => () => {
-        if (tableName(table) !== 'members') throw new Error('unexpected update')
-        const [id, passwordHash] = params(condition)
-        const onlyUnconfirmed = /"email_confirmed_at" is null/.test(sqlText(condition))
-        const onlySameHash = /"password_hash" = \$2/.test(sqlText(condition))
-        for (const row of state.members) {
-          if (
-            row.id === id &&
-            (!onlyUnconfirmed || row.emailConfirmedAt === null) &&
-            (!onlySameHash || row.passwordHash === passwordHash)
-          ) {
-            Object.assign(row, values)
-          }
+      where: (condition: SQL) => {
+        const apply = () => {
+          if (tableName(table) !== 'members') throw new Error('unexpected update')
+          const [id, passwordHash] = params(condition)
+          const onlyUnconfirmed = /"email_confirmed_at" is null/.test(sqlText(condition))
+          const onlySameHash = /"password_hash" = \$2/.test(sqlText(condition))
+          const changed = state.members.filter(
+            (row) =>
+              row.id === id &&
+              (!onlyUnconfirmed || row.emailConfirmedAt === null) &&
+              (!onlySameHash || row.passwordHash === passwordHash),
+          )
+          for (const row of changed) Object.assign(row, values)
+          return changed.map((row) => ({ id: row.id }))
         }
+        return Object.assign(apply, { returning: async () => apply() })
       },
     }),
   })
@@ -160,6 +163,9 @@ function createDb() {
           )
           if (!match) return []
           state.tokens = state.tokens.filter((row) => row !== match)
+          const hook = state.afterConsume
+          state.afterConsume = null
+          await hook?.()
           return [{ memberId: match.memberId }]
         },
       })
@@ -194,7 +200,7 @@ function createDb() {
         }
         if (table === 'members' && /"members"."id" = /.test(sqlText(condition))) {
           const [id] = params(condition)
-          return { limit: async () => state.members.filter((row) => row.id === id) }
+          return { limit: async () => state.members.filter((row) => row.id === id).map((row) => ({ ...row })) }
         }
         const [email] = params(condition)
         return {
@@ -214,6 +220,7 @@ function createDb() {
     update,
     delete: remove,
     select,
+    execute: async () => ({ rows: [] }),
     batch: async (writes: Write[]) => {
       const snapshot = structuredClone({ members: fake.state.members, tokens: fake.state.tokens })
       try {
@@ -284,6 +291,7 @@ beforeEach(() => {
     nextMemberId: 1,
     hashes: 0,
     accountLookups: 0,
+    afterConsume: null,
   })
   fake.getDb.mockImplementation(createDb)
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -416,14 +424,28 @@ describe('the confirmation link a sign-up emails', () => {
     expect(fake.getDb).not.toHaveBeenCalled()
   })
 
-  it('does not re-confirm or change an account that was already confirmed', async () => {
+  it('does not re-confirm or change an account that was already confirmed, and calls the link invalid', async () => {
     await submitSignUp()
     const token = lastEmailedToken()
     const earlier = new Date(SIGN_UP_TIME.getTime() - DAY_MS)
     fake.state.members[0].emailConfirmedAt = earlier
     vi.setSystemTime(SIGN_UP_TIME.getTime() + 1000)
-    await expect(confirm(token)).resolves.toBe('REDIRECT /login?confirmed=1')
+    await expect(confirm(token)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
     expect(fake.state.members[0].emailConfirmedAt).toEqual(earlier)
+  })
+
+  it('leaves a sign-up that lands just before the confirm write unconfirmed, with its own link still working', async () => {
+    await submitSignUp()
+    const first = lastEmailedToken()
+    fake.state.afterConsume = () =>
+      submitSignUp({ name: 'Second Try', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
+
+    await expect(confirm(first)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
+    expect(fake.state.members[0].emailConfirmedAt).toBeNull()
+
+    const second = lastEmailedToken()
+    expect(fake.state.tokens).toEqual([expect.objectContaining({ tokenHash: hashToken(second) })])
+    await expect(confirm(second, SECOND_PASSWORD)).resolves.toBe('REDIRECT /login?confirmed=1')
   })
 })
 

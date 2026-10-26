@@ -12,6 +12,23 @@ const mocks = vi.hoisted(() => {
     batches: [] as Write[][],
     batchError: null as null | (() => unknown),
     throttled: false,
+    rounds: 0,
+    inFlight: 0,
+  }
+  // Calls started while another is still in flight share its round trip, as Promise.all does.
+  const roundTrip = <T>(result: () => T) => {
+    if (state.inFlight === 0) state.rounds += 1
+    state.inFlight += 1
+    return new Promise<T>((resolve, reject) =>
+      setTimeout(() => {
+        state.inFlight -= 1
+        try {
+          resolve(result())
+        } catch (error) {
+          reject(error)
+        }
+      }, 1),
+    )
   }
   const tableName = (table: unknown) => (table as Record<symbol, string>)[Symbol.for('drizzle:Name')]
   const db = {
@@ -23,11 +40,12 @@ const mocks = vi.hoisted(() => {
           return query
         },
         where: () => query,
-        limit: async () => {
-          state.ops.push(`find ${table}`)
-          if (table === 'admins') return state.admin ? [state.admin] : []
-          return state.member ? [state.member] : []
-        },
+        limit: () =>
+          roundTrip(() => {
+            state.ops.push(`find ${table}`)
+            if (table === 'admins') return state.admin ? [state.admin] : []
+            return state.member ? [state.member] : []
+          }),
       }
       return query
     },
@@ -44,21 +62,27 @@ const mocks = vi.hoisted(() => {
         kind: 'delete',
         table: tableName(table),
         where,
-        then: (resolve: (value: unknown) => void) => {
-          state.ops.push(`purge ${tableName(table)}`)
-          resolve(undefined)
-        },
+        then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) =>
+          roundTrip(() => {
+            state.ops.push(`purge ${tableName(table)}`)
+          }).then(resolve, reject),
       }),
     }),
-    batch: async (writes: Write[]) => {
-      state.ops.push('batch')
-      if (state.batchError) {
-        const error = state.batchError()
-        state.batchError = null
-        throw error
-      }
-      state.batches.push(writes)
-    },
+    batch: (writes: Write[]) =>
+      roundTrip(() => {
+        state.ops.push('batch')
+        if (state.batchError) {
+          const error = state.batchError()
+          state.batchError = null
+          throw error
+        }
+        state.batches.push(writes)
+      }),
+    execute: (statement: SQL) =>
+      roundTrip(() => {
+        state.ops.push(`execute ${new PgDialect().sqlToQuery(statement).sql}`)
+        return { rows: [] }
+      }),
   }
   return {
     state,
@@ -129,7 +153,16 @@ const branches = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  Object.assign(mocks.state, { admin: null, member: null, ops: [], batches: [], batchError: null, throttled: false })
+  Object.assign(mocks.state, {
+    admin: null,
+    member: null,
+    ops: [],
+    batches: [],
+    batchError: null,
+    throttled: false,
+    rounds: 0,
+    inFlight: 0,
+  })
   mocks.siteUrl.mockImplementation(() => 'https://shpe.test')
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -154,6 +187,15 @@ describe('signUp outcomes look identical from outside', () => {
       formError: SEND_FAILED_MESSAGE,
       values: { name: 'New Name', email: 'Mia@Example.com', ageConfirmed: 'on', termsAccepted: 'on' },
     })
+  })
+
+  it.each(Object.keys(branches))('%s: makes the same number of database round trips, writing only for new or unconfirmed', async (branch) => {
+    branches[branch as keyof typeof branches]()
+    await expect(signUp({}, form())).rejects.toThrow('REDIRECT /join/check-email')
+    expect(mocks.state.rounds).toBe(3)
+    const existing = branch === 'admin' || branch === 'confirmed'
+    expect(mocks.state.batches).toHaveLength(existing ? 0 : 1)
+    expect(mocks.state.ops.filter((op) => op.startsWith('execute'))).toEqual(existing ? ['execute select 1'] : [])
   })
 
   it('resolves the site URL before anything that depends on the account', async () => {
@@ -195,6 +237,10 @@ describe('signUp branches', () => {
       'insert member_tokens',
     ])
     expect(batch[0].values).toMatchObject({ name: 'New Name', passwordHash: '$2b$12$hashed', privacyPolicyVersion: 'October 2026' })
+    expect(render(batch[0].where!)).toMatchObject({
+      sql: '("members"."id" = $1 and "members"."email_confirmed_at" is null)',
+      params: [7],
+    })
     expect(render(batch[1].where!).params).toEqual([7, 'confirm_email'])
     expect(batch[2].values).toMatchObject({ memberId: 7, purpose: 'confirm_email' })
     expect(sentText()).toContain('/join/confirm?token=')

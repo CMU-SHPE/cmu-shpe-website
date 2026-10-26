@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import FocusOnMount from '@/components/focus-on-mount'
 import AccountForm, { type AccountField } from '@/components/member/account-form'
 import AccountShell, { accountLinkClass } from '@/components/member/account-shell'
 import { cardClass } from '@/components/admin/styles'
@@ -11,6 +13,9 @@ const fields: AccountField[] = [{ name: 'email', label: 'Email', type: 'email', 
 
 export default async function ForgotPasswordPage(props: { searchParams: Promise<{ sent?: string }> }) {
   const { sent } = await props.searchParams
+  // Every submit redirects to this same URL, so a key fresh on each render is what lets a
+  // second request remount the notice, move focus to it again and clear any earlier error.
+  const renderKey = randomUUID()
 
   return (
     <AccountShell
@@ -23,11 +28,19 @@ export default async function ForgotPasswordPage(props: { searchParams: Promise<
       }
     >
       {sent && (
-        <p role="status" className={`text-sm text-gray-700 dark:text-gray-300 ${cardClass}`}>
-          If an account exists for that email, we&apos;ve sent a reset link. It works for 1 hour.
-        </p>
+        <FocusOnMount key={`notice-${renderKey}`} id="request-sent">
+          <p role="status" className={`text-sm text-gray-700 dark:text-gray-300 ${cardClass}`}>
+            If an account exists for that email, we&apos;ve sent a reset link. It works for 1 hour.
+          </p>
+        </FocusOnMount>
       )}
-      <AccountForm action={requestPasswordReset} fields={fields} submitLabel="Send reset link" pendingLabel="Sending…" />
+      <AccountForm
+        key={`form-${renderKey}`}
+        action={requestPasswordReset}
+        fields={fields}
+        submitLabel="Send reset link"
+        pendingLabel="Sending…"
+      />
       <p className="text-sm text-gray-600 dark:text-gray-300">
         Remembered it?{' '}
         <Link href="/login" className={accountLinkClass}>

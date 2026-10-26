@@ -233,6 +233,14 @@ address) only for Production, and only if that URL should differ from the projec
 production domain. `MASTER_EMAIL` and `MASTER_PASSWORD` are only read by
 `npm run db:seed` and `npm run db:reset-master`.
 
+In Resend, turn **click tracking** and **open tracking** off for the sending domain (the
+domain's settings page). The Privacy Policy promises we don't track opens or clicks, and
+click tracking would send every newsletter link through Resend's tracking redirect.
+
+In Vercel's project settings (**Build and Deployment**), leave **Build Command** without an
+override. Vercel then runs `npm run vercel-build`, which preview deployments need to apply
+the schema; an override would skip it.
+
 ### Preview databases
 
 Neon's preview branching is enabled on the database's Vercel connection (Deployments
