@@ -131,6 +131,7 @@ link. Officers without a photo show their initials.
 | `npm start` | Serve the production build locally (`next start`) |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run the test suite ([Vitest](https://vitest.dev) + React Testing Library) |
+| `npm run test:e2e` | Run the [Playwright](https://playwright.dev) smoke tests against a preview deployment (see [Testing](#testing)) |
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
 | `npm run db:seed` | Seed the database with the site's content and the master admin |
@@ -157,6 +158,23 @@ npm test
 
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
 (lint, test, build).
+
+### Preview smoke tests
+
+`e2e/` holds Playwright tests for the member sign-up pages, the sign-in redirects and an
+axe accessibility scan of each account page in light and dark mode. They run by hand
+against a **preview** deployment, never in CI and never against production: the config
+refuses any URL that isn't a Vercel preview or localhost. They create unconfirmed
+accounts for `delivered+…@resend.dev` (Resend's test inbox), which are purged
+after 7 days like any other unconfirmed account.
+
+```bash
+npx playwright install chromium   # once
+BASE_URL=https://<preview>.vercel.app VERCEL_BYPASS=<protection bypass secret> npm run test:e2e
+```
+
+`VERCEL_BYPASS` is only needed when the preview has Deployment Protection on; it is sent
+as `x-vercel-protection-bypass` to the preview's own origin only.
 
 ## Deployment
 
