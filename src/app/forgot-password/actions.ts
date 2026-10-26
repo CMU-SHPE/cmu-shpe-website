@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins, members } from '@/db/schema'
@@ -31,6 +32,19 @@ export async function requestPasswordReset(_state: FormState, formData: FormData
     redirect('/forgot-password?sent=1')
   }
 
+  // Looking up and emailing only a real member takes longer, so it all happens after
+  // responding: otherwise response time would reveal which addresses have accounts.
+  after(async () => {
+    try {
+      await sendResetLinkIfMember(email, base)
+    } catch (error) {
+      console.error(error instanceof EmailSendError ? 'EMAIL SEND FAILED: reset_password' : 'PASSWORD RESET FAILED')
+    }
+  })
+  redirect('/forgot-password?sent=1')
+}
+
+async function sendResetLinkIfMember(email: string, base: string) {
   const db = getDb()
   const [[admin], [member]] = await Promise.all([
     db.select({ id: admins.id }).from(admins).where(eq(admins.email, email)).limit(1),
@@ -40,16 +54,9 @@ export async function requestPasswordReset(_state: FormState, formData: FormData
       .where(and(eq(members.email, email), isNotNull(members.emailConfirmedAt)))
       .limit(1),
   ])
+  if (!member || admin) return
 
-  if (member && !admin) {
-    const { token, row } = newMemberToken(member.id, 'reset_password')
-    await db.batch([deleteMemberTokens(db, member.id, 'reset_password'), insertMemberToken(db, row)])
-    try {
-      await sendEmail({ to: email, ...resetPassword(member.name, `${base}/reset-password?token=${token}`) })
-    } catch (error) {
-      if (!(error instanceof EmailSendError)) throw error
-      console.error('EMAIL SEND FAILED: reset_password')
-    }
-  }
-  redirect('/forgot-password?sent=1')
+  const { token, row } = newMemberToken(member.id, 'reset_password')
+  await db.batch([deleteMemberTokens(db, member.id, 'reset_password'), insertMemberToken(db, row)])
+  await sendEmail({ to: email, ...resetPassword(member.name, `${base}/reset-password?token=${token}`) })
 }

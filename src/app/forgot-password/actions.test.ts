@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => {
     redirect: vi.fn((url: string) => {
       throw new Error(`REDIRECT ${url}`)
     }),
+    afterCallbacks: [] as (() => Promise<void>)[],
   }
 })
 
@@ -57,9 +58,14 @@ vi.mock('@/lib/request-throttle', () => ({ recordRequest: mocks.recordRequest })
 vi.mock('@/lib/site-url', () => ({ siteUrl: () => 'https://shpe.test' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
+vi.mock('next/server', () => ({ after: (callback: () => Promise<void>) => mocks.afterCallbacks.push(callback) }))
 
 import { EmailSendError } from '@/lib/email'
 import { requestPasswordReset } from './actions'
+
+async function runAfterResponse() {
+  for (const callback of mocks.afterCallbacks.splice(0)) await callback()
+}
 
 function form(email = 'Mia@Example.com') {
   const formData = new FormData()
@@ -69,6 +75,7 @@ function form(email = 'Mia@Example.com') {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.afterCallbacks.length = 0
   Object.assign(mocks.state, { admin: null, confirmedMember: null, memberWhere: null, batches: [], throttled: false })
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -78,6 +85,7 @@ describe('requestPasswordReset', () => {
   it('sends a confirmed member a 1-hour link, replacing their older reset links', async () => {
     mocks.state.confirmedMember = { id: 7, name: 'Mia' }
     await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    await runAfterResponse()
     const [[revoke, insert]] = mocks.state.batches
     expect(new PgDialect().sqlToQuery(revoke.where!).params).toEqual([7, 'reset_password'])
     expect(insert.values).toMatchObject({ memberId: 7, purpose: 'reset_password' })
@@ -87,8 +95,35 @@ describe('requestPasswordReset', () => {
     expect(message.text).toMatch(/https:\/\/shpe\.test\/reset-password\?token=[A-Za-z0-9_-]{43}\n/)
   })
 
+  it('responds before looking anything up, then sends only to a confirmed member', async () => {
+    mocks.state.confirmedMember = { id: 7, name: 'Mia' }
+    await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    expect(mocks.state.memberWhere).toBeNull()
+    expect(mocks.state.batches).toEqual([])
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    await runAfterResponse()
+    expect(mocks.state.batches).toHaveLength(1)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+
+    mocks.state.confirmedMember = null
+    await expect(requestPasswordReset({}, form('unknown@example.com'))).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    expect(mocks.afterCallbacks).toHaveLength(1)
+    await runAfterResponse()
+    expect(mocks.state.batches).toHaveLength(1)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs any other failure after responding instead of throwing', async () => {
+    mocks.state.confirmedMember = { id: 7, name: 'Mia' }
+    mocks.sendEmail.mockRejectedValueOnce(new Error('unexpected failure'))
+    await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    await expect(runAfterResponse()).resolves.toBeUndefined()
+    expect(console.error).toHaveBeenCalledWith('PASSWORD RESET FAILED')
+  })
+
   it('only looks for members whose email is confirmed', async () => {
     await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT')
+    await runAfterResponse()
     expect(new PgDialect().sqlToQuery(mocks.state.memberWhere!).sql).toBe(
       '("members"."email" = $1 and "members"."email_confirmed_at" is not null)',
     )
@@ -108,6 +143,7 @@ describe('requestPasswordReset', () => {
   ])('sends nothing for %s, with the same response', async (_case, arrange) => {
     arrange()
     await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    await runAfterResponse()
     expect(mocks.sendEmail).not.toHaveBeenCalled()
     expect(mocks.state.batches).toEqual([])
   })
@@ -116,6 +152,7 @@ describe('requestPasswordReset', () => {
     mocks.state.confirmedMember = { id: 7, name: 'Mia' }
     mocks.sendEmail.mockRejectedValueOnce(new EmailSendError('validation_error'))
     await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    await runAfterResponse()
     expect(console.error).toHaveBeenCalledWith('EMAIL SEND FAILED: reset_password')
   })
 
