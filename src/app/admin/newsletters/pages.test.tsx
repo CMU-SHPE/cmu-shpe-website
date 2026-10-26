@@ -185,7 +185,9 @@ describe('newsletter detail page', () => {
     ]
     render(await detailPage.default({ params: params(), searchParams: searchParams({ sent: '1' }) }))
 
-    expect(screen.getByRole('status')).toHaveTextContent('2 emails did not go through for certain')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sending finished: 0 accepted by the email service. 2 did not go through for certain',
+    )
     const problems = screen.getByRole('heading', { name: 'Not delivered for certain (2)' }).closest('section')!
     expect(problems).toHaveTextContent('Bad Address <bad@example>: Rejected by the email service')
     expect(problems).toHaveTextContent('Maybe <maybe@example.com>: Unknown: it may or may not have been delivered')

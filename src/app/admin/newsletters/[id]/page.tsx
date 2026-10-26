@@ -142,10 +142,10 @@ async function sentView(newsletter: NewsletterDetail, searchParams: SearchParams
           role="status"
           className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-800 dark:text-green-400"
         >
-          Sending finished.{' '}
+          Sending finished: {counts.sent} accepted by the email service.{' '}
           {counts.failed + counts.unknown > 0
-            ? `${counts.failed + counts.unknown} emails did not go through for certain — see the list below.`
-            : 'Every email was accepted by the email service.'}
+            ? `${counts.failed + counts.unknown} did not go through for certain — see the list below.`
+            : 'None failed.'}
         </p>
       )}
       {progress && sending && Object.hasOwn(newsletterProgressMessages, progress) && (
