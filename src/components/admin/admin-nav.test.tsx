@@ -30,10 +30,11 @@ describe('AdminNav', () => {
     expect(screen.getByRole('link', { name: 'Officers' })).not.toHaveAttribute('aria-current')
   })
 
-  it('shows Members and Newsletter topics to every admin', () => {
+  it('shows Members, Newsletters and Newsletter topics to every admin', () => {
     for (const canCreateAccounts of [false, true]) {
       const { unmount } = render(<AdminNav canCreateAccounts={canCreateAccounts} />)
       expect(screen.getByRole('link', { name: 'Members' })).toHaveAttribute('href', '/admin/members')
+      expect(screen.getByRole('link', { name: 'Newsletters' })).toHaveAttribute('href', '/admin/newsletters')
       expect(screen.getByRole('link', { name: 'Newsletter topics' })).toHaveAttribute('href', '/admin/topics')
       unmount()
     }
@@ -51,6 +52,13 @@ describe('AdminNav', () => {
     navigation.pathname = '/admin/account'
     render(<AdminNav canCreateAccounts={false} />)
     expect(screen.getByRole('link', { name: 'Change password' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('marks Newsletters current on a newsletter page without marking Newsletter topics', () => {
+    navigation.pathname = '/admin/newsletters/4/send'
+    render(<AdminNav canCreateAccounts={false} />)
+    expect(screen.getByRole('link', { name: 'Newsletters' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Newsletter topics' })).not.toHaveAttribute('aria-current')
   })
 
   it('marks a section current on its nested routes', () => {
