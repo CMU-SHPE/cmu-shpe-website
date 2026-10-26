@@ -150,6 +150,7 @@ export const contentDefaults = {
     'Your account and newsletter choices: until you delete your account.',
     'Accounts whose email address is never confirmed: deleted after 7 days.',
     'Records of sign-in, sign-up and password reset attempts: used for 15 minutes, then deleted automatically during later sign-in, sign-up or password-reset activity.',
+    'Server logs of failed or blocked sign-in attempts (the email address entered and your IP address) and of blocked sign-up, new confirmation link and password reset requests (your IP address): kept for a limited time by our host, Vercel, then deleted.',
     'Email confirmation links stop working after 24 hours, and password reset links after 1 hour.',
   ].join('\n'),
   'privacy.choices.heading': 'Your choices',

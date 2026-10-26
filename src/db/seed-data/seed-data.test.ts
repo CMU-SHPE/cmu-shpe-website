@@ -77,6 +77,7 @@ describe('content defaults', () => {
       'Resend',
       'deleted after 7 days',
       'used for 15 minutes',
+      'Server logs',
       'Delete my account',
       'strictly necessary',
       'analytics',
