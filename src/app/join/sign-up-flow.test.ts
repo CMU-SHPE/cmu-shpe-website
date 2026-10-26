@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
+import type { EmailMessage } from '@/lib/email'
 
 type MemberRow = {
   id: number
@@ -26,7 +27,7 @@ const fake = vi.hoisted(() => {
   return {
     state,
     getDb: vi.fn(),
-    sendEmail: vi.fn<(message: { to: string; subject: string; text: string }) => Promise<void>>(async () => {}),
+    sendEmail: vi.fn<(message: EmailMessage) => Promise<void>>(async () => {}),
     hash: vi.fn(async (password: string, cost: number) => {
       state.hashes += 1
       return `$2b$${cost}$hash-of:${password}`
@@ -284,7 +285,7 @@ describe('the confirmation link a sign-up emails', () => {
 
   it('is built from SITE_URL, never from the Host or X-Forwarded-Host headers', async () => {
     await submitSignUp()
-    const { text, html } = fake.sendEmail.mock.calls[0][0] as { text: string; html: string }
+    const { text, html = '' } = fake.sendEmail.mock.calls[0][0]
     expect(`${text}${html}`).not.toContain('evil.example')
     expect(text).toContain('https://shpe.test/join/confirm?token=')
   })
