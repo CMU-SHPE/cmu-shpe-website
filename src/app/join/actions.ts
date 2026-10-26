@@ -44,14 +44,15 @@ function confirmLink(base: string, token: string) {
 async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Promise<EmailContent> {
   const { name, email, passwordHash, privacyPolicyVersion, base } = signUp
 
-  const [admin] = await db.select({ name: admins.name }).from(admins).where(eq(admins.email, email)).limit(1)
+  const [[admin], [member]] = await Promise.all([
+    db.select({ name: admins.name }).from(admins).where(eq(admins.email, email)).limit(1),
+    db
+      .select({ id: members.id, name: members.name, emailConfirmedAt: members.emailConfirmedAt })
+      .from(members)
+      .where(eq(members.email, email))
+      .limit(1),
+  ])
   if (admin) return adminAccountExists(admin.name, `${base}/login`)
-
-  const [member] = await db
-    .select({ id: members.id, name: members.name, emailConfirmedAt: members.emailConfirmedAt })
-    .from(members)
-    .where(eq(members.email, email))
-    .limit(1)
   if (member?.emailConfirmedAt) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
 
   const now = new Date()

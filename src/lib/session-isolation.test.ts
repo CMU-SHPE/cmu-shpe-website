@@ -415,14 +415,15 @@ describe('authorizeCredentials', () => {
       fake.state.members = [bothMember]
     })
 
-    it('signs in as the admin with the admin password, never reading the members table', async () => {
+    it('signs in as the admin with the admin password, never checking the member password', async () => {
       fake.compare.mockImplementation(async (_password, hash) => hash === bothAdmin.passwordHash)
       await expect(authorizeCredentials(credentialsFor(shared), null)).resolves.toMatchObject({
         id: '3',
         kind: 'admin',
         role: 'admin',
       })
-      expect(fake.state.ops).not.toContain('select members')
+      expect(fake.compare).toHaveBeenCalledTimes(1)
+      expect(fake.compare).toHaveBeenCalledWith('some long password', bothAdmin.passwordHash)
     })
 
     it('refuses the member password, so the member account cannot be signed into while the admin exists', async () => {

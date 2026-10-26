@@ -211,7 +211,7 @@ describe('signUp branches', () => {
   it('leaves an admin alone and sends the admin version, without a reset link', async () => {
     branches.admin()
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
-    expect(mocks.state.ops).not.toContain('find members')
+    expect(mocks.state.ops.filter((op) => op.startsWith('find')).sort()).toEqual(['find admins', 'find members'])
     expect(mocks.state.batches).toEqual([])
     expect(sentText()).toContain('Hi Stored Admin,')
     expect(sentText()).toContain('master admin')
@@ -220,7 +220,8 @@ describe('signUp branches', () => {
 
   it('purges stale unconfirmed accounts before looking the email up', async () => {
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
-    expect(mocks.state.ops.slice(0, 4)).toEqual(['record request', 'hash', 'purge members', 'find admins'])
+    expect(mocks.state.ops.slice(0, 3)).toEqual(['record request', 'hash', 'purge members'])
+    expect(mocks.state.ops.slice(3, 5).sort()).toEqual(['find admins', 'find members'])
   })
 
   it('treats losing a simultaneous sign-up race as arriving second, still sending one email', async () => {

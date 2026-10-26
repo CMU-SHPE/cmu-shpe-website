@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AuthError } from 'next-auth'
@@ -12,6 +13,8 @@ import {
   labelClass,
   primaryButtonClass,
 } from '@/components/admin/styles'
+
+export const metadata: Metadata = { title: 'Sign in | SHPE @ Colorado Mesa University' }
 
 const ERROR_ID = 'login-error'
 

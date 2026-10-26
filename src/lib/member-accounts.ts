@@ -4,9 +4,9 @@ import type { Db } from '@/db'
 import { memberTokens, members } from '@/db/schema'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, adminPassword } from '@/lib/admin-account'
 import { emailAddress } from '@/lib/form-fields'
+import { MAX_MEMBER_NAME_LENGTH, memberName } from '@/lib/member-account'
 import { memberTokenParam } from '@/lib/member-tokens'
 
-export const MAX_MEMBER_NAME_LENGTH = 100
 export const UNCONFIRMED_RETENTION_DAYS = 7
 
 export const PASSWORD_REQUIREMENTS = `At least ${MIN_PASSWORD_LENGTH} characters, and no more than ${MAX_PASSWORD_BYTES} bytes (about ${MAX_PASSWORD_BYTES} plain letters, fewer with emoji or accents).`
@@ -18,15 +18,6 @@ export type FormState = {
   formError?: string
   values?: Record<string, string>
 }
-
-// Names go into email greetings and headers of the account page, so line breaks and
-// control characters are refused rather than silently stripped.
-const memberName = z
-  .string()
-  .trim()
-  .min(1)
-  .max(MAX_MEMBER_NAME_LENGTH)
-  .refine((value) => !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value))
 
 const memberEmail = emailAddress.transform((value) => value.toLowerCase())
 

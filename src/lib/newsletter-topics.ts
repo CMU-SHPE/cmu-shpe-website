@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { asc, sql } from 'drizzle-orm'
+import { asc, inArray, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { memberTopicSubscriptions, newsletterTopics } from '@/db/schema'
 import { requiredText } from './form-fields'
@@ -36,4 +36,13 @@ export async function getNewsletterTopicsWithSubscriberCounts() {
     })
     .from(newsletterTopics)
     .orderBy(asc(newsletterTopics.sortOrder), asc(newsletterTopics.id))
+}
+
+export async function countExistingTopics(ids: readonly number[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const rows = await getDb()
+    .select({ id: newsletterTopics.id })
+    .from(newsletterTopics)
+    .where(inArray(newsletterTopics.id, [...ids]))
+  return rows.length
 }

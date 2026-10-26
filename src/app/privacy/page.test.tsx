@@ -64,7 +64,7 @@ describe('Privacy page', () => {
     for (const processor of ['Vercel', 'Neon', 'Resend', 'Formspree']) {
       expect(items.some((item) => item?.startsWith(processor)), processor).toBe(true)
     }
-    expect(items.some((item) => item?.includes('deleted after 7 days'))).toBe(true)
+    expect(items.some((item) => item?.includes('kept for 7 days'))).toBe(true)
   })
 
   it('links the contact email from site settings', async () => {
