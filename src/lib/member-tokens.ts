@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { and, eq, gt, sql, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, type Db } from '@/db'
-import { memberTokens, type MemberTokenPurpose } from '@/db/schema'
+import { members, memberTokens, type MemberTokenPurpose } from '@/db/schema'
 
 export const TOKEN_TTL_MS: Record<MemberTokenPurpose, number> = {
   confirm_email: 24 * 60 * 60 * 1000,
@@ -61,6 +61,14 @@ export async function findMemberToken(token: string, purpose: MemberTokenPurpose
     .where(unexpiredTokenMatching(token, purpose))
     .limit(1)
   return row?.memberId ?? null
+}
+
+/** For a page that only shows a form, such as the hidden username password managers need. */
+export async function findMemberEmailForToken(token: string, purpose: MemberTokenPurpose): Promise<string | null> {
+  const memberId = await findMemberToken(token, purpose)
+  if (memberId === null) return null
+  const [row] = await getDb().select({ email: members.email }).from(members).where(eq(members.id, memberId)).limit(1)
+  return row?.email ?? null
 }
 
 /**

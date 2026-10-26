@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => {
     statements: [] as { sql: string; params: unknown[] }[],
     returningCalls: 0,
     selectCalls: 0,
+    emails: new Map<number, string>(),
   }
   return { state }
 })
@@ -16,12 +17,16 @@ const fake = vi.hoisted(() => {
 vi.mock('@/db', () => ({
   getDb: () => ({
     select: () => ({
-      from: () => ({
+      from: (table: unknown) => ({
         where: (condition: SQL) => ({
           limit: async () => {
             fake.state.selectCalls += 1
             const query = new PgDialect().sqlToQuery(condition)
             fake.state.statements.push(query)
+            if ((table as Record<symbol, string>)[Symbol.for('drizzle:Name')] === 'members') {
+              const email = fake.state.emails.get(query.params[0] as number)
+              return email ? [{ email }] : []
+            }
             const [hash, purpose] = query.params as [string, string]
             const row = fake.state.stored.get(hash)
             if (!row || row.purpose !== purpose || row.expired) return []
@@ -47,13 +52,21 @@ vi.mock('@/db', () => ({
   }),
 }))
 
-import { TOKEN_TTL_MS, consumeMemberToken, findMemberToken, hashToken, newMemberToken } from './member-tokens'
+import {
+  TOKEN_TTL_MS,
+  consumeMemberToken,
+  findMemberEmailForToken,
+  findMemberToken,
+  hashToken,
+  newMemberToken,
+} from './member-tokens'
 
 beforeEach(() => {
   fake.state.stored.clear()
   fake.state.statements = []
   fake.state.returningCalls = 0
   fake.state.selectCalls = 0
+  fake.state.emails = new Map([[7, 'mia@example.com']])
 })
 
 function store(memberId: number, purpose: 'confirm_email' | 'reset_password', expired = false) {
@@ -139,5 +152,21 @@ describe('findMemberToken', () => {
       await expect(findMemberToken(token, 'confirm_email')).resolves.toBeNull()
     }
     expect(fake.state.selectCalls).toBe(0)
+  })
+})
+
+describe('findMemberEmailForToken', () => {
+  it('returns the email behind a live link without using the link up', async () => {
+    const token = store(7, 'confirm_email')
+    await expect(findMemberEmailForToken(token, 'confirm_email')).resolves.toBe('mia@example.com')
+    expect(fake.state.returningCalls).toBe(0)
+    await expect(consumeMemberToken(token, 'confirm_email')).resolves.toBe(7)
+  })
+
+  it('returns null for an expired, wrong-purpose or malformed link, or a member that is gone', async () => {
+    await expect(findMemberEmailForToken(store(7, 'confirm_email', true), 'confirm_email')).resolves.toBeNull()
+    await expect(findMemberEmailForToken(store(7, 'reset_password'), 'confirm_email')).resolves.toBeNull()
+    await expect(findMemberEmailForToken('short', 'confirm_email')).resolves.toBeNull()
+    await expect(findMemberEmailForToken(store(8, 'confirm_email'), 'confirm_email')).resolves.toBeNull()
   })
 })

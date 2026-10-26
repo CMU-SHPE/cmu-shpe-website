@@ -117,9 +117,23 @@ function form(entries: [string, string][]) {
   return data
 }
 
+/** Account results carry a per-submit nonce; it is checked here and left out of the comparison. */
+function withoutNonce(url: string) {
+  if (!url.startsWith('/account?')) return url
+  const params = new URLSearchParams(url.slice('/account?'.length))
+  expect(params.get('n')).toMatch(/^[0-9a-f]{8}$/)
+  params.delete('n')
+  return `/account?${params}`
+}
+
 async function redirectOf(promise: Promise<unknown>) {
   const error = await promise.catch((e: unknown) => e)
   expect(error).toBeInstanceOf(mocks.Redirect)
+  return withoutNonce((error as InstanceType<typeof mocks.Redirect>).url)
+}
+
+async function rawRedirectOf(promise: Promise<unknown>) {
+  const error = await promise.catch((e: unknown) => e)
   return (error as InstanceType<typeof mocks.Redirect>).url
 }
 
@@ -216,7 +230,7 @@ describe('changePassword', () => {
     expect(mocks.signIn).toHaveBeenCalledWith('credentials', {
       email: 'mia@example.com',
       password: NEW,
-      redirectTo: '/account?saved=password',
+      redirectTo: expect.stringMatching(/^\/account\?saved=password&n=[0-9a-f]{8}$/),
     })
   })
 
@@ -321,5 +335,16 @@ describe('deleteAccount', () => {
     ])
     expect(statements.every((statement) => statement.params.every((param) => param === 7))).toBe(true)
     expect(mocks.signOut).toHaveBeenCalledWith({ redirectTo: '/account/deleted' })
+  })
+})
+
+describe('account results', () => {
+  it('gives the same result twice in a row two different URLs, so the page refocuses its message', async () => {
+    mocks.compare.mockResolvedValue(false)
+    const first = await rawRedirectOf(changePassword(passwordForm()))
+    const second = await rawRedirectOf(changePassword(passwordForm()))
+    expect(withoutNonce(first)).toBe('/account?error=password-current')
+    expect(withoutNonce(second)).toBe('/account?error=password-current')
+    expect(first).not.toBe(second)
   })
 })
