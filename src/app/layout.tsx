@@ -3,7 +3,8 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { signOut } from '@/auth'
 import { currentAdmin } from '@/lib/admin'
-import Navbar from '@/components/Navbar'
+import { currentMember } from '@/lib/member'
+import Navbar, { type NavbarUser } from '@/components/Navbar'
 import Footer from '@/components/Footer'
 import ThemeProvider from '@/components/ThemeProvider'
 
@@ -19,6 +20,12 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const admin = await currentAdmin()
+  const member = admin ? null : await currentMember()
+  const navbarUser: NavbarUser | null = admin
+    ? { name: admin.user.name ?? 'Admin', kind: 'admin' }
+    : member
+      ? { name: member.user.name, kind: 'member' }
+      : null
 
   async function signOutAction() {
     'use server'
@@ -39,11 +46,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={inter.className}>
         <ThemeProvider>
           <Navbar
-            user={admin ? { name: admin.user.name ?? 'Admin' } : null}
+            user={navbarUser}
             signOutAction={signOutAction}
           />
           <main className="min-h-screen">{children}</main>
-          <Footer editable={Boolean(admin)} />
+          <Footer editable={Boolean(admin)} signedIn={navbarUser !== null} />
         </ThemeProvider>
       </body>
     </html>

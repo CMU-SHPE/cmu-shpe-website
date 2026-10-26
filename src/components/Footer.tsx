@@ -5,7 +5,7 @@ import { navLinks } from '@/lib/nav'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
 import { InstagramIcon, LinkedInIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
 
-export default async function Footer({ editable }: { editable: boolean }) {
+export default async function Footer({ editable, signedIn }: { editable: boolean; signedIn: boolean }) {
   const [content, settings] = await Promise.all([
     getSiteContent(contentKeysFor('footer')),
     getSiteSettings(),
@@ -18,7 +18,7 @@ export default async function Footer({ editable }: { editable: boolean }) {
           {/* Brand */}
           <div>
             <div className="flex items-center mb-4 space-x-1">
-              <span className="text-shpe-red font-black text-2xl">SHPE</span>
+              <span className="text-shpe-red-on-maroon font-black text-2xl">SHPE</span>
               <span className="text-shpe-gold font-bold text-xl">@</span>
               <span className="text-white font-bold text-lg">CMU</span>
             </div>
@@ -121,15 +121,35 @@ export default async function Footer({ editable }: { editable: boolean }) {
             editable={editable}
             className="text-gray-400 text-sm"
           />
-          <div className="flex items-center gap-6">
-            {!editable && (
-              <Link
-                href="/login"
-                className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
-              >
-                Admin sign in
-              </Link>
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {!signedIn && (
+              <>
+                <Link
+                  href="/login"
+                  className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/join"
+                  className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+                >
+                  Join
+                </Link>
+              </>
             )}
+            <Link
+              href="/privacy"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              Terms
+            </Link>
             <a
               href="https://shpe.org"
               target="_blank"

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   const state = {
     caller: null as Caller | null,
     target: { role: 'admin' } as { role: 'admin' | 'master' } | null,
+    member: null as { id: number } | null,
     inserted: [{ id: 9 }] as { id: number }[],
     deleted: [{ id: 4 }] as { id: number }[],
     updated: [{ id: 4, email: 'ana@example.com' }] as { id: number; email: string }[],
@@ -18,16 +19,26 @@ const mocks = vi.hoisted(() => {
     deletes: 0,
     updates: [] as Record<string, unknown>[],
   }
-  const selectQuery = {
-    from: () => selectQuery,
-    where: () => selectQuery,
-    limit: async () => (state.target ? [state.target] : []),
+  const select = () => {
+    let table = ''
+    const query = {
+      from: (source: Record<symbol, string>) => {
+        table = source[Symbol.for('drizzle:Name')]
+        return query
+      },
+      where: () => query,
+      limit: async () => {
+        if (table === 'members') return state.member ? [state.member] : []
+        return state.target ? [state.target] : []
+      },
+    }
+    return query
   }
   return {
     Redirect,
     state,
     db: {
-      select: () => selectQuery,
+      select,
       insert: () => ({
         values: (values: Record<string, unknown>) => ({
           onConflictDoNothing: () => ({
@@ -124,6 +135,7 @@ function expectNoWrites() {
 beforeEach(() => {
   mocks.state.caller = master
   mocks.state.target = { role: 'admin' }
+  mocks.state.member = null
   mocks.state.inserted = [{ id: 9 }]
   mocks.state.deleted = [{ id: 4 }]
   mocks.state.updated = [{ id: 4, email: 'ana@example.com' }]
@@ -189,6 +201,13 @@ describe('createAdmin', () => {
   it('reports an existing email as a duplicate', async () => {
     mocks.state.target = { role: 'admin' }
     expect(await redirectOf(createAdmin(accountForm()))).toBe('/admin/admins?error=duplicate')
+    expectNoWrites()
+  })
+
+  it('refuses an email that belongs to a member, which would lock that member out', async () => {
+    mocks.state.member = { id: 7 }
+    expect(await redirectOf(createAdmin(accountForm()))).toBe('/admin/admins?error=duplicate')
+    expect(mocks.hash).not.toHaveBeenCalled()
     expectNoWrites()
   })
 })

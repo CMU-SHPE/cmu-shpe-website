@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { admins } from '@/db/schema'
+import { admins, members } from '@/db/schema'
 import { requireAccountCreator, requireMaster } from '@/lib/admin'
 import { accountCreatorGrant, adminId, parseAdminAccount, parsePasswordReset } from '@/lib/admin-account'
 import { clearLoginAttempts } from '@/lib/authorize'
@@ -21,12 +21,12 @@ export async function createAdmin(formData: FormData) {
 
   const { name, email, password } = parsed.data
   const db = getDb()
-  const [existing] = await db
-    .select({ id: admins.id })
-    .from(admins)
-    .where(eq(admins.email, email))
-    .limit(1)
-  if (existing) redirect('/admin/admins?error=duplicate')
+  // Sign-in prefers the admin row, so an admin sharing a member's email would lock the member out.
+  const [[existingAdmin], [existingMember]] = await Promise.all([
+    db.select({ id: admins.id }).from(admins).where(eq(admins.email, email)).limit(1),
+    db.select({ id: members.id }).from(members).where(eq(members.email, email)).limit(1),
+  ])
+  if (existingAdmin || existingMember) redirect('/admin/admins?error=duplicate')
 
   const inserted = await db
     .insert(admins)

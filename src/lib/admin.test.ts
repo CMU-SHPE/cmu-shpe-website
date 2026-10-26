@@ -116,6 +116,25 @@ describe('currentAdmin', () => {
     await expect(currentAdmin()).resolves.toMatchObject({ user: { id: '2' } })
   })
 
+  it('refuses a member token without querying, even when its id and email match an admin row', async () => {
+    mocks.auth.mockResolvedValue({ ...adminSession, user: { ...adminSession.user, kind: 'member', role: 'supporter' } })
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com' }]
+    await expect(currentAdmin()).resolves.toBeNull()
+    expect(mocks.select).not.toHaveBeenCalled()
+  })
+
+  it('treats a token with no kind as an admin session issued before members existed', async () => {
+    mocks.auth.mockResolvedValue(adminSession)
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com' }]
+    await expect(currentAdmin()).resolves.toMatchObject({ user: { id: '2', kind: 'admin' } })
+  })
+
+  it('accepts a token marked as an admin', async () => {
+    mocks.auth.mockResolvedValue({ ...adminSession, user: { ...adminSession.user, kind: 'admin' } })
+    mocks.state.rows = [{ role: 'admin', email: 'ana@example.com' }]
+    await expect(currentAdmin()).resolves.toMatchObject({ user: { id: '2', kind: 'admin' } })
+  })
+
   it('takes the role from the database row', async () => {
     mocks.auth.mockResolvedValue(masterSession)
     mocks.state.rows = [{ role: 'admin', email: 'max@example.com' }]
@@ -154,6 +173,12 @@ describe('requireAdmin', () => {
 })
 
 describe('requireMaster', () => {
+  it('redirects a member token to /login even when it claims the master role', async () => {
+    mocks.auth.mockResolvedValue({ ...masterSession, user: { ...masterSession.user, kind: 'member' } })
+    mocks.state.rows = [{ role: 'master', email: 'max@example.com' }]
+    await expect(requireMaster()).rejects.toThrow('REDIRECT /login')
+  })
+
   it('sends regular admins back to the dashboard', async () => {
     mocks.auth.mockResolvedValue(adminSession)
     mocks.state.rows = [{ role: 'admin', email: 'ana@example.com' }]

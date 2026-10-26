@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs'
 import { and, count, eq, gte, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb } from '@/db'
-import { admins, loginAttempts, type AdminRole } from '@/db/schema'
+import { admins, loginAttempts, members, type AdminRole, type MemberRole } from '@/db/schema'
 import { WINDOW_MINUTES, clientIp, isThrottled } from '@/lib/login-throttle'
 
 const credentialsSchema = z.object({
@@ -13,14 +13,17 @@ const credentialsSchema = z.object({
 /** Unknown emails are checked against this so they take as long as a wrong password. */
 const UNKNOWN_EMAIL_HASH = '$2b$12$zmxgyTFMPHMuQfXgqQ4z/.te.HtdD2kHyLthiKMDYsIYpN4nn1hZ2'
 
-export type AuthorizedAdmin = {
+type AuthorizedAccount = {
   id: string
   email: string
   name: string
-  role: AdminRole
   /** Taken before the row is read, so a reset committing during the check still ends this session. */
   authTime: number
 }
+
+export type AuthorizedUser =
+  | (AuthorizedAccount & { kind: 'admin'; role: AdminRole })
+  | (AuthorizedAccount & { kind: 'member'; role: MemberRole })
 
 /**
  * Records a password attempt and reports whether the email or IP is over its
@@ -52,10 +55,48 @@ export async function clearLoginAttempts(email: string) {
   await getDb().delete(loginAttempts).where(eq(loginAttempts.email, email))
 }
 
-export async function authorizeAdmin(
+// Both tables are always queried, so the response time doesn't show whether an email is an admin's.
+async function findAccount(email: string) {
+  const db = getDb()
+  const [[admin], [member]] = await Promise.all([
+    db
+      .select({
+        id: admins.id,
+        email: admins.email,
+        name: admins.name,
+        role: admins.role,
+        passwordHash: admins.passwordHash,
+      })
+      .from(admins)
+      .where(eq(admins.email, email))
+      .limit(1),
+    db
+      .select({
+        id: members.id,
+        email: members.email,
+        name: members.name,
+        role: members.role,
+        passwordHash: members.passwordHash,
+        emailConfirmedAt: members.emailConfirmedAt,
+      })
+      .from(members)
+      .where(eq(members.email, email))
+      .limit(1),
+  ])
+  if (admin) return { ...admin, kind: 'admin' as const, confirmed: true }
+  if (member) return { ...member, kind: 'member' as const, confirmed: member.emailConfirmedAt !== null }
+  return null
+}
+
+/**
+ * An admin row wins over a member row with the same email. Every
+ * path runs exactly one bcrypt compare, and an unconfirmed member gets the same
+ * generic failure as a wrong password.
+ */
+export async function authorizeCredentials(
   credentials: unknown,
   forwardedFor: string | null,
-): Promise<AuthorizedAdmin | null> {
+): Promise<AuthorizedUser | null> {
   const parsed = credentialsSchema.safeParse(credentials)
   if (!parsed.success) return null
 
@@ -69,24 +110,17 @@ export async function authorizeAdmin(
   }
 
   const checkedAt = Date.now()
-  const [admin] = await getDb()
-    .select({
-      id: admins.id,
-      email: admins.email,
-      name: admins.name,
-      role: admins.role,
-      passwordHash: admins.passwordHash,
-    })
-    .from(admins)
-    .where(eq(admins.email, email))
-    .limit(1)
-  const valid = await bcrypt.compare(parsed.data.password, admin?.passwordHash ?? UNKNOWN_EMAIL_HASH)
-  if (!admin || !valid) {
-    const reason = admin ? 'bad password' : 'unknown email'
+  const account = await findAccount(email)
+  const valid = await bcrypt.compare(parsed.data.password, account?.passwordHash ?? UNKNOWN_EMAIL_HASH)
+  if (!account || !valid || !account.confirmed) {
+    const reason = !account ? 'unknown email' : !valid ? 'bad password' : 'email not confirmed'
     console.warn(`LOGIN FAILED (${reason}): ${email} from ${ip ?? 'unknown ip'}`)
     return null
   }
 
   await clearLoginAttempts(email)
-  return { id: String(admin.id), email: admin.email, name: admin.name, role: admin.role, authTime: checkedAt }
+  const signedIn = { id: String(account.id), email: account.email, name: account.name, authTime: checkedAt }
+  return account.kind === 'admin'
+    ? { ...signedIn, kind: 'admin', role: account.role }
+    : { ...signedIn, kind: 'member', role: account.role }
 }

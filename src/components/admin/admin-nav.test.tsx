@@ -30,6 +30,15 @@ describe('AdminNav', () => {
     expect(screen.getByRole('link', { name: 'Officers' })).not.toHaveAttribute('aria-current')
   })
 
+  it('shows Members and Newsletter topics to every admin', () => {
+    for (const canCreateAccounts of [false, true]) {
+      const { unmount } = render(<AdminNav canCreateAccounts={canCreateAccounts} />)
+      expect(screen.getByRole('link', { name: 'Members' })).toHaveAttribute('href', '/admin/members')
+      expect(screen.getByRole('link', { name: 'Newsletter topics' })).toHaveAttribute('href', '/admin/topics')
+      unmount()
+    }
+  })
+
   it('shows Change password to every admin', () => {
     for (const canCreateAccounts of [false, true]) {
       const { unmount } = render(<AdminNav canCreateAccounts={canCreateAccounts} />)
