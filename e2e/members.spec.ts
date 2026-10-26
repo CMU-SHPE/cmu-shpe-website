@@ -37,6 +37,7 @@ async function signUpOutcome(page: Page, email: string) {
   await fillSignUp(page, email)
   await submitSignUp(page)
   await Promise.race([page.waitForURL('**/join/check-email'), pageAlert(page).waitFor()])
+  await expect(page.locator('main').getByRole(page.url().endsWith('/join/check-email') ? 'status' : 'alert')).toBeVisible()
   return { path: new URL(page.url()).pathname, text: (await page.locator('main').innerText()).trim() }
 }
 
@@ -46,6 +47,7 @@ async function emailRequestOutcome(page: Page, path: string, submitLabel: string
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByRole('button', { name: submitLabel }).click()
   await page.waitForURL((url) => url.searchParams.get('sent') === '1')
+  await expect(page.locator('main').getByRole('status')).toBeVisible()
   const url = new URL(page.url())
   return { location: `${url.pathname}${url.search}`, text: (await page.locator('main').innerText()).trim() }
 }
