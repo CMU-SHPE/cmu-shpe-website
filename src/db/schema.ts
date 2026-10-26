@@ -16,6 +16,15 @@ export const adminRole = pgEnum('admin_role', ['admin', 'master'])
 export const sponsorTier = pgEnum('sponsor_tier', ['Platinum', 'Gold', 'Silver', 'Bronze'])
 export const memberRole = pgEnum('member_role', ['supporter', 'sponsor'])
 export const memberTokenPurpose = pgEnum('member_token_purpose', ['confirm_email', 'reset_password'])
+export const newsletterStatus = pgEnum('newsletter_status', ['draft', 'sending', 'sent'])
+export const newsletterRecipientStatus = pgEnum('newsletter_recipient_status', [
+  'pending',
+  'sending',
+  'sent',
+  'failed',
+  'skipped',
+])
+export const unsubscribeSource = pgEnum('unsubscribe_source', ['one_click', 'page'])
 
 export const admins = pgTable('admins', {
   id: serial('id').primaryKey(),
@@ -210,6 +219,85 @@ export const memberTopicSubscriptions = pgTable(
   ],
 )
 
+export const newsletters = pgTable('newsletters', {
+  id: serial('id').primaryKey(),
+  subject: text('subject').notNull().default(''),
+  body: text('body').notNull().default(''),
+  status: newsletterStatus('status').notNull().default('draft'),
+  createdBy: integer('created_by').references(() => admins.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  sendStartedAt: timestamp('send_started_at', { withTimezone: true, mode: 'date' }),
+  sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }),
+  sentBy: integer('sent_by').references(() => admins.id, { onDelete: 'set null' }),
+  // Snapshots taken when sending starts. Every chunk is built from these alone, so a retried
+  // chunk is byte-identical and Resend's idempotency key dedupes it instead of rejecting it.
+  sentByName: text('sent_by_name'),
+  topicNames: text('topic_names'),
+  recipientCount: integer('recipient_count'),
+  mailingAddress: text('mailing_address'),
+  replyTo: text('reply_to'),
+  siteUrl: text('site_url'),
+  fromAddress: text('from_address'),
+})
+
+export const newsletterTopicSelections = pgTable(
+  'newsletter_topic_selections',
+  {
+    id: serial('id').primaryKey(),
+    newsletterId: integer('newsletter_id')
+      .notNull()
+      .references(() => newsletters.id, { onDelete: 'cascade' }),
+    topicId: integer('topic_id')
+      .notNull()
+      .references(() => newsletterTopics.id, { onDelete: 'cascade' }),
+  },
+  (table) => [uniqueIndex('newsletter_topic_selections_newsletter_topic_idx').on(table.newsletterId, table.topicId)],
+)
+
+// No email column: deleting a member cascades away their send rows, so nothing personal outlives the account.
+export const newsletterRecipients = pgTable(
+  'newsletter_recipients',
+  {
+    id: serial('id').primaryKey(),
+    newsletterId: integer('newsletter_id')
+      .notNull()
+      .references(() => newsletters.id, { onDelete: 'cascade' }),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    chunk: integer('chunk').notNull(),
+    status: newsletterRecipientStatus('status').notNull().default('pending'),
+    unsubscribeTokenHash: text('unsubscribe_token_hash').unique(),
+    resendId: text('resend_id'),
+    errorCode: text('error_code'),
+    // First claim only: Resend keeps idempotency keys for 24 hours from the first request.
+    claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'date' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('newsletter_recipients_newsletter_member_idx').on(table.newsletterId, table.memberId),
+    index('newsletter_recipients_newsletter_status_idx').on(table.newsletterId, table.status),
+    index('newsletter_recipients_newsletter_chunk_idx').on(table.newsletterId, table.chunk),
+  ],
+)
+
+export const newsletterUnsubscribes = pgTable(
+  'newsletter_unsubscribes',
+  {
+    id: serial('id').primaryKey(),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    topicId: integer('topic_id').references(() => newsletterTopics.id, { onDelete: 'set null' }),
+    topicName: text('topic_name').notNull(),
+    newsletterId: integer('newsletter_id').references(() => newsletters.id, { onDelete: 'set null' }),
+    source: unsubscribeSource('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('newsletter_unsubscribes_member_idx').on(table.memberId)],
+)
+
 // Kept apart from login_attempts so spamming /join with an admin's email can't lock that admin out of login.
 export const requestThrottle = pgTable(
   'request_throttle',
@@ -230,6 +318,9 @@ export type AdminRole = (typeof adminRole.enumValues)[number]
 export type SponsorTier = (typeof sponsorTier.enumValues)[number]
 export type MemberRole = (typeof memberRole.enumValues)[number]
 export type MemberTokenPurpose = (typeof memberTokenPurpose.enumValues)[number]
+export type NewsletterStatus = (typeof newsletterStatus.enumValues)[number]
+export type NewsletterRecipientStatus = (typeof newsletterRecipientStatus.enumValues)[number]
+export type UnsubscribeSource = (typeof unsubscribeSource.enumValues)[number]
 
 export type Admin = typeof admins.$inferSelect
 export type LoginAttempt = typeof loginAttempts.$inferSelect
@@ -248,3 +339,7 @@ export type MemberToken = typeof memberTokens.$inferSelect
 export type NewsletterTopic = typeof newsletterTopics.$inferSelect
 export type MemberTopicSubscription = typeof memberTopicSubscriptions.$inferSelect
 export type RequestThrottle = typeof requestThrottle.$inferSelect
+export type Newsletter = typeof newsletters.$inferSelect
+export type NewsletterTopicSelection = typeof newsletterTopicSelections.$inferSelect
+export type NewsletterRecipient = typeof newsletterRecipients.$inferSelect
+export type NewsletterUnsubscribe = typeof newsletterUnsubscribes.$inferSelect
