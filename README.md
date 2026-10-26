@@ -54,7 +54,9 @@ Fill in `.env.local`. Every variable is described in [`.env.example`](.env.examp
 `DATABASE_URL`, `AUTH_SECRET`, `MASTER_EMAIL`, `MASTER_PASSWORD`,
 `BLOB_READ_WRITE_TOKEN`, `RESEND_API_KEY` and `RESEND_EMAIL_DOMAIN` (plus
 `AUTH_TRUST_HOST` for `npm start` on localhost). Without the Resend variables the site
-runs, but sign-up and password reset emails fail with an error. `SITE_URL` is optional
+runs but sends no account emails: sign-up shows an error, while new confirmation links and
+password resets only log the failure and still tell the visitor to check their email.
+`SITE_URL` is optional
 locally: links in emails use `http://localhost:3000` under `npm run dev`, and a local
 `npm start` needs it set (for example `SITE_URL=http://localhost:3000`).
 
@@ -138,7 +140,8 @@ Anyone 13 or older can create a member account to choose which newsletters they 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
   Didn't get it? `/join/resend` sends a new link. Accounts never confirmed are deleted
-  after 7 days.
+  once they are 7 days old and have no unexpired link; there is no scheduled job, so this
+  happens the next time anyone signs up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`.
 - **`/account`:** change name and password, choose newsletter topics, and **Delete my
   account** (asks for the password and the word DELETE; it removes the account and its
