@@ -59,6 +59,8 @@ const UI = {
     noAddress: 'mailing address is filled in',
   },
   confirmSend: { heading: 'This will email 1 person now', send: 'Send to 1 person' },
+  testAudienceNotice:
+    'Not the production site: only @resend.dev test addresses receive this newsletter. Real members are left out of the count and the send.',
   sentBanner: 'Sending finished: 1 accepted',
   account: {
     save: 'Save newsletter choices',
@@ -284,6 +286,7 @@ test.describe('newsletter journey', () => {
         if (await admin.getByText(UI.composer.noAddress).isVisible()) {
           throw new Error('The composer says the mailing address is missing. Set Site settings → Mailing address on the preview.')
         }
+        await expect(admin.getByRole('note').filter({ hasText: UI.testAudienceNotice })).toHaveText(UI.testAudienceNotice)
         assertPreviewHost(baseURL, 'compose a newsletter')
         await admin.getByLabel(UI.composer.subject, { exact: true }).fill(NEWSLETTER_SUBJECT)
         await admin.getByLabel(UI.composer.body, { exact: true }).fill(NEWSLETTER_BODY)
@@ -291,6 +294,7 @@ test.describe('newsletter journey', () => {
         await admin.getByRole('button', { name: UI.composer.review, exact: true }).click()
         await admin.waitForURL(/\/admin\/newsletters\/\d+\/send$/)
 
+        await expect(admin.getByRole('note').filter({ hasText: UI.testAudienceNotice })).toHaveText(UI.testAudienceNotice)
         await expect(admin.getByRole('heading', { level: 2, name: UI.confirmSend.heading })).toBeVisible()
         assertPreviewHost(baseURL, 'send a newsletter')
         await admin.getByRole('button', { name: UI.confirmSend.send, exact: true }).click()
@@ -411,8 +415,10 @@ test.describe('newsletter journey', () => {
     test.skip(
       true,
       'Not possible end to end: only @resend.dev test inboxes can be read, so a non-resend.dev member can never be confirmed ' +
-        'from here, and the spec does not create one. The preview-only filter is covered by the unit tests in ' +
-        'src/lib/newsletter-audience.test.ts, src/lib/newsletter-admin.test.ts and src/lib/newsletter-send.test.ts.',
+        'from here, and the spec does not create one. Outside production the @resend.dev-only filter is covered by ' +
+        'src/lib/newsletter-audience.test.ts ("restricts to @resend.dev addresses … when VERCEL_ENV is …"), ' +
+        'src/lib/newsletter-admin.test.ts ("counts only @resend.dev test inboxes on a preview deployment, matching the send") and ' +
+        'src/lib/newsletter-send.test.ts ("limits a preview deployment’s audience to @resend.dev test inboxes in both the count and the snapshot").',
     )
   })
 })
