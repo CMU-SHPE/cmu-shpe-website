@@ -1,4 +1,4 @@
-import { test as base, expect, type BrowserContext, type Page } from '@playwright/test'
+import { test as base, expect, type BrowserContext, type Page, type PlaywrightWorkerArgs } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
 /**
@@ -57,3 +57,17 @@ export function resendTestAddress(label: string) {
 }
 
 export const WELL_FORMED_UNKNOWN_TOKEN = 'e2eUnknownToken_0123456789abcdefghijklmnopq'
+
+export function bypassHeaders(): Record<string, string> {
+  const secret = process.env.VERCEL_BYPASS
+  return secret ? { 'x-vercel-protection-bypass': secret } : {}
+}
+
+/** API requests skip the browser context's routes, so the bypass header goes on the request itself. */
+export async function previewRequest(playwright: PlaywrightWorkerArgs['playwright'], baseURL: string | undefined) {
+  return playwright.request.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+    extraHTTPHeaders: bypassHeaders(),
+  })
+}
