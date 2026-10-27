@@ -63,6 +63,11 @@ password resets only log the failure and still tell the visitor to check their e
 locally: links in emails use `http://localhost:3000` under `npm run dev`, and a local
 `npm start` needs it set (for example `SITE_URL=http://localhost:3000`).
 
+Newsletters only reach `@resend.dev` test inboxes unless `VERCEL_ENV=production`. A
+`.env.local` pulled from Vercel's production environment (`vercel env pull`) contains
+`VERCEL_ENV=production`, which turns that guard off locally and would email real members;
+delete that line from `.env.local`.
+
 ### First-time database setup
 
 ```bash
