@@ -62,6 +62,7 @@ const FROZEN = {
   reply_to: 'shpe@cmu.edu',
   site_url: 'https://shpe.example',
   from_address: '"SHPE @ CMU" <news@news.example>',
+  send_started_ms: '1793046283945',
 }
 
 function squash(text: string) {
@@ -160,9 +161,12 @@ describe('processNewsletterSend', () => {
     expect(batch.options).toEqual({
       from: FROZEN.from_address,
       replyTo: 'shpe@cmu.edu',
-      idempotencyKey: chunkIdempotencyKey(4, 0),
+      idempotencyKey: chunkIdempotencyKey(4, '1793046283945', 0),
     })
-    expect(chunkIdempotencyKey(4, 0)).toBe('newsletter-4/chunk-0')
+    expect(chunkIdempotencyKey(4, '1793046283945', 0)).toBe('newsletter-4-1793046283945/chunk-0')
+    expect(chunkIdempotencyKey(4, '1800000000000', 0)).not.toBe(chunkIdempotencyKey(4, '1793046283945', 0))
+    const frozenRead = fake.queries.find((query) => is(query, 'select status, subject, body'))!
+    expect(squash(frozenRead.sql)).toContain('floor(extract(epoch from send_started_at) * 1000)::bigint::text as send_started_ms')
     expect(batch.emails.map((email) => email.to)).toEqual(['ana@example.com', 'luis@example.com', 'sofia@example.com'])
     expect(batch.emails[0].oneClickUnsubscribeUrl).toMatch(/^https:\/\/shpe\.example\/unsubscribe\/one-click\?token=[\w-]{43}$/)
     expect(batch.emails[0].text).toContain('https://shpe.example/unsubscribe?token=')
@@ -224,6 +228,7 @@ describe('processNewsletterSend', () => {
 
     const [first, retry] = sentBatches()
     expect(JSON.stringify(retry)).toBe(JSON.stringify(first))
+    expect(retry.options.idempotencyKey).toBe('newsletter-4-1793046283945/chunk-0')
   })
 
   it('records per-index rejections as failures and the rest as sent', async () => {
@@ -259,7 +264,7 @@ describe('processNewsletterSend', () => {
     let clock = 0
     const result = await processNewsletterSend(4, { now: () => (clock += 100), budgetMs: 250 })
     expect(result).toEqual({ status: 'sending', reason: 'time_budget' })
-    expect(sentBatches().map((batch) => batch.options.idempotencyKey)).toEqual(['newsletter-4/chunk-0', 'newsletter-4/chunk-1'])
+    expect(sentBatches().map((batch) => batch.options.idempotencyKey)).toEqual(['newsletter-4-1793046283945/chunk-0', 'newsletter-4-1793046283945/chunk-1'])
     expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
   })
 

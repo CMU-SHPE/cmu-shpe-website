@@ -155,11 +155,13 @@ type FrozenNewsletter = {
   reply_to: string | null
   site_url: string | null
   from_address: string | null
+  send_started_ms: string | null
 }
 
 async function frozenNewsletter(newsletterId: number) {
   const [row] = await run<FrozenNewsletter>(sql`
-    select status, subject, body, topic_names, mailing_address, reply_to, site_url, from_address
+    select status, subject, body, topic_names, mailing_address, reply_to, site_url, from_address,
+      floor(extract(epoch from send_started_at) * 1000)::bigint::text as send_started_ms
     from newsletters where id = ${newsletterId}
   `)
   return row
@@ -261,8 +263,13 @@ async function prepareRecipients(recipientIds: number[]): Promise<{ id: number; 
   return rows.sort((a, b) => a.id - b.id)
 }
 
-export function chunkIdempotencyKey(newsletterId: number, chunk: number): string {
-  return `newsletter-${newsletterId}/chunk-${chunk}`
+/**
+ * Ids alone repeat across deployments and database restores, and Resend would then answer a new
+ * newsletter's chunk from another one's cached result. The send start time is set once when the
+ * send is claimed, so every retry of a chunk still gets the same key.
+ */
+export function chunkIdempotencyKey(newsletterId: number, sendStartedMs: string, chunk: number): string {
+  return `newsletter-${newsletterId}-${sendStartedMs}/chunk-${chunk}`
 }
 
 export function buildChunkEmails(newsletter: FrozenNewsletter, recipients: { id: number; email: string }[]): NewsletterEmail[] {
@@ -323,7 +330,7 @@ async function sendChunk(
   const result = await sendNewsletterBatch(buildChunkEmails(newsletter, recipients), {
     from: newsletter.from_address ?? '',
     replyTo: newsletter.reply_to,
-    idempotencyKey: chunkIdempotencyKey(newsletterId, claimed.chunk),
+    idempotencyKey: chunkIdempotencyKey(newsletterId, newsletter.send_started_ms ?? '0', claimed.chunk),
   })
 
   if (!result.ok && result.retryable) {
