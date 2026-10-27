@@ -78,6 +78,8 @@ type World = {
   chunks: { chunk: number; ids: number[]; skipped?: number[] }[]
   emails: Record<number, string>
   finished: boolean
+  /** Rows whose stored link hash came from an earlier AUTH_SECRET. */
+  rotatedLinks?: number[]
 }
 
 function world(overrides: Partial<World> = {}): World {
@@ -100,7 +102,9 @@ function respondWith(state: World): Responder {
     if (is(query, "set status = 'skipped'")) return []
     if (is(query, 'set unsubscribe_token_hash')) {
       const ids = query.params.filter((_, index) => index % 2 === 0) as number[]
-      return ids.filter((id) => state.emails[id]).map((id) => ({ id, email: state.emails[id] }))
+      return ids
+        .filter((id) => state.emails[id])
+        .map((id) => ({ id, email: state.emails[id], link_matches: !state.rotatedLinks?.includes(id) }))
     }
     if (is(query, "update newsletters set status = 'sent'")) return state.finished ? [{ id: 4 }] : []
     return []
@@ -384,6 +388,30 @@ describe('processNewsletterSend recipients and links', () => {
     expect(prepare.params).toEqual([11, hashToken(tokens[11]), 12, hashToken(tokens[12]), 13, hashToken(tokens[13])])
     expect(squash(prepare.sql)).toContain("r.status = 'sending'")
     expect(fake.queries.indexOf(prepare)).toBeLessThan(fake.queries.findIndex((query) => is(query, 'set status = v.status')))
+  })
+
+  it('keeps a stored link hash on a re-claim instead of overwriting it', async () => {
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const prepare = fake.queries.find((query) => is(query, 'set unsubscribe_token_hash'))!
+    expect(squash(prepare.sql)).toContain('set unsubscribe_token_hash = coalesce(r.unsubscribe_token_hash, v.hash)')
+    expect(squash(prepare.sql)).toContain('r.unsubscribe_token_hash = v.hash as link_matches')
+  })
+
+  it('never resends a recipient whose delivered link came from a rotated secret, recording it as unknown', async () => {
+    fake.respond = respondWith(world({ rotatedLinks: [12] }))
+    await processNewsletterSend(4)
+    expect(sentBatches()[0].emails.map((email) => email.to)).toEqual(['ana@example.com', 'sofia@example.com'])
+    const [unknown] = fake.queries.filter((query) => is(query, 'set status = v.status'))
+    expect(unknown.params).toEqual([12, 'failed', null, 'unknown_outcome'])
+  })
+
+  it('forgets the stored link of a batch Resend refused outright, since nobody received it', async () => {
+    fake.sendBatch.mockResolvedValue({ ok: false, reason: 'rate_limit_exceeded', retryable: true })
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))!
+    expect(squash(release.sql)).toContain('claimed_at = null, unsubscribe_token_hash = null')
   })
 
   it('folds line breaks out of a frozen subject before it reaches the email', async () => {

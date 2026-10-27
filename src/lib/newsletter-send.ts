@@ -256,17 +256,21 @@ function valuesList(rows: SQL[]): SQL {
   return sql.join(rows, sql`, `)
 }
 
+type PreparedRecipient = { id: number; email: string; link_matches: boolean }
+
 /**
  * Stores each link's hash before the email goes out, so no recipient ever gets a link that
- * doesn't resolve; the token is derived from the row id, so redoing this after a crash is harmless.
+ * doesn't resolve. A hash already stored is kept, never replaced: an earlier attempt may have
+ * delivered that link, and it must keep working even if AUTH_SECRET has been rotated since.
  */
-async function prepareRecipients(recipientIds: number[]): Promise<{ id: number; email: string }[]> {
+async function prepareRecipients(recipientIds: number[]): Promise<PreparedRecipient[]> {
   const values = valuesList(recipientIds.map((id) => sql`(${id}::int, ${hashToken(unsubscribeTokenFor(id))})`))
-  const rows = await run<{ id: number; email: string }>(sql`
-    update newsletter_recipients r set unsubscribe_token_hash = v.hash, updated_at = now()
+  const rows = await run<PreparedRecipient>(sql`
+    update newsletter_recipients r
+    set unsubscribe_token_hash = coalesce(r.unsubscribe_token_hash, v.hash), updated_at = now()
     from (values ${values}) as v(id, hash), members m
     where r.id = v.id and m.id = r.member_id and r.status = 'sending'
-    returning r.id, m.email
+    returning r.id, m.email, r.unsubscribe_token_hash = v.hash as link_matches
   `)
   return rows.sort((a, b) => a.id - b.id)
 }
@@ -322,7 +326,7 @@ const REFUSED_BEFORE_ACCEPTING = new Set(['rate_limit_exceeded', 'daily_quota_ex
  * the key is recorded as unknown instead of sent again.
  */
 function releaseForRetry(recipientIds: number[], { neverSent }: { neverSent: boolean }) {
-  const forgetClaim = neverSent ? sql`claimed_at = null, ` : sql``
+  const forgetClaim = neverSent ? sql`claimed_at = null, unsubscribe_token_hash = null, ` : sql``
   return run(sql`
     update newsletter_recipients set status = 'pending', ${forgetClaim}updated_at = now()
     where id in (${sql.join(recipientIds.map((id) => sql`${id}`), sql`, `)}) and status = 'sending'
@@ -341,7 +345,16 @@ async function sendChunk(
   claimed: ClaimedChunk,
 ): Promise<'done' | 'retry_later' | 'outcome_unconfirmed'> {
   if (claimed.recipientIds.length === 0) return 'done'
-  const recipients = await prepareRecipients(claimed.recipientIds)
+  const prepared = await prepareRecipients(claimed.recipientIds)
+  // The secret changed after an earlier attempt that may have gone out: resending would carry
+  // links that resolve to nothing, under a key whose first payload differed.
+  const unrepeatable = prepared.filter((row) => !row.link_matches)
+  if (unrepeatable.length > 0) {
+    await recordOutcomes(
+      unrepeatable.map((row) => ({ id: row.id, status: 'failed', resendId: null, errorCode: 'unknown_outcome' })),
+    )
+  }
+  const recipients = prepared.filter((row) => row.link_matches)
   if (recipients.length === 0) return 'done'
 
   const result = await sendNewsletterBatch(buildChunkEmails(newsletter, recipients), {
