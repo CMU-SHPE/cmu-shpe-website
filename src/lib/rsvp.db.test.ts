@@ -7,9 +7,10 @@ import { cancelRsvp, getRsvpStates, listAttendees, listMyRsvps, rsvp, rsvpCounts
 
 const NOW = new Date('2026-10-27T18:00:00Z')
 const TODAY = '2026-10-27'
-const RACE_CAPACITY = 5
-const RACE_MEMBERS = 20
-const RACE_ROUNDS = 5
+const RACE_CAPACITY = 3
+const RACE_MEMBERS = 8
+const GATE_TAG = 'rsvp-race-gate'
+const GATE_TIMEOUT_SECONDS = 20
 
 beforeEach(resetDb)
 
@@ -126,33 +127,85 @@ describe('rsvp and cancelRsvp', () => {
   })
 })
 
+/**
+ * Makes every racer start its statement while the event row is still locked, so they all queue on the
+ * lock and the outcome no longer depends on how the requests happen to interleave. A gate transaction
+ * locks the row and waits inside Postgres until `racers.length` backends are blocked on it, then
+ * commits and lets them through.
+ */
+async function raceBehindLockedEvent<T>(eventId: number, racers: (() => Promise<T>)[]): Promise<T[]> {
+  const db = getDb()
+  const gate = db.batch([
+    db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).for('update'),
+    db.execute(
+      sql.raw(`/* ${GATE_TAG} */ do $$
+        declare deadline timestamptz := clock_timestamp() + interval '${GATE_TIMEOUT_SECONDS} seconds';
+        begin
+          while (select count(*) from pg_locks where not granted) < ${racers.length} loop
+            if clock_timestamp() > deadline then raise exception 'racers never queued behind the gate'; end if;
+            perform pg_sleep(0.01);
+          end loop;
+        end $$`),
+    ),
+  ])
+  await waitForGateToHoldLock()
+  const results = Promise.all(racers.map((race) => race()))
+  await gate
+  return results
+}
+
+async function waitForGateToHoldLock() {
+  const deadline = Date.now() + GATE_TIMEOUT_SECONDS * 1000
+  while (Date.now() < deadline) {
+    const { rows } = await getDb().execute<{ holding: boolean }>(sql`
+      select exists (
+        select 1 from pg_stat_activity
+        where pid <> pg_backend_pid() and state = 'active' and query like ${`/* ${GATE_TAG} */%`}
+      ) as holding`)
+    if (rows[0]?.holding) return
+  }
+  throw new Error('the gate transaction never took the event lock')
+}
+
 describe('the capacity race', () => {
-  it(`never seats more than capacity when ${RACE_MEMBERS} members RSVP at once`, async () => {
-    for (let round = 0; round < RACE_ROUNDS; round++) {
-      const [event, racers] = await Promise.all([createEvent({ capacity: RACE_CAPACITY }), createMembers(RACE_MEMBERS)])
+  it(`seats exactly capacity when ${RACE_MEMBERS} members RSVP while the event is locked`, async () => {
+    const [event, racers] = await Promise.all([createEvent({ capacity: RACE_CAPACITY }), createMembers(RACE_MEMBERS)])
 
-      const outcomes = await Promise.all(racers.map((member) => rsvp(member.id, event.id, NOW)))
+    const outcomes = await raceBehindLockedEvent(
+      event.id,
+      racers.map((member) => () => rsvp(member.id, event.id, NOW)),
+    )
 
-      expect(await rsvpRows(event.id)).toHaveLength(RACE_CAPACITY)
-      expect(outcomes.filter((outcome) => outcome === 'going')).toHaveLength(RACE_CAPACITY)
-      expect(outcomes.filter((outcome) => outcome === 'full')).toHaveLength(RACE_MEMBERS - RACE_CAPACITY)
-    }
-  }, 120_000)
+    expect(await rsvpRows(event.id)).toHaveLength(RACE_CAPACITY)
+    expect(outcomes.filter((outcome) => outcome === 'going')).toHaveLength(RACE_CAPACITY)
+    expect(outcomes.filter((outcome) => outcome === 'full')).toHaveLength(RACE_MEMBERS - RACE_CAPACITY)
+  }, 60_000)
 
-  // Negative control: the same race against the single-statement shape the batch replaces must be able
-  // to oversell, otherwise the test above would pass even with no protection at all. Without the sleep
-  // widening the window it oversold in 0 of 5 rounds here, so the sleep is what makes the control reliable.
-  it('catches an oversell from a single statement that locks and counts on one snapshot', async () => {
-    let oversold = 0
-    for (let round = 0; round < RACE_ROUNDS; round++) {
-      const [event, racers] = await Promise.all([createEvent({ capacity: RACE_CAPACITY }), createMembers(RACE_MEMBERS)])
+  it('keeps one row when the same member RSVPs many times at once', async () => {
+    const [member, event] = await Promise.all([createMember(), createEvent({ capacity: 1 })])
 
-      await Promise.all(racers.map((member) => brokenRsvp(member.id, event.id)))
+    const outcomes = await raceBehindLockedEvent(
+      event.id,
+      Array.from({ length: RACE_MEMBERS }, () => () => rsvp(member.id, event.id, NOW)),
+    )
 
-      if ((await rsvpRows(event.id)).length > RACE_CAPACITY) oversold += 1
-    }
-    expect(oversold).toBeGreaterThan(0)
-  }, 120_000)
+    expect(await rsvpRows(event.id)).toEqual([expect.objectContaining({ memberId: member.id })])
+    expect(outcomes).toEqual(Array(RACE_MEMBERS).fill('going'))
+  }, 60_000)
+
+  // Negative control: the single-statement shape the batch replaces counts on the snapshot it took before
+  // waiting for the lock, so behind the same gate every racer gets in. Without this the tests above
+  // would also pass with no protection at all.
+  it('lets every racer in through a single statement that locks and counts on one snapshot', async () => {
+    const [event, racers] = await Promise.all([createEvent({ capacity: RACE_CAPACITY }), createMembers(RACE_MEMBERS)])
+
+    await raceBehindLockedEvent(
+      event.id,
+      racers.map((member) => () => brokenRsvp(member.id, event.id)),
+    )
+
+    expect(await rsvpRows(event.id)).toHaveLength(RACE_MEMBERS)
+  }, 60_000)
 })
 
 async function brokenRsvp(memberId: number, eventId: number) {
@@ -163,8 +216,7 @@ async function brokenRsvp(memberId: number, eventId: number) {
     from events e
     join locked on locked.id = e.id
     where e.date >= ${TODAY}::date
-      and (e.capacity is null
-        or (select count(*) from event_rsvps r cross join pg_sleep(0.05) where r.event_id = e.id) < e.capacity)
+      and (e.capacity is null or (select count(*) from event_rsvps r where r.event_id = e.id) < e.capacity)
     on conflict (event_id, member_id) do nothing`)
 }
 
