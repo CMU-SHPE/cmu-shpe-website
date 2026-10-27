@@ -41,15 +41,18 @@ function adminIdOf(admin: Awaited<ReturnType<typeof requireAdmin>>): number {
 const onlyWhileDraft = (id: number) =>
   sql`exists (select 1 from ${newsletters} where ${newsletters.id} = ${id} and ${newsletters.status} = 'draft')`
 
-function insertSelections(id: number, topicIds: number[]) {
-  const ids = sql.join(
+function topicIdList(topicIds: number[]) {
+  return sql.join(
     topicIds.map((topicId) => sql`${topicId}`),
     sql`, `,
   )
+}
+
+function insertSelections(id: number, topicIds: number[]) {
   return getDb().execute(sql`
     insert into newsletter_topic_selections (newsletter_id, topic_id)
     select ${id}::int, t.id from newsletter_topics t
-    where t.id in (${ids}) and ${onlyWhileDraft(id)}
+    where t.id in (${topicIdList(topicIds)}) and ${onlyWhileDraft(id)}
   `)
 }
 
@@ -62,12 +65,23 @@ async function persistDraft(adminId: number, id: number | null, draft: Newslette
   const db = getDb()
 
   if (id === null) {
-    const [created] = await db
-      .insert(newsletters)
-      .values({ subject: draft.subject, body: draft.body, createdBy: adminId })
-      .returning({ id: newsletters.id })
-    if (draft.topicIds.length > 0) await insertSelections(created.id, draft.topicIds)
-    return created.id
+    // One statement, so a new draft never exists without the topics it was saved with.
+    const chosen = draft.topicIds.length > 0 ? sql`t.id in (${topicIdList(draft.topicIds)})` : sql`false`
+    const result = (await db.execute(sql`
+      with created as (
+        insert into newsletters (subject, body, created_by)
+        values (${draft.subject}, ${draft.body}, ${adminId})
+        returning id
+      ),
+      selected as (
+        insert into newsletter_topic_selections (newsletter_id, topic_id)
+        select created.id, t.id from created, newsletter_topics t
+        where ${chosen}
+        returning 1
+      )
+      select id from created
+    `)) as unknown as { rows: { id: number }[] }
+    return result.rows[0].id
   }
 
   const [updated] = await db.batch([

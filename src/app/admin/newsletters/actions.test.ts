@@ -74,7 +74,15 @@ vi.mock('@/db', () => {
       }),
       execute: (statement: SQL) => {
         const text = render(statement)
-        return { kind: 'execute', text, then: (resolve: (value: unknown) => void) => resolve(record(text)) }
+        const rows = text.startsWith('with created as') ? [{ id: 9 }] : []
+        return {
+          kind: 'execute',
+          text,
+          then: (resolve: (value: unknown) => void) => {
+            record(text)
+            resolve({ rows })
+          },
+        }
       },
       batch: async (items: { kind: string; text: string }[]) =>
         items.map((item) => {
@@ -154,8 +162,17 @@ describe('saveNewsletter', () => {
   it('requires an admin first, then creates a draft with its topics', async () => {
     expect(await redirectOf(saveNewsletter(null, complete()))).toBe('/admin/newsletters/9?saved=1')
     expect(mocks.state.calls[0]).toBe('requireAdmin')
-    expect(mocks.state.statements[0]).toBe('insert newsletters')
-    expect(mocks.state.statements[1]).toContain('insert into newsletter_topic_selections')
+    expect(mocks.state.statements).toHaveLength(1)
+    expect(mocks.state.statements[0]).toMatch(/^with created as \( insert into newsletters \(subject, body, created_by\)/)
+    expect(mocks.state.statements[0]).toContain(
+      'insert into newsletter_topic_selections (newsletter_id, topic_id) select created.id, t.id from created, newsletter_topics t where t.id in ($4)',
+    )
+  })
+
+  it('creates a draft with no topics in the same single statement', async () => {
+    expect(await redirectOf(saveNewsletter(null, form({ subject: 'S', body: '' })))).toBe('/admin/newsletters/9?saved=1')
+    expect(mocks.state.statements).toHaveLength(1)
+    expect(mocks.state.statements[0]).toContain('from created, newsletter_topics t where false')
   })
 
   it('allows an incomplete draft to be saved', async () => {
