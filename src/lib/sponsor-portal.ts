@@ -1,9 +1,10 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { and, eq, getTableColumns, isNotNull, sql } from 'drizzle-orm'
-import { type Db, getDb } from '@/db'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import type { Db } from '@/db'
 import { type Sponsor, members, sponsorEdits, sponsors } from '@/db/schema'
 import { type MemberSession, currentMember } from '@/lib/member'
+import { findOwnListing } from '@/lib/sponsor-portal-listing'
 import type { LogoColumns, SponsorListingFields } from '@/lib/sponsor-schema'
 
 export type SponsorAccess = { member: MemberSession; listing: Sponsor }
@@ -13,12 +14,7 @@ export const currentSponsor = cache(async (): Promise<SponsorAccess | null> => {
   const member = await currentMember()
   if (!member) return null
 
-  const [listing] = await getDb()
-    .select(getTableColumns(sponsors))
-    .from(members)
-    .innerJoin(sponsors, eq(sponsors.id, members.sponsorId))
-    .where(and(eq(members.id, Number(member.user.id)), eq(members.role, 'sponsor')))
-    .limit(1)
+  const listing = await findOwnListing(Number(member.user.id))
   return listing ? { member, listing } : null
 })
 

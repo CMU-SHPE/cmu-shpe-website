@@ -87,6 +87,14 @@ export const contentDefaults = {
   'sponsors.cta.paragraph':
     'Reach out to our President or Faculty Advisor for our full sponsorship prospectus and to discuss a partnership that works for your organization.',
 
+  'sponsor.header.heading': 'Sponsor portal',
+  'sponsor.header.intro':
+    'Thank you for supporting SHPE at Colorado Mesa University. Keep your listing up to date, RSVP to upcoming events, and download your receipts here.',
+  'sponsor.listing.heading': 'Your listing',
+  'sponsor.listing.intro': 'This is how your organization appears on our Sponsors page. Changes show up as soon as you save.',
+  'sponsor.events.heading': 'Upcoming events',
+  'sponsor.events.empty': 'No upcoming events right now — check back soon.',
+
   'officers.header.eyebrow': 'Meet the Team',
   'officers.header.heading': 'Chapter Officers',
   'officers.header.intro':
