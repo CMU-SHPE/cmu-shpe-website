@@ -198,6 +198,10 @@ describe('newsletter detail page', () => {
     expect(problems).toHaveTextContent('Maybe <maybe@example.com>: Unknown: it may or may not have been delivered')
     expect(problems).not.toHaveTextContent('Gone')
     expect(screen.getByText('Accounts deleted since sending started').nextSibling).toHaveTextContent('1')
+    const summary = screen.getByText('Accounts deleted since sending started').closest('dl')!
+    expect([...summary.children].map((child) => child.tagName)).toEqual(
+      Array.from({ length: summary.children.length }, (_, index) => (index % 2 === 0 ? 'DT' : 'DD')),
+    )
     expect(screen.getByTitle('Newsletter preview')).toHaveAttribute('sandbox', '')
   })
 
