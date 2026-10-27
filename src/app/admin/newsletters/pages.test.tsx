@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react'
 import type { NewsletterListRow, NewsletterRecipientRow } from '@/lib/newsletter-admin'
 
 const mocks = vi.hoisted(() => ({
+  formPending: false,
   calls: [] as string[],
   list: [] as unknown[],
   newsletter: null as Record<string, unknown> | null,
@@ -25,6 +26,13 @@ vi.mock('next/navigation', () => ({
   },
   usePathname: () => '/admin/newsletters',
 }))
+vi.mock('react-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-dom')>()
+  return {
+    ...actual,
+    useFormStatus: () => (mocks.formPending ? { pending: true, data: null, method: 'post', action: null } : actual.useFormStatus()),
+  }
+})
 vi.mock('@/lib/admin', () => ({
   requireAdmin: async () => {
     mocks.calls.push('requireAdmin')
@@ -132,6 +140,15 @@ describe('route segment config', () => {
 })
 
 describe('newsletters list page', () => {
+  it('names a pending Continue sending button by its busy text, so the wait is announced', async () => {
+    mocks.list = [listRow({ id: 3, status: 'sending', subject: 'Half done', sentAt: null, remainingCount: 4 })]
+    mocks.formPending = true
+    render(await listPage.default({ searchParams: searchParams() }))
+    const button = screen.getByRole('button', { name: 'Sending…' })
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    mocks.formPending = false
+  })
+
   it('requires an admin before loading, and lists drafts and history with every outcome', async () => {
     mocks.list = [
       listRow({ id: 2, status: 'draft', subject: '', draftTopicNames: 'Events' }),
@@ -156,7 +173,8 @@ describe('newsletters list page', () => {
     const sending = within(table).getAllByRole('row')[2]
     expect(sending).toHaveTextContent('Sending…')
     expect(sending).toHaveTextContent('4 not sent yet')
-    expect(within(sending).getByRole('button', { name: 'Continue sending Half done' })).toBeInTheDocument()
+    const button = within(sending).getByRole('button', { name: 'Continue sending: Half done' })
+    expect(button).not.toHaveAttribute('aria-label')
   })
 })
 

@@ -136,12 +136,8 @@ export default async function AdminNewslettersPage(props: {
                     <Results row={row} />
                     {row.status === 'sending' && (
                       <form action={continueSending.bind(null, row.id)} className="mt-2">
-                        <SubmitButton
-                          pendingLabel="Sending…"
-                          className={secondaryButtonClass}
-                          aria-label={`Continue sending ${row.subject}`}
-                        >
-                          Continue sending
+                        <SubmitButton pendingLabel="Sending…" className={secondaryButtonClass}>
+                          Continue sending<span className="sr-only">: {row.subject}</span>
                         </SubmitButton>
                       </form>
                     )}
