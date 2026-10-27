@@ -419,7 +419,7 @@ describe('processNewsletterSend retries and failures', () => {
 
   it.todo(
     'never splits one chunk between two concurrent claimers (bug: claimNextChunk locks rows with SKIP LOCKED, so two ' +
-      'concurrent processNewsletterSend calls split a chunk about 2% of the time against real Postgres 17; the halves go out ' +
+      'concurrent processNewsletterSend calls split a chunk in 2% to 98% of trials across runs against real Postgres 17; the halves go out ' +
       'under one idempotency key with different payloads and the second half ends as unknown_outcome. Needs a real-SQL test.)',
   )
 

@@ -153,3 +153,22 @@ describe('one member’s token never reaches another member', () => {
     expect(db.state.statements.every((text) => text.startsWith('select'))).toBe(true)
   })
 })
+
+// The fake database decides member and newsletter scoping on its own, so these pins are what
+// fail if the statement itself stops scoping the delete.
+describe('unsubscribe statement scoping', () => {
+  async function writeFor(scope: 'these' | 'all') {
+    await unsubscribe(token, scope, 'page')
+    return db.state.statements.find((text) => text.includes('delete from member_topic_subscriptions'))!
+  }
+
+  it('deletes only the token holder’s rows', async () => {
+    expect(await writeFor('all')).toContain('where mts.member_id = target.member_id and t.id = mts.topic_id')
+  })
+
+  it('limits "these" to the topics of the newsletter the token was sent with', async () => {
+    expect(await writeFor('these')).toContain(
+      'select 1 from newsletter_topic_selections s where s.newsletter_id = target.newsletter_id and s.topic_id = mts.topic_id',
+    )
+  })
+})
