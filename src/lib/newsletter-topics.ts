@@ -3,6 +3,7 @@ import { asc, inArray, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { memberTopicSubscriptions, newsletterTopics } from '@/db/schema'
 import { requiredText } from './form-fields'
+import { qualified } from './qualified-column'
 
 export const MAX_TOPIC_NAME_LENGTH = 100
 export const MAX_TOPIC_DESCRIPTION_LENGTH = 500
@@ -32,7 +33,7 @@ export async function getNewsletterTopicsWithSubscriberCounts() {
       id: newsletterTopics.id,
       name: newsletterTopics.name,
       description: newsletterTopics.description,
-      subscriberCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${memberTopicSubscriptions.topicId} = ${newsletterTopics.id})`,
+      subscriberCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)})`,
     })
     .from(newsletterTopics)
     .orderBy(asc(newsletterTopics.sortOrder), asc(newsletterTopics.id))
