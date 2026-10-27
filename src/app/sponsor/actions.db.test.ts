@@ -174,7 +174,7 @@ describe('listingEdit', () => {
   it('updates nothing and audits nothing once the member is no longer a sponsor', async () => {
     await getDb().update(members).set({ role: 'supporter' }).where(eq(members.id, sponsor.id))
     const db = getDb()
-    const [locked, updated] = await db.batch(listingEdit(db, sponsor.id, values, ['name']))
+    const [locked, updated] = await db.batch(listingEdit(db, sponsor.id, listing.id, values, ['name']))
     expect(locked).toEqual([])
     expect(updated).toEqual([])
     expect(await listingRow(listing.id)).toEqual(listing)
@@ -184,25 +184,33 @@ describe('listingEdit', () => {
   it('updates nothing and audits nothing for a sponsor with no listing', async () => {
     await getDb().update(members).set({ sponsorId: null }).where(eq(members.id, sponsor.id))
     const db = getDb()
-    const [, updated] = await db.batch(listingEdit(db, sponsor.id, values, ['name']))
+    const [, updated] = await db.batch(listingEdit(db, sponsor.id, listing.id, values, ['name']))
     expect(updated).toEqual([])
     expect(await auditRows()).toEqual([])
   })
 
-  it('follows a relink to the member’s current listing, never a stale one', async () => {
+  it('writes nothing when the member was moved to another listing after the caller read theirs', async () => {
     await getDb().update(members).set({ sponsorId: other.id }).where(eq(members.id, sponsor.id))
     const db = getDb()
-    const [, updated] = await db.batch(listingEdit(db, sponsor.id, values, ['name', 'website']))
-    expect(updated).toEqual([{ id: other.id }])
+    const [, updated] = await db.batch(listingEdit(db, sponsor.id, listing.id, values, ['name', 'website']))
+    expect(updated).toEqual([])
     expect(await listingRow(listing.id)).toEqual(listing)
-    expect(await auditRows()).toEqual([
-      { sponsorId: other.id, memberId: sponsor.id, memberName: 'Sam Sponsor', fields: ['name', 'website'] },
-    ])
+    expect(await listingRow(other.id)).toEqual(other)
+    expect(await auditRows()).toEqual([])
+  })
+
+  it('cannot write to a listing the member is not linked to', async () => {
+    const db = getDb()
+    const [, updated] = await db.batch(listingEdit(db, sponsor.id, other.id, values, ['name']))
+    expect(updated).toEqual([])
+    expect(await listingRow(listing.id)).toEqual(listing)
+    expect(await listingRow(other.id)).toEqual(other)
+    expect(await auditRows()).toEqual([])
   })
 
   it('keeps the audit row with a null member after the editor deletes their account', async () => {
     const db = getDb()
-    await db.batch(listingEdit(db, sponsor.id, values, ['name']))
+    await db.batch(listingEdit(db, sponsor.id, listing.id, values, ['name']))
     await db.delete(members).where(eq(members.id, sponsor.id))
     expect(await auditRows()).toEqual([
       { sponsorId: listing.id, memberId: null, memberName: 'Sam Sponsor', fields: ['name'] },

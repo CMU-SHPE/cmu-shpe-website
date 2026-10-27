@@ -28,7 +28,7 @@ const errorMessages: Record<string, string> = {
     'Please check the fields — the name is required, the website must start with http:// or https://, and the description must be 1000 characters or fewer.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
   storage: "The logo couldn't be saved right now — please try again in a minute. Nothing was changed.",
-  missing: 'Your account is no longer linked to a sponsor listing, so nothing was changed.',
+  missing: 'Your sponsor access changed while you were editing, so nothing was saved. Check the form and try again.',
 }
 
 const savedMessages: Record<string, string> = {

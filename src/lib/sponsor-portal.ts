@@ -1,6 +1,6 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { Db } from '@/db'
 import { type Sponsor, members, sponsorEdits, sponsors } from '@/db/schema'
 import { type MemberSession, currentMember } from '@/lib/member'
@@ -48,9 +48,17 @@ export function changedListingFields(current: ListingValues, next: ListingValues
 /**
  * The listing is never taken from the request: both writes find it through the
  * member's own row, which the first statement locks so an admin can't relink or
- * demote them between the update and the audit insert.
+ * demote them between the update and the audit insert. `listingId` is the listing
+ * the caller read and diffed against; if the member has since been moved to another
+ * listing, nothing is written rather than applying that diff to the wrong row.
  */
-export function listingEdit(db: Db, memberId: number, values: ListingValues, fields: readonly ListingField[]) {
+export function listingEdit(
+  db: Db,
+  memberId: number,
+  listingId: number,
+  values: ListingValues,
+  fields: readonly ListingField[],
+) {
   const isSponsor = and(eq(members.id, memberId), eq(members.role, 'sponsor'))
   const ownListing = db.select({ id: members.sponsorId }).from(members).where(isSponsor)
   const changedFields = sql`array[${sql.join(
@@ -69,11 +77,11 @@ export function listingEdit(db: Db, memberId: number, values: ListingValues, fie
     db
       .update(sponsors)
       .set(values)
-      .where(eq(sponsors.id, sql`(${ownListing})`))
+      .where(and(eq(sponsors.id, sql`(${ownListing})`), eq(sponsors.id, listingId)))
       .returning({ id: sponsors.id }),
     db.execute(sql`insert into ${sponsorEdits} (${auditColumns})
       select ${members.sponsorId}, ${members.id}, ${members.name}, ${changedFields}
       from ${members}
-      where ${and(isSponsor, isNotNull(members.sponsorId))}`),
+      where ${and(isSponsor, eq(members.sponsorId, listingId))}`),
   ] as const
 }

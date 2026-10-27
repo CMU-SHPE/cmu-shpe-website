@@ -30,7 +30,7 @@ export async function updateListing(formData: FormData) {
   if (fields.length === 0) redirect('/sponsor?saved=unchanged')
 
   const db = getDb()
-  const [, updated] = await db.batch(listingEdit(db, Number(member.user.id), values, fields))
+  const [, updated] = await db.batch(listingEdit(db, Number(member.user.id), listing.id, values, fields))
   if (updated.length === 0) {
     await cleanupBlobs(...orphanedBlobs(logo, existing))
     redirect('/sponsor?error=missing')

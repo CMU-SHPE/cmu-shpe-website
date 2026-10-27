@@ -133,7 +133,7 @@ describe('SponsorPortalPage for a sponsor', () => {
     [{ saved: 'listing' }, 'status', 'Your listing was saved.'],
     [{ saved: 'unchanged' }, 'status', 'Nothing changed, so there was nothing to save.'],
     [{ error: 'invalid' }, 'alert', 'Please check the fields'],
-    [{ error: 'missing' }, 'alert', 'no longer linked to a sponsor listing'],
+    [{ error: 'missing' }, 'alert', 'changed while you were editing'],
   ] as const)('reports %j', async (params, role, text) => {
     render(await page(params))
     expect(screen.getAllByRole(role).filter((element) => element.textContent?.includes(text))).toHaveLength(1)
