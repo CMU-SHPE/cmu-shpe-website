@@ -4,7 +4,7 @@ import Link from 'next/link'
 import FocusOnMount from '@/components/focus-on-mount'
 import AccountForm, { type AccountField } from '@/components/member/account-form'
 import AccountShell, { accountLinkClass } from '@/components/member/account-shell'
-import { cardClass } from '@/components/admin/styles'
+import StatusBanner from '@/components/admin/status-banner'
 import { requestPasswordReset } from './actions'
 
 export const metadata: Metadata = { title: 'Forgot your password? | SHPE @ Colorado Mesa University' }
@@ -29,9 +29,12 @@ export default async function ForgotPasswordPage(props: { searchParams: Promise<
     >
       {sent && (
         <FocusOnMount key={`notice-${renderKey}`} id="request-sent">
-          <p role="status" className={`text-sm text-gray-700 dark:text-gray-300 ${cardClass}`}>
-            If an account exists for that email, we&apos;ve sent a reset link. It works for 1 hour.
-          </p>
+          <StatusBanner
+            live={false}
+            saved="sent"
+            errorMessages={{}}
+            savedMessage="If an account exists for that email, we've sent a reset link. It works for 1 hour."
+          />
         </FocusOnMount>
       )}
       <AccountForm

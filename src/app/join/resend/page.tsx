@@ -4,7 +4,7 @@ import Link from 'next/link'
 import FocusOnMount from '@/components/focus-on-mount'
 import AccountForm, { type AccountField } from '@/components/member/account-form'
 import AccountShell, { accountLinkClass } from '@/components/member/account-shell'
-import { cardClass } from '@/components/admin/styles'
+import StatusBanner from '@/components/admin/status-banner'
 import { resendConfirmation } from './actions'
 
 export const metadata: Metadata = { title: 'Resend confirmation email | SHPE @ Colorado Mesa University' }
@@ -24,9 +24,12 @@ export default async function ResendConfirmationPage(props: { searchParams: Prom
     >
       {sent && (
         <FocusOnMount key={`notice-${renderKey}`} id="request-sent">
-          <p role="status" className={`text-sm text-gray-700 dark:text-gray-300 ${cardClass}`}>
-            If an unconfirmed account exists for that email, we&apos;ve sent a new confirmation link. It works for 24 hours.
-          </p>
+          <StatusBanner
+            live={false}
+            saved="sent"
+            errorMessages={{}}
+            savedMessage="If an unconfirmed account exists for that email, we've sent a new confirmation link. It works for 24 hours."
+          />
         </FocusOnMount>
       )}
       <AccountForm
