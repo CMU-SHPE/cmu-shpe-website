@@ -99,3 +99,93 @@ describe('paragraphsOf', () => {
     expect(paragraphsOf('\n\n a \n\n\n\n  \n\nb\n')).toEqual([' a ', 'b'])
   })
 })
+
+function hrefsOf(html: string): string[] {
+  return [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1])
+}
+
+describe('renderNewsletter against hostile input', () => {
+  it('only ever produces http(s) hrefs, whatever schemes or casing the body uses', () => {
+    const { html } = render(
+      'JavaScript:alert(1) jAvAsCrIpT:alert(1) javascript:https://shpe.example data:text/html,<b>x</b> VBScript:msgbox(1) //evil.example',
+    )
+    for (const href of hrefsOf(bodyOf(html))) expect(href).toMatch(/^https?:\/\//)
+    expect(bodyOf(html)).not.toMatch(/href="(?:javascript|data|vbscript):/i)
+  })
+
+  it('ends a link at an attribute break-out and escapes the rest', () => {
+    const { html } = render('https://evil.example/"><img src=x onerror=alert(1)> and https://evil.example/\'onmouseover=alert(1)')
+    expect(html).not.toContain('<img')
+    expect(hrefsOf(bodyOf(html))).toEqual(['https://evil.example/', 'https://evil.example/'])
+    expect(bodyOf(html)).toContain('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('ends a link before a < so it cannot open a tag', () => {
+    const { html } = render('https://shpe.example/a<b>c')
+    expect(hrefsOf(bodyOf(html))).toEqual(['https://shpe.example/a'])
+    expect(bodyOf(html)).toContain('</a>&lt;b&gt;c')
+  })
+
+  it('leaves trailing sentence punctuation outside the link in html and verbatim in text', () => {
+    const { html, text } = render('Sign up (https://shpe.example/join). Then: https://shpe.example/a?b=1!')
+    expect(hrefsOf(bodyOf(html))).toEqual(['https://shpe.example/join', 'https://shpe.example/a?b=1'])
+    expect(bodyOf(html)).toContain('</a>).')
+    expect(bodyOf(html)).toContain('</a>!')
+    expect(text).toContain('Sign up (https://shpe.example/join). Then: https://shpe.example/a?b=1!')
+  })
+
+  it('keeps unicode text, emoji and RTL characters intact without breaking the markup', () => {
+    const body = 'Bienvenidos, ¡año nuevo! 🎉\n\nمرحبا ‮gnp.exe‬ and ‏⁦isolated⁩'
+    const { html, text } = render(body, { subject: 'Año nuevo 🎉 ‮cmu' })
+    expect(text.startsWith('Bienvenidos, ¡año nuevo! 🎉\n\nمرحبا ‮gnp.exe‬')).toBe(true)
+    expect(bodyOf(html)).toContain('Bienvenidos, ¡año nuevo! 🎉</p>')
+    expect(bodyOf(html).match(/<p /g)).toHaveLength(2)
+    expect(html).toContain('<title>Año nuevo 🎉 ‮cmu</title>')
+  })
+
+})
+
+describe('newsletterSubject header safety', () => {
+  it.each([
+    ['CRLF', 'Hello\r\nBcc: x@y.z'],
+    ['lone CR', 'Hello\rBcc: x@y.z'],
+    ['lone LF', 'Hello\nBcc: x@y.z'],
+    ['repeated breaks', 'Hello\r\r\n\n Bcc: x@y.z'],
+    ['a trailing break', 'Hello Bcc: x@y.z\r\n'],
+  ])('folds %s so no header can be injected', (_, subject) => {
+    const folded = render('x', { subject }).subject
+    expect(folded).not.toMatch(/[\r\n]/)
+    expect(folded).toBe('Hello Bcc: x@y.z')
+  })
+
+  it('escapes the subject in the html title', () => {
+    expect(render('x', { subject: '</title><script>alert(1)</script>' }).html).toContain(
+      '<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</title>',
+    )
+  })
+})
+
+describe('renderNewsletter footer in both parts', () => {
+  it('puts the reason, unsubscribe link, account link and mailing address after the body in html and text', () => {
+    const { html, text } = render('Body text', { mailingAddress: ' 5000 Forbes Ave \r\n\r\n Pittsburgh, PA 15213 ' })
+    for (const part of [html, text]) {
+      const bodyAt = part.indexOf('Body text')
+      for (const piece of ['receiving this because you subscribed to: Events', UNSUBSCRIBE, 'https://shpe.example/account', '5000 Forbes Ave', 'Pittsburgh, PA 15213']) {
+        expect(part.indexOf(piece)).toBeGreaterThan(bodyAt)
+      }
+    }
+    expect(text).toContain('SHPE @ CMU\n5000 Forbes Ave\nPittsburgh, PA 15213\n')
+    expect(html).toContain('SHPE @ CMU<br>5000 Forbes Ave<br>Pittsburgh, PA 15213')
+  })
+
+  it('gives the test-send sample no working token in either part', () => {
+    const { html, text } = render('Hi', { unsubscribe: { sample: true } })
+    for (const part of [html, text]) {
+      expect(part).not.toContain('token=')
+      expect(part).not.toContain('/unsubscribe')
+      expect(part).toContain(SAMPLE_UNSUBSCRIBE_LABEL)
+      expect(part).toContain('https://shpe.example/account')
+    }
+    expect(hrefsOf(html)).toEqual(['https://shpe.example/account'])
+  })
+})

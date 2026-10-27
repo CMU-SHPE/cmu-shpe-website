@@ -118,3 +118,45 @@ describe('GET /unsubscribe/one-click', () => {
     expect(response.headers.get('location')).toBe(`/unsubscribe?token=${encodeURIComponent('x"><script>&next=//evil')}`)
   })
 })
+
+describe('one-click with two members', () => {
+  beforeEach(() => {
+    db.state.members.set(8, 'luis@example.com')
+    db.state.recipients.push({ hash: hashToken(unsubscribeTokenFor(12)), memberId: 8, newsletterId: 4 })
+    db.state.subscriptions.push({ memberId: 8, topicId: 1 }, { memberId: 8, topicId: 2 })
+  })
+
+  it('removes only the token holder’s subscriptions', async () => {
+    expect((await POST(oneClick(token))).status).toBe(200)
+    expect(db.state.subscriptions.filter((s) => s.memberId === 8)).toEqual([
+      { memberId: 8, topicId: 1 },
+      { memberId: 8, topicId: 2 },
+    ])
+    expect(db.state.log.map((row) => row.memberId)).toEqual([7, 7])
+  })
+
+  it('uses the first token when the query repeats it, so an appended token cannot redirect the unsubscribe', async () => {
+    const url = new URL('https://shpe.example/unsubscribe/one-click')
+    url.searchParams.append('token', token)
+    url.searchParams.append('token', unsubscribeTokenFor(12))
+    expect((await POST(new Request(url, { method: 'POST', body: 'List-Unsubscribe=One-Click' }))).status).toBe(200)
+    expect(db.state.log.map((row) => row.memberId)).toEqual([7, 7])
+    expect(db.state.subscriptions.filter((s) => s.memberId === 8)).toHaveLength(2)
+  })
+
+  it('ignores a token in the POST body: only the link’s own token counts', async () => {
+    const url = new URL('https://shpe.example/unsubscribe/one-click')
+    const response = await POST(
+      new Request(url, { method: 'POST', body: `token=${unsubscribeTokenFor(12)}`, headers: { 'content-type': 'application/x-www-form-urlencoded' } }),
+    )
+    expect(response.status).toBe(400)
+    expect(db.state.writes).toBe(0)
+  })
+
+  it.each([['HEAD'], ['GET']])('never touches the database on %s', async (method) => {
+    const response = await GET(oneClick(token, method))
+    expect(response.status).toBe(303)
+    expect(fake.getDbCalls).toBe(0)
+    expect(db.state.statements).toEqual([])
+  })
+})

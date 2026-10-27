@@ -114,3 +114,42 @@ describe('unsubscribe', () => {
     expect(db.state.log).toEqual([])
   })
 })
+
+describe('one member’s token never reaches another member', () => {
+  let otherToken: string
+
+  beforeEach(() => {
+    otherToken = unsubscribeTokenFor(12)
+    db.state.members.set(8, 'luis@example.com')
+    db.state.recipients.push({ hash: hashToken(otherToken), memberId: 8, newsletterId: 4 })
+    db.state.subscriptions.push({ memberId: 8, topicId: 1 }, { memberId: 8, topicId: 2 }, { memberId: 8, topicId: 3 })
+  })
+
+  it.each([['these'], ['all']] as const)('unsubscribing with member 7’s token (%s) leaves member 8 untouched', async (scope) => {
+    await unsubscribe(token, scope, 'page')
+    expect(db.state.subscriptions.filter((s) => s.memberId === 8)).toHaveLength(3)
+    expect(db.state.log.every((row) => row.memberId === 7)).toBe(true)
+  })
+
+  it('resolves each token to its own masked address and passes only the token hash to the database', async () => {
+    expect((await resolveUnsubscribeToken(token))?.maskedEmail).toBe('m***@example.com')
+    expect((await resolveUnsubscribeToken(otherToken))?.maskedEmail).toBe('l***@example.com')
+    const write = await unsubscribe(otherToken, 'all', 'page').then(() =>
+      db.state.statements.find((text) => text.includes('delete from member_topic_subscriptions')),
+    )
+    expect(write).not.toMatch(/member_id = \$\d/)
+    expect(write).toContain('where mts.member_id = target.member_id')
+    expect(db.state.subscriptions).toEqual([
+      { memberId: 7, topicId: 1 },
+      { memberId: 7, topicId: 2 },
+      { memberId: 7, topicId: 3 },
+    ])
+  })
+
+  it('never writes while resolving, for either member', async () => {
+    await resolveUnsubscribeToken(token)
+    await resolveUnsubscribeToken(otherToken)
+    expect(db.state.writes).toBe(0)
+    expect(db.state.statements.every((text) => text.startsWith('select'))).toBe(true)
+  })
+})

@@ -360,3 +360,101 @@ describe('matchBatchOutcomes', () => {
     ])
   })
 })
+
+describe('sendNewsletterBatch headers and limits', () => {
+  const oneClick = (n: number) => `https://shpe.example/unsubscribe/one-click?token=${'t'.repeat(42)}${n % 10}`
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, n) => ({
+      to: `m${n}@example.com`,
+      subject: 'Spring update',
+      text: 't',
+      html: '<p>h</p>',
+      oneClickUnsubscribeUrl: oneClick(n),
+    }))
+  const options = { from: '"SHPE @ CMU" <news@news.shpecmu.com>', replyTo: 'shpe@cmu.edu', idempotencyKey: 'newsletter-4/chunk-0' }
+
+  function accepted(count: number) {
+    return { data: { data: Array.from({ length: count }, (_, n) => ({ id: `b_${n}` })), errors: [] }, error: null, headers: null }
+  }
+
+  it('sends exactly 100 and refuses an empty batch', async () => {
+    configure()
+    const { sendNewsletterBatch, MAX_BATCH_SIZE } = await load()
+    expect(MAX_BATCH_SIZE).toBe(100)
+    mocks.batchSend.mockResolvedValue(accepted(100))
+    const result = await sendNewsletterBatch(many(100), options)
+    expect(result.ok && result.outcomes).toHaveLength(100)
+    expect(mocks.batchSend.mock.calls[0][0]).toHaveLength(100)
+    await expect(sendNewsletterBatch([], options)).rejects.toThrow(/1 to 100/)
+    expect(mocks.batchSend).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives every email the https one-click List-Unsubscribe in angle brackets and no mailto', async () => {
+    configure()
+    const { sendNewsletterBatch } = await load()
+    mocks.batchSend.mockResolvedValue(accepted(3))
+    await sendNewsletterBatch(many(3), options)
+    const payload = mocks.batchSend.mock.calls[0][0] as { headers: Record<string, string> }[]
+    payload.forEach((email, n) => {
+      expect(Object.keys(email.headers)).toEqual(['List-Unsubscribe', 'List-Unsubscribe-Post'])
+      expect(email.headers['List-Unsubscribe']).toBe(`<${oneClick(n)}>`)
+      expect(email.headers['List-Unsubscribe']).toMatch(/^<https:\/\/[^<>,\s]+>$/)
+      expect(email.headers['List-Unsubscribe']).not.toMatch(/mailto/i)
+      expect(email.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click')
+    })
+  })
+
+  it('sends from exactly "SHPE @ CMU" <news@DOMAIN> with the contact email as reply-to', async () => {
+    configure()
+    vi.stubEnv('RESEND_EMAIL_DOMAIN', '  news.shpecmu.com \n')
+    const { newsletterFromAddress, sendNewsletterBatch } = await load()
+    const from = newsletterFromAddress()!
+    expect(from).toBe('"SHPE @ CMU" <news@news.shpecmu.com>')
+    mocks.batchSend.mockResolvedValue(accepted(1))
+    await sendNewsletterBatch(many(1), { ...options, from })
+    expect(mocks.batchSend.mock.calls[0][0][0]).toMatchObject({ from: '"SHPE @ CMU" <news@news.shpecmu.com>', replyTo: 'shpe@cmu.edu' })
+  })
+
+  it('leaves reply-to out when there is no contact email', async () => {
+    configure()
+    const { sendNewsletterBatch } = await load()
+    mocks.batchSend.mockResolvedValue(accepted(1))
+    await sendNewsletterBatch(many(1), { ...options, replyTo: null })
+    expect(mocks.batchSend.mock.calls[0][0][0]).not.toHaveProperty('replyTo')
+  })
+
+  it('hands Resend a byte-identical payload and the same key when the same chunk is sent again', async () => {
+    configure()
+    const { sendNewsletterBatch } = await load()
+    mocks.batchSend.mockResolvedValueOnce({ data: null, error: { name: 'rate_limit_exceeded', statusCode: 429, message: 'slow down' }, headers: null })
+    mocks.batchSend.mockResolvedValueOnce(accepted(2))
+    await expect(sendNewsletterBatch(many(2), options)).resolves.toMatchObject({ ok: false, retryable: true })
+    await expect(sendNewsletterBatch(many(2), options)).resolves.toMatchObject({ ok: true })
+    const [[firstPayload, firstOptions], [retryPayload, retryOptions]] = mocks.batchSend.mock.calls
+    expect(JSON.stringify(retryPayload)).toBe(JSON.stringify(firstPayload))
+    const { signal: firstSignal, ...firstRest } = firstOptions!
+    const { signal: retrySignal, ...retryRest } = retryOptions!
+    expect(retryRest).toEqual(firstRest)
+    expect(firstRest).toEqual({ batchValidation: 'permissive', idempotencyKey: 'newsletter-4/chunk-0' })
+    expect(firstSignal).toBeInstanceOf(AbortSignal)
+    expect(retrySignal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('reports a batch that outlasts its 30s timeout as retryable, thrown or returned', async () => {
+    configure()
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const { sendNewsletterBatch } = await load()
+    mocks.batchSend.mockImplementationOnce(async (_payload, requestOptions) => {
+      Object.defineProperty(requestOptions!.signal as AbortSignal, 'aborted', { value: true })
+      throw new DOMException('The operation was aborted.', 'TimeoutError')
+    })
+    await expect(sendNewsletterBatch(many(2), options)).resolves.toEqual({ ok: false, reason: 'timeout', retryable: true })
+    mocks.batchSend.mockImplementationOnce(async (_payload, requestOptions) => {
+      Object.defineProperty(requestOptions!.signal as AbortSignal, 'aborted', { value: true })
+      return { data: null, error: { name: 'validation_error', statusCode: 422, message: 'Unable to fetch data.' }, headers: null }
+    })
+    await expect(sendNewsletterBatch(many(2), options)).resolves.toEqual({ ok: false, reason: 'timeout', retryable: true })
+    expect(timeout).toHaveBeenCalledWith(30_000)
+    timeout.mockRestore()
+  })
+})

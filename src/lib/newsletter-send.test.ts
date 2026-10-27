@@ -41,10 +41,14 @@ vi.mock('@/lib/email', () => ({ sendNewsletterBatch: fake.sendBatch, newsletterF
 vi.mock('@/lib/queries', () => ({ getSiteSettings: fake.settings }))
 vi.mock('@/lib/site-url', () => ({ siteUrl: fake.siteUrl }))
 
+import { hashToken } from '@/lib/member-tokens'
+import { unsubscribeTokenFor } from '@/lib/newsletter-unsubscribe-token'
 import {
+  CHUNK_SIZE,
   chunkIdempotencyKey,
   loadSendSnapshot,
   processNewsletterSend,
+  SEND_TIME_BUDGET_MS,
   sendNewsletterTest,
   startNewsletterSend,
 } from './newsletter-send'
@@ -326,5 +330,148 @@ describe('sendNewsletterTest', () => {
     await expect(sendNewsletterTest(draft, 'ada@example.com')).resolves.toEqual({ ok: false, reason: 'rate_limit_exceeded' })
     fake.sendBatch.mockResolvedValueOnce({ ok: true, outcomes: [{ error: 'rejected' }] })
     await expect(sendNewsletterTest(draft, 'ada@example.com')).resolves.toEqual({ ok: false, reason: 'rejected' })
+  })
+})
+
+describe('processNewsletterSend recipients and links', () => {
+  it('gives each recipient only their own unsubscribe token, stored by hash before the send', async () => {
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const [batch] = sentBatches()
+    const tokens = { 11: unsubscribeTokenFor(11), 12: unsubscribeTokenFor(12), 13: unsubscribeTokenFor(13) }
+    batch.emails.forEach((email, index) => {
+      const id = [11, 12, 13][index] as 11 | 12 | 13
+      expect(email.oneClickUnsubscribeUrl).toBe(`https://shpe.example/unsubscribe/one-click?token=${tokens[id]}`)
+      expect(email.text).toContain(`https://shpe.example/unsubscribe?token=${tokens[id]}`)
+      expect(email.html).toContain(`href="https://shpe.example/unsubscribe?token=${tokens[id]}"`)
+      for (const other of Object.values(tokens).filter((token) => token !== tokens[id])) {
+        expect(JSON.stringify(email)).not.toContain(other)
+      }
+    })
+    const prepare = fake.queries.find((query) => is(query, 'set unsubscribe_token_hash'))!
+    expect(prepare.params).toEqual([11, hashToken(tokens[11]), 12, hashToken(tokens[12]), 13, hashToken(tokens[13])])
+    expect(squash(prepare.sql)).toContain("r.status = 'sending'")
+    expect(fake.queries.indexOf(prepare)).toBeLessThan(fake.queries.findIndex((query) => is(query, 'set status = v.status')))
+  })
+
+  it('folds line breaks out of a frozen subject before it reaches the email', async () => {
+    fake.respond = respondWith(world({ newsletter: { ...FROZEN, subject: 'Spring\r\nBcc: everyone@example.com' } }))
+    await processNewsletterSend(4)
+    for (const email of sentBatches()[0].emails) {
+      expect(email.subject).toBe('Spring Bcc: everyone@example.com')
+      expect(email.subject).not.toMatch(/[\r\n]/)
+    }
+  })
+
+  it('never holds more emails in a chunk than one Resend batch allows', async () => {
+    const email = await vi.importActual<typeof import('@/lib/email')>('@/lib/email')
+    expect(CHUNK_SIZE).toBe(email.MAX_BATCH_SIZE)
+  })
+})
+
+describe('processNewsletterSend retries and failures', () => {
+  it.each([
+    ['rate_limit_exceeded'],
+    ['timeout'],
+    ['exception'],
+    ['concurrent_idempotent_requests'],
+    ['missing_config'],
+  ])('releases the chunk to pending on a retryable %s, records nothing and does not finish', async (reason) => {
+    fake.sendBatch.mockResolvedValue({ ok: false, reason, retryable: true })
+    fake.respond = respondWith(world())
+    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: 'retry_later' })
+    const release = fake.queries.filter((query) => is(query, "set status = 'pending'"))
+    expect(release).toHaveLength(1)
+    expect(release[0].params).toEqual([11, 12, 13])
+    expect(squash(release[0].sql)).toContain("and status = 'sending'")
+    expect(fake.queries.some((query) => is(query, 'set status = v.status'))).toBe(false)
+    expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
+    expect(fake.sendBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a permanent rejection of the whole batch as failed with its fixed code, never as sent', async () => {
+    fake.sendBatch.mockResolvedValue({ ok: false, reason: 'validation_error', retryable: false })
+    fake.respond = respondWith(world())
+    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sent' })
+    const record = fake.queries.find((query) => is(query, 'set status = v.status'))!
+    expect(record.params).toEqual([11, 'failed', null, 'validation_error', 12, 'failed', null, 'validation_error', 13, 'failed', null, 'validation_error'])
+    expect(squash(record.sql)).toContain("where r.id = v.id and r.status = 'sending'")
+  })
+
+  it('never records a rejected index as sent, even when Resend returns ids for the others', async () => {
+    fake.sendBatch.mockResolvedValue({ ok: true, outcomes: [{ error: 'rejected' }, { id: 're_1' }, { error: 'rejected' }] })
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const record = fake.queries.find((query) => is(query, 'set status = v.status'))!
+    const rows = Array.from({ length: 3 }, (_, n) => record.params.slice(n * 4, n * 4 + 4))
+    expect(rows.filter(([, status]) => status === 'sent')).toEqual([[12, 'sent', 're_1', null]])
+  })
+
+  it('claims no further chunk once the time budget is spent', async () => {
+    fake.respond = respondWith(
+      world({
+        chunks: [
+          { chunk: 0, ids: [11] },
+          { chunk: 1, ids: [12] },
+          { chunk: 2, ids: [13] },
+        ],
+      }),
+    )
+    let clock = 0
+    await processNewsletterSend(4, { now: () => (clock += 100), budgetMs: 250 })
+    expect(fake.batches).toHaveLength(2)
+    expect(fake.queries.filter((query) => is(query, "set status = 'pending'"))).toEqual([])
+  })
+
+  it('uses the default four-minute budget when none is given', async () => {
+    fake.respond = respondWith(world({ chunks: [{ chunk: 0, ids: [11] }, { chunk: 1, ids: [12] }] }))
+    const times = [0, 0, SEND_TIME_BUDGET_MS]
+    await expect(processNewsletterSend(4, { now: () => times.shift() ?? SEND_TIME_BUDGET_MS })).resolves.toEqual({
+      status: 'sending',
+      reason: 'time_budget',
+    })
+    expect(SEND_TIME_BUDGET_MS).toBe(240_000)
+    expect(fake.batches).toHaveLength(1)
+  })
+})
+
+describe('startNewsletterSend SQL', () => {
+  const snapshot = { mailingAddress: 'Addr', replyTo: null, siteUrl: 'https://shpe.example', fromAddress: 'from' }
+
+  it('refuses a blank subject or body and a draft without topics inside the claiming statement', async () => {
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
+    const sql = squash(fake.queries[0].sql)
+    expect(sql).toContain("btrim(subject) <> '' and btrim(body) <> ''")
+    expect(sql).toContain('and exists (select 1 from newsletter_topic_selections where newsletter_id =')
+    expect(sql).toContain('count(distinct m.id)::int')
+    expect(sql).toMatch(/audience as \( select distinct m\.id as member_id from claimed join newsletter_topic_selections s on s\.newsletter_id = claimed\.id/)
+  })
+
+  it('treats a missing result row as not started', async () => {
+    fake.respond = () => []
+    await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false })
+  })
+})
+
+describe('sendNewsletterTest leaves no trace', () => {
+  const draft = { subject: 'Spring update', body: 'Hello', topicNames: ['Events'] }
+
+  it('touches no database rows and carries no token in either part', async () => {
+    await sendNewsletterTest(draft, 'ada@example.com')
+    expect(fake.queries).toEqual([])
+    expect(fake.batches).toEqual([])
+    const [email] = sentBatches()[0].emails
+    for (const part of [email.html, email.text]) {
+      expect(part).not.toContain('token=')
+      expect(part).toContain('5000 Forbes Ave')
+    }
+    expect(sentBatches()[0].options).not.toHaveProperty('idempotencyKey')
+  })
+
+  it.each([['an empty'], ['a whitespace-only']])('refuses %s mailing address before rendering or sending', async (label) => {
+    fake.settings.mockResolvedValue({ mailingAddress: label === 'an empty' ? '' : ' \n\t ', contactEmail: 'x@y.z' })
+    await expect(sendNewsletterTest(draft, 'ada@example.com')).resolves.toEqual({ ok: false, blocker: 'no_mailing_address' })
+    expect(fake.sendBatch).not.toHaveBeenCalled()
   })
 })
