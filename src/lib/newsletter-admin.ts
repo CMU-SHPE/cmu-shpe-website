@@ -13,6 +13,7 @@ import {
 } from '@/db/schema'
 import { recordId } from './form-fields'
 import { audienceEmailCondition } from './newsletter-audience'
+import { qualified } from './qualified-column'
 import { siteUrl } from './site-url'
 import { MAX_NEWSLETTER_BODY_LENGTH, MAX_NEWSLETTER_SUBJECT_LENGTH } from './newsletter-limits'
 
@@ -44,9 +45,10 @@ export function parseNewsletterForm(formData: FormData) {
 function confirmedSubscriberCount() {
   return sql<number>`(
     select count(*)::int from ${memberTopicSubscriptions}
-    join ${members} on ${members.id} = ${memberTopicSubscriptions.memberId}
-    where ${memberTopicSubscriptions.topicId} = ${newsletterTopics.id} and ${members.emailConfirmedAt} is not null
-      and ${audienceEmailCondition(members.email)}
+    join ${members} on ${qualified(members.id)} = ${qualified(memberTopicSubscriptions.memberId)}
+    where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)}
+      and ${qualified(members.emailConfirmedAt)} is not null
+      and ${audienceEmailCondition(qualified(members.email))}
   )`
 }
 
@@ -97,7 +99,7 @@ export async function getNewsletter(id: number) {
 export type NewsletterDetail = NonNullable<Awaited<ReturnType<typeof getNewsletter>>>
 
 function countWhere(status: NewsletterRecipientStatus) {
-  return sql<number>`(select count(*)::int from ${newsletterRecipients} where ${newsletterRecipients.newsletterId} = ${newsletters.id} and ${newsletterRecipients.status} = ${status})`
+  return sql<number>`(select count(*)::int from ${newsletterRecipients} where ${qualified(newsletterRecipients.newsletterId)} = ${qualified(newsletters.id)} and ${qualified(newsletterRecipients.status)} = ${status})`
 }
 
 export async function listNewsletters() {
@@ -113,15 +115,15 @@ export async function listNewsletters() {
       topicNames: newsletters.topicNames,
       recipientCount: newsletters.recipientCount,
       draftTopicNames: sql<string | null>`(
-        select string_agg(${newsletterTopics.name}, ', ' order by ${newsletterTopics.sortOrder}, ${newsletterTopics.id})
-        from ${newsletterTopicSelections} join ${newsletterTopics} on ${newsletterTopics.id} = ${newsletterTopicSelections.topicId}
-        where ${newsletterTopicSelections.newsletterId} = ${newsletters.id}
+        select string_agg(${qualified(newsletterTopics.name)}, ', ' order by ${qualified(newsletterTopics.sortOrder)}, ${qualified(newsletterTopics.id)})
+        from ${newsletterTopicSelections} join ${newsletterTopics} on ${qualified(newsletterTopics.id)} = ${qualified(newsletterTopicSelections.topicId)}
+        where ${qualified(newsletterTopicSelections.newsletterId)} = ${qualified(newsletters.id)}
       )`,
       sentCount: countWhere('sent'),
-      failedCount: sql<number>`(select count(*)::int from ${newsletterRecipients} where ${newsletterRecipients.newsletterId} = ${newsletters.id} and ${newsletterRecipients.status} = 'failed' and ${newsletterRecipients.errorCode} is distinct from 'unknown_outcome')`,
-      unknownCount: sql<number>`(select count(*)::int from ${newsletterRecipients} where ${newsletterRecipients.newsletterId} = ${newsletters.id} and ${newsletterRecipients.status} = 'failed' and ${newsletterRecipients.errorCode} = 'unknown_outcome')`,
+      failedCount: sql<number>`(select count(*)::int from ${newsletterRecipients} where ${qualified(newsletterRecipients.newsletterId)} = ${qualified(newsletters.id)} and ${qualified(newsletterRecipients.status)} = 'failed' and ${qualified(newsletterRecipients.errorCode)} is distinct from 'unknown_outcome')`,
+      unknownCount: sql<number>`(select count(*)::int from ${newsletterRecipients} where ${qualified(newsletterRecipients.newsletterId)} = ${qualified(newsletters.id)} and ${qualified(newsletterRecipients.status)} = 'failed' and ${qualified(newsletterRecipients.errorCode)} = 'unknown_outcome')`,
       skippedCount: countWhere('skipped'),
-      remainingCount: sql<number>`(select count(*)::int from ${newsletterRecipients} where ${newsletterRecipients.newsletterId} = ${newsletters.id} and ${newsletterRecipients.status} in ('pending', 'sending'))`,
+      remainingCount: sql<number>`(select count(*)::int from ${newsletterRecipients} where ${qualified(newsletterRecipients.newsletterId)} = ${qualified(newsletters.id)} and ${qualified(newsletterRecipients.status)} in ('pending', 'sending'))`,
     })
     .from(newsletters)
     .orderBy(desc(sql`coalesce(${newsletters.sendStartedAt}, ${newsletters.updatedAt})`), desc(newsletters.id))
