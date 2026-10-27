@@ -75,7 +75,7 @@ function is(query: Query, fragment: string) {
 
 type World = {
   newsletter: Record<string, unknown> | undefined
-  chunks: { chunk: number; ids: number[]; skipped?: number[] }[]
+  chunks: { chunk: number; ids: number[]; skipped?: number[]; reclaimed?: boolean }[]
   emails: Record<number, string>
   finished: boolean
   /** Rows whose stored link hash came from an earlier AUTH_SECRET. */
@@ -97,7 +97,7 @@ function respondWith(state: World): Responder {
     if (is(query, 'select status, subject, body')) return state.newsletter ? [state.newsletter] : []
     if (is(query, 'with target as')) {
       const next = state.chunks.shift()
-      return next ? next.ids.map((id) => ({ id, chunk: next.chunk, skipped: next.skipped })) : []
+      return next ? next.ids.map((id) => ({ id, chunk: next.chunk, skipped: next.skipped, first_claim: !next.reclaimed })) : []
     }
     if (is(query, "set status = 'skipped'")) return []
     if (is(query, 'set unsubscribe_token_hash')) {
@@ -404,6 +404,17 @@ describe('processNewsletterSend recipients and links', () => {
     expect(sentBatches()[0].emails.map((email) => email.to)).toEqual(['ana@example.com', 'sofia@example.com'])
     const [unknown] = fake.queries.filter((query) => is(query, 'set status = v.status'))
     expect(unknown.params).toEqual([12, 'failed', null, 'unknown_outcome'])
+  })
+
+  it('keeps the claim when Resend refuses a retry of a batch whose earlier attempt is unconfirmed', async () => {
+    fake.sendBatch.mockResolvedValue({ ok: false, reason: 'rate_limit_exceeded', retryable: true })
+    fake.respond = respondWith(world({ chunks: [{ chunk: 0, ids: [11, 12, 13], reclaimed: true }] }))
+    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: 'outcome_unconfirmed' })
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))!
+    expect(squash(release.sql)).not.toContain('claimed_at = null')
+    expect(squash(release.sql)).not.toContain('unsubscribe_token_hash = null')
+    const [, claim] = fake.batches[0]
+    expect(squash(claim.sql)).toContain('returning r.id, r.chunk, r.claimed_at = now() as first_claim')
   })
 
   it('forgets the stored link of a batch Resend refused outright, since nobody received it', async () => {

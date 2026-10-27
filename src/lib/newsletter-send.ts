@@ -184,7 +184,8 @@ function expireUnrepeatableClaims(newsletterId: number) {
   `)
 }
 
-export type ClaimedChunk = { chunk: number; recipientIds: number[] }
+/** firstClaim: every row was claimed for the first time now, so no earlier attempt can have sent it. */
+export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: boolean }
 
 /**
  * Claims every claimable row of the lowest open chunk and, in the same transaction, skips the
@@ -217,7 +218,7 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
         claimed_at = coalesce(r.claimed_at, now()),
         updated_at = now()
       from locked where r.id = locked.id
-      returning r.id, r.chunk
+      returning r.id, r.chunk, r.claimed_at = now() as first_claim
     `),
     db.execute(sql`
       update newsletter_recipients r set
@@ -239,12 +240,13 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
         )
       returning r.id
     `),
-  ])) as unknown as [unknown, Rows<{ id: number; chunk: number }>, Rows<{ id: number }>]
+  ])) as unknown as [unknown, Rows<{ id: number; chunk: number; first_claim: boolean }>, Rows<{ id: number }>]
 
   if (claimed.rows.length === 0) return null
   const skippedIds = new Set(skipped.rows.map((row) => row.id))
   return {
     chunk: claimed.rows[0].chunk,
+    firstClaim: claimed.rows.every((row) => row.first_claim),
     recipientIds: claimed.rows
       .map((row) => row.id)
       .filter((id) => !skippedIds.has(id))
@@ -380,7 +382,8 @@ async function sendClaimedChunk(
   })
 
   if (!result.ok && result.retryable) {
-    const neverSent = REFUSED_BEFORE_ACCEPTING.has(result.reason)
+    // A refusal now says nothing about an earlier unconfirmed attempt, which keeps its claim time.
+    const neverSent = REFUSED_BEFORE_ACCEPTING.has(result.reason) && claimed.firstClaim
     await releaseForRetry(
       recipients.map((r) => r.id),
       { neverSent },
