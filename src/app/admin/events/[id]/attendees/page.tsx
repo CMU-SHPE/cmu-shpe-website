@@ -55,7 +55,8 @@ export default async function AttendeesPage(props: { params: Promise<{ id: strin
         ) : (
           <>
             <a href={`/admin/events/${event.id}/attendees.csv`} download className={`inline-block ${secondaryButtonClass}`}>
-              Download CSV<span className="sr-only"> of attendees for {event.title}</span>
+              {'Download CSV '}
+              <span className="sr-only">of attendees for {event.title}</span>
             </a>
             <table className={`mt-4 ${tableClass}`}>
               <caption className="sr-only">People who RSVPed to {event.title}, earliest first</caption>

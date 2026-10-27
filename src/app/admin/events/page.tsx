@@ -116,7 +116,8 @@ function RsvpSummary({ event, going }: { event: ClubEvent; going: number }) {
         href={`/admin/events/${event.id}/attendees`}
         className={`rounded text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`}
       >
-        Attendees<span className="sr-only"> for {event.title}</span>
+        {'Attendees '}
+        <span className="sr-only">for {event.title}</span>
       </Link>
     </p>
   )
