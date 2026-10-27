@@ -7,8 +7,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    // Playwright specs run against a deployed preview with `npm run test:e2e`, never here.
-    exclude: [...configDefaults.exclude, 'e2e/**'],
+    // Playwright specs run against a deployed preview with `npm run test:e2e`, and *.db.test.ts files
+    // need the docker database from `npm run test:db`; neither runs here.
+    exclude: [...configDefaults.exclude, 'e2e/**', '**/*.db.test.ts'],
   },
   resolve: {
     alias: {

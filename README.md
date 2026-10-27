@@ -170,6 +170,7 @@ Anyone 13 or older can create a member account to choose which newsletters they 
 | `npm start` | Serve the production build locally (`next start`) |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run the test suite ([Vitest](https://vitest.dev) + React Testing Library) |
+| `npm run test:db` | Run the database tests against a throwaway Postgres in Docker (see [Database tests](#database-tests)) |
 | `npm run test:e2e` | Run the [Playwright](https://playwright.dev) smoke tests against a preview deployment (see [Testing](#testing)) |
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
@@ -198,6 +199,23 @@ npm test
 
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
 (lint, test, build).
+
+### Database tests
+
+```bash
+npm run test:db
+```
+
+Runs the `*.db.test.ts` files against a real Postgres 17 so queries, `db.batch`
+transactions and locking behave as they do in production. It needs Docker and nothing
+else: no `.env.local`, no Neon account. The script starts a throwaway Postgres and a
+[local Neon HTTP proxy](https://github.com/TimoWilhelm/local-neon-http-proxy) (so the
+production `@neondatabase/serverless` driver runs unchanged), applies the committed
+`drizzle/` migrations, adds a few rows, then brings the schema up to date with the same
+push a preview build runs. Both containers are removed afterwards, even if a test fails.
+The tests refuse to run against anything but that local database. `npm test` skips these
+files and never needs Docker; pass a path to run one file, e.g.
+`npm run test:db -- src/db/harness.db.test.ts`.
 
 ### Preview smoke tests
 
