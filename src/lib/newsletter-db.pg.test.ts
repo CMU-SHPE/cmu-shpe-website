@@ -4,10 +4,12 @@ import type { NewsletterBatchResult, NewsletterEmail } from '@/lib/email'
 
 const mail = vi.hoisted(() => ({
   send: vi.fn<(emails: NewsletterEmail[], options: { idempotencyKey?: string }) => Promise<NewsletterBatchResult>>(),
+  plain: vi.fn(async () => {}),
 }))
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendNewsletterBatch: mail.send,
+  sendEmail: mail.plain,
 }))
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
@@ -19,6 +21,8 @@ vi.mock('@/lib/admin', () => ({
 }))
 
 import { saveNewsletter } from '@/app/admin/newsletters/actions'
+import { resetMemberPassword } from '@/app/reset-password/actions'
+import { hashToken } from '@/lib/member-tokens'
 import { listMembers } from '@/lib/member-admin'
 import {
   countNewsletterAudience,
@@ -275,5 +279,77 @@ describe.skipIf(!hasTestDatabase)('a send continued outside production on real P
         'not_test_audience',
       ]),
     ).toEqual([{ email: 'ana@example.com', status: 'skipped', error_code: 'not_test_audience' }])
+  })
+})
+
+describe.skipIf(!hasTestDatabase)('statements otherwise covered only by mocks, on real Postgres', () => {
+  beforeEach(async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    vi.stubEnv('AUTH_SECRET', 'pg-test-secret')
+    vi.stubEnv('SITE_URL', 'https://shpe.example')
+    mail.send.mockReset().mockImplementation(async (emails) => okBatch(emails))
+    mail.plain.mockClear()
+    await seed([{ email: 'ana@example.com', topics: [1, 2, 3] }])
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('resets a password in one statement: uses the link, revokes other reset links and clears login attempts', async () => {
+    const [used, other] = ['a'.repeat(43), 'b'.repeat(43)]
+    await query(
+      "insert into member_tokens (member_id, purpose, token_hash, expires_at) values (1, 'reset_password', $1, now() + interval '1 hour'), (1, 'reset_password', $2, now() + interval '1 hour'), (1, 'confirm_email', 'kept', now() + interval '1 hour')",
+      [hashToken(used), hashToken(other)],
+    )
+    await query("insert into login_attempts (email, ip) values ('ana@example.com', '203.0.113.9')")
+    const reset = form({ token: used, password: 'a new long password 123', confirmPassword: 'a new long password 123' })
+
+    expect(await redirectOf(resetMemberPassword({}, reset))).toBe('/login?reset=1')
+    const [member] = await query<{ password_hash: string; password_changed_at: string | null }>(
+      'select password_hash, password_changed_at from members',
+    )
+    expect(member.password_hash).not.toBe('h')
+    expect(member.password_changed_at).not.toBeNull()
+    expect(await query('select purpose, token_hash from member_tokens')).toEqual([{ purpose: 'confirm_email', token_hash: 'kept' }])
+    expect(await query('select count(*)::int as n from login_attempts')).toEqual([{ n: 0 }])
+    expect(mail.plain).toHaveBeenCalledTimes(1)
+
+    expect(await resetMemberPassword({}, reset)).toMatchObject({ formError: expect.any(String) })
+    expect(mail.plain).toHaveBeenCalledTimes(1)
+  })
+
+  it('unsubscribes from all newsletters, logging each removed topic once', async () => {
+    const id = await draft([1])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+    await processNewsletterSend(id)
+    const [{ id: recipientId }] = await query<{ id: number }>('select id from newsletter_recipients')
+    const token = unsubscribeTokenFor(recipientId)
+
+    expect(await unsubscribe(token, 'all', 'page')).toMatchObject({ ok: true, removed: ['Events', 'Jobs', 'Other'] })
+    expect(await unsubscribe(token, 'all', 'page')).toEqual({ ok: true, removed: [], recordedAt: null })
+    expect(await query('select count(*)::int as n from member_topic_subscriptions')).toEqual([{ n: 0 }])
+    expect(await query('select topic_name, newsletter_id, source from newsletter_unsubscribes order by id')).toEqual([
+      { topic_name: 'Events', newsletter_id: id, source: 'page' },
+      { topic_name: 'Jobs', newsletter_id: id, source: 'page' },
+      { topic_name: 'Other', newsletter_id: id, source: 'page' },
+    ])
+  })
+
+  it('forgets the claim and link of a first batch Resend refused outright, then sends it', async () => {
+    const id = await draft([1])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+    mail.send.mockResolvedValueOnce({ ok: false, reason: 'daily_quota_exceeded', retryable: true })
+    expect(await processNewsletterSend(id)).toEqual({ status: 'sending', reason: 'retry_later' })
+    expect(await query('select status, claimed_at, unsubscribe_token_hash from newsletter_recipients')).toEqual([
+      { status: 'pending', claimed_at: null, unsubscribe_token_hash: null },
+    ])
+
+    expect(await processNewsletterSend(id)).toEqual({ status: 'sent' })
+    const [row] = await query<{ status: string; unsubscribe_token_hash: string | null }>(
+      'select status, unsubscribe_token_hash from newsletter_recipients',
+    )
+    expect(row.status).toBe('sent')
+    expect(row.unsubscribe_token_hash).toHaveLength(64)
   })
 })
