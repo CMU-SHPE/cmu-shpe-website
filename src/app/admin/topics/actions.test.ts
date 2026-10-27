@@ -96,6 +96,14 @@ describe('createTopic', () => {
     ['a blank name', { name: '   ', description: '' }],
     ['a name over 100 characters', { name: 'x'.repeat(101), description: '' }],
     ['a description over 500 characters', { name: 'Events', description: 'x'.repeat(501) }],
+    ['a name with a newline', { name: 'Events\nNews', description: '' }],
+    ['a name with a carriage return', { name: 'Events\rNews', description: '' }],
+    ['a name with a tab', { name: 'Events\tNews', description: '' }],
+    ['a name with a NUL', { name: 'Events\u0000', description: '' }],
+    ['a name with DEL', { name: 'Events\u007fNews', description: '' }],
+    ['a name with a C1 next-line', { name: 'Events\u0085News', description: '' }],
+    ['a name with a C1 control sequence introducer', { name: 'Events\u009bNews', description: '' }],
+    ['a name with a Unicode line separator', { name: 'Events\u2028News', description: '' }],
   ])('rejects %s without writing', async (_, values) => {
     expect(await redirectOf(createTopic(form(values)))).toBe('/admin/topics?error=invalid')
     expect(mocks.state.calls).toEqual(['requireAdmin', 'redirect /admin/topics?error=invalid'])
@@ -116,6 +124,11 @@ describe('updateTopic', () => {
   it('reports a topic that no longer exists', async () => {
     mocks.state.affected = []
     expect(await redirectOf(updateTopic(3, form({ name: 'News' })))).toBe('/admin/topics?error=missing')
+  })
+
+  it.each([['Events\nNews'], ['Events\u0000'], ['Events\u0085News']])('rejects the name %j without writing', async (name) => {
+    expect(await redirectOf(updateTopic(3, form({ name, description: '' })))).toBe('/admin/topics?error=invalid')
+    expect(mocks.state.calls).toEqual(['requireAdmin', 'redirect /admin/topics?error=invalid'])
   })
 })
 

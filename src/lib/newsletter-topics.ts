@@ -8,8 +8,9 @@ import { qualified } from './qualified-column'
 export const MAX_TOPIC_NAME_LENGTH = 100
 export const MAX_TOPIC_DESCRIPTION_LENGTH = 500
 
+// A send freezes its topic names joined by newlines, so a name must stay on one line.
 export const topicSchema = z.object({
-  name: requiredText(MAX_TOPIC_NAME_LENGTH),
+  name: requiredText(MAX_TOPIC_NAME_LENGTH).refine((value) => !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)),
   description: z.string().trim().max(MAX_TOPIC_DESCRIPTION_LENGTH),
 })
 
