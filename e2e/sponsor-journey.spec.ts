@@ -1,8 +1,10 @@
 /**
  * Full sponsor journey against a preview deployment: two members sign up and confirm by email, the
- * admin links member A to a fresh listing, A edits the listing and downloads a receipt, member B (a
- * supporter) is kept out of both, and an RSVP fills and frees a capacity-1 event. Everything it
- * creates is deleted in afterAll, which runs even when a step fails.
+ * admin links member A to a fresh listing, A edits the listing (live on /sponsors, logged in the edit
+ * history), sees /sponsor and its event calendar, and downloads a receipt the admin uploaded, member B
+ * (a supporter) is kept out of both, an RSVP fills and frees a capacity-1 event, B RSVPs and the admin
+ * exports the attendee CSV. Everything it creates is deleted in afterAll, which runs even when a step
+ * fails.
  *
  * Runs only when all of these are set, and skips otherwise:
  *   RESEND_API_KEY      read-only use of Resend's API to fetch the confirmation emails.
@@ -14,29 +16,9 @@
  * Every write is refused unless BASE_URL is a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.
  * Only delivered+…@resend.dev test inboxes are ever signed up.
  *
- * ASSUMPTIONS, written before the portal and RSVP branches existed. Each one is a label or route in
- * UI/ROUTES below or a locator in a helper; confirm them against the merged UI:
- *  1. /admin/sponsors links each listing to /admin/sponsors/<id> from inside its list item.
- *  2. /admin/members rows offer a "Sponsor listing" select and a "Make sponsor" button; the action
- *     redirects back to /admin/members with ?saved= on success.
- *  3. A sponsor signing in lands on /sponsor (brief decision 6); the page shows the listing name.
- *  4. The /sponsor edit form has fields labelled "Name", "Website (optional)", "Description" and
- *     "Logo background color", a "Save listing" button, and redirects to /sponsor?saved=….
- *     The sponsors table has no description column at fd1db2d; reported to the lead.
- *  5. /admin/sponsors/<id> shows the audit log in a region named "Edit history" listing the editor's
- *     name and the changed fields, and receipts in a region named "Receipts" with fields "Title",
- *     "Date", "PDF file", an "Upload receipt" button and a "Delete <title>" button per receipt
- *     (the shared DeleteButton). Upload and delete redirect with ?saved= or ?error=.
- *  6. /sponsor lists receipts in a region named "Receipts" whose download link's name contains the
- *     receipt title and points at /sponsor/receipts/<id>.
- *  7. The admin event form has a "Capacity (optional)" field. On /events, a signed-in member's event
- *     card has a button whose name starts "RSVP", becomes "Cancel RSVP…" once going, and a full
- *     event shows the word "Full" with no RSVP button.
- *  8. Another member's request for a receipt gets a 404 (brief: 404, not 403).
- *  9. eventCard() takes the innermost element on /events that contains the event's heading; the RSVP
- *     button and the "Full" text must sit inside that element.
- * 10. Admin creates redirect with ?saved= (as at fd1db2d); creating a listing may land on
- *     /admin/sponsors or /admin/sponsors/<id>. Every Delete uses the shared "Delete <name>" button.
+ * Receipt uploads and RSVPs report back in place rather than redirecting, so those steps wait for the
+ * page's own status text. Receipts and audit rows go with the listing (ON DELETE CASCADE)
+ * and RSVPs with the event, so cleanup deletes only the listing, the event and the two members.
  */
 import { readFile } from 'node:fs/promises'
 import type { Browser, BrowserContext, Page } from '@playwright/test'
@@ -100,7 +82,14 @@ const UI = {
     save: 'Save listing',
   },
   auditRegion: 'Edit history',
-  receipts: { region: 'Receipts', title: 'Title', date: 'Date', file: 'PDF file', upload: 'Upload receipt' },
+  receipts: {
+    region: 'Receipts',
+    title: 'Title',
+    date: 'Receipt date',
+    file: 'PDF file',
+    upload: 'Upload receipt',
+    uploaded: 'Receipt uploaded.',
+  },
   adminEvents: {
     title: 'Title',
     description: 'Description',
@@ -267,7 +256,6 @@ function dateInDays(days: number) {
 const created = {
   baseURL: undefined as string | undefined,
   listing: null as null | { id: string | null; names: string[] },
-  receipt: false,
   event: false,
   members: [] as JourneyMember[],
 }
@@ -380,10 +368,9 @@ test.describe('sponsor journey', () => {
         await receipts
           .getByLabel(UI.receipts.file, { exact: true })
           .setInputFiles({ name: RECEIPT_FILE_NAME, mimeType: 'application/pdf', buffer: pdf })
-        created.receipt = true
         await receipts.getByRole('button', { name: UI.receipts.upload, exact: true }).click()
-        await expectSaved(admin, detailPath, 'Uploading the receipt')
-        await expect(admin.getByRole('region', { name: UI.receipts.region })).toContainText(RECEIPT_TITLE)
+        await expect(receipts.getByRole('status')).toContainText(UI.receipts.uploaded)
+        await expect(receipts).toContainText(RECEIPT_TITLE)
       })
 
       let receiptPath = ''
@@ -523,12 +510,6 @@ test.describe('sponsor journey', () => {
       await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
 
       const listing = created.listing
-      if (listing?.id && created.receipt) {
-        const detailPath = `/admin/sponsors/${listing.id}`
-        await attempt(`delete the receipt "${RECEIPT_TITLE}"`, async () => {
-          await deleteFrom(detailPath, RECEIPT_TITLE, detailPath)
-        })
-      }
       if (listing) {
         await attempt(`delete the listing "${listing.names.join('" or "')}"`, async () => {
           for (const name of listing.names) {
