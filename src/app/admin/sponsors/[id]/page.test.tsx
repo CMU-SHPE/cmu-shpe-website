@@ -23,6 +23,14 @@ vi.mock('@/lib/sponsor-portal-admin', async (importOriginal) => ({
   getLinkedMembers: async () => mocks.linked,
   getSponsorEdits: async () => mocks.edits,
 }))
+vi.mock('@/components/admin/sponsor-receipts', () => ({
+  default: ({ sponsorId }: { sponsorId: number }) => (
+    <section aria-label="Receipts">
+      <h2>Receipts</h2>
+      listing {sponsorId}
+    </section>
+  ),
+}))
 vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('NOT_FOUND')
@@ -79,7 +87,9 @@ describe('AdminSponsorDetailPage', () => {
       'Listing',
       'Sponsor accounts',
       'Edit history',
+      'Receipts',
     ])
+    expect(screen.getByRole('region', { name: 'Receipts' })).toHaveTextContent('listing 3')
     expect(screen.getByText('We build things.')).toBeInTheDocument()
 
     const accounts = screen.getByRole('table', { name: 'Sponsor accounts linked to Acme' })

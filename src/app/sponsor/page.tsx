@@ -3,7 +3,10 @@ import Link from 'next/link'
 import Editable from '@/components/editable'
 import { LocationIcon } from '@/components/icons'
 import StatusBanner from '@/components/admin/status-banner'
+import RsvpButton from '@/components/rsvp/rsvp-button'
+import MyRsvps from '@/components/rsvp/my-rsvps'
 import ListingForm from '@/components/sponsor/listing-form'
+import SponsorReceiptsList from '@/components/sponsor/receipts-list'
 import {
   cardClass,
   focusRingClass,
@@ -15,6 +18,7 @@ import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
 import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { getEvents, getSiteContentWithDefaults } from '@/lib/queries'
+import { type RsvpState, getRsvpStates, rsvpCounts } from '@/lib/rsvp'
 import { requireSponsor } from '@/lib/sponsor-portal'
 import { updateListing } from './actions'
 
@@ -51,6 +55,11 @@ export default async function SponsorPortalPage(props: {
     getEvents(),
   ])
   const { upcoming } = splitEvents(events, todayInDenver(new Date()))
+  const memberId = access ? Number(access.member.user.id) : null
+  const [states, counts] = await Promise.all([
+    memberId ? getRsvpStates(memberId, upcoming.map((event) => event.id)) : new Map<number, RsvpState>(),
+    rsvpCounts(upcoming.filter((event) => event.capacity !== null).map((event) => event.id)),
+  ])
   const knownSaved = saved && Object.hasOwn(savedMessages, saved) ? saved : undefined
 
   return (
@@ -157,17 +166,21 @@ export default async function SponsorPortalPage(props: {
                       {event.location}
                     </p>
                   </div>
-                  {/* rsvp slot */}
+                  <EventRsvp
+                    capacity={event.capacity}
+                    taken={counts.get(event.id) ?? 0}
+                    rsvp={memberId ? { eventId: event.id, state: states.get(event.id) ?? 'open' } : null}
+                  />
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        {access ? (
+        {memberId ? (
           <>
-            {/* my-rsvps slot */}
-            {/* receipts slot */}
+            <MyRsvps memberId={memberId} />
+            <SponsorReceiptsList memberId={memberId} />
           </>
         ) : (
           <>
@@ -186,6 +199,30 @@ export default async function SponsorPortalPage(props: {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function EventRsvp({
+  capacity,
+  taken,
+  rsvp,
+}: {
+  capacity: number | null
+  taken: number
+  rsvp: { eventId: number; state: RsvpState } | null
+}) {
+  const spotsLeft = capacity === null ? null : Math.max(capacity - taken, 0)
+  const showSpots = spotsLeft !== null && rsvp?.state !== 'full'
+  if (!showSpots && !rsvp) return null
+  return (
+    <div className="space-y-2">
+      {showSpots && (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {spotsLeft === 0 ? 'Full' : `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`}
+        </p>
+      )}
+      {rsvp && <RsvpButton eventId={rsvp.eventId} state={rsvp.state} />}
     </div>
   )
 }
