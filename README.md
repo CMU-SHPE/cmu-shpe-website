@@ -335,6 +335,18 @@ In Vercel's project settings (**Build and Deployment**), leave **Build Command**
 override. Vercel then runs `npm run vercel-build`, which preview deployments need to apply
 the schema; an override would skip it.
 
+### Releasing a change to the Privacy Policy or Terms
+
+New default text in `src/db/seed-data/content.ts` never reaches production on its own:
+`db:seed` doesn't overwrite rows that already exist. Ship it with a SQL file in
+`scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`). Run it
+with the production connection string after the code deploys and before the first
+newsletter goes out. It backs the old rows up, only replaces text still matching the old
+default, and rolls back unless you change its last line to `COMMIT` after checking the
+result; the comments at the top explain each step. The fallback is editing the text in
+place on `/privacy` (or `/terms`), changing **Last updated** last, because new sign-ups
+record that date as the version they agreed to.
+
 ### Preview databases
 
 Neon's preview branching is enabled on the database's Vercel connection (Deployments
