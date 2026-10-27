@@ -167,7 +167,10 @@ export default async function AdminSponsorsPage(props: {
                         }
                       />
                       <form action={deleteSponsor.bind(null, sponsor.id)}>
-                        <DeleteButton name={sponsor.name} />
+                        <DeleteButton
+                          name={sponsor.name}
+                          warning="Anyone linked to this listing loses sponsor access and becomes a supporter, and its receipts and edit history are deleted."
+                        />
                       </form>
                     </div>
                     <EditDetails name={sponsor.name}>

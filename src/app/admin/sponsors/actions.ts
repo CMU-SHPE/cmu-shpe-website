@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { sponsors } from '@/db/schema'
+import { members, sponsors } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { cleanupBlobs } from '@/lib/blob-cleanup'
 import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
@@ -106,10 +106,15 @@ export async function deleteSponsor(id: number) {
   const sponsorId = recordId.safeParse(id)
   if (!sponsorId.success) redirect('/admin/sponsors?error=invalid')
 
-  const [row] = await getDb()
-    .delete(sponsors)
-    .where(eq(sponsors.id, sponsorId.data))
-    .returning(logoColumns)
+  // ON DELETE SET NULL alone would leave linked members with the sponsor role and no listing.
+  const db = getDb()
+  const [, [row]] = await db.batch([
+    db
+      .update(members)
+      .set({ role: 'supporter', sponsorId: null })
+      .where(eq(members.sponsorId, sponsorId.data)),
+    db.delete(sponsors).where(eq(sponsors.id, sponsorId.data)).returning(logoColumns),
+  ])
   if (row) await cleanupBlobs(row.logoUrl, row.logoOriginalUrl)
 
   redirect('/admin/sponsors?saved=1')
