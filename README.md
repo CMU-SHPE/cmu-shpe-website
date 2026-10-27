@@ -342,10 +342,19 @@ New default text in `src/db/seed-data/content.ts` never reaches production on it
 `scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`). Run it
 with the production connection string after the code deploys and before the first
 newsletter goes out. It backs the old rows up, only replaces text still matching the old
-default, and rolls back unless you change its last line to `COMMIT` after checking the
-result; the comments at the top explain each step. The fallback is editing the text in
+default, and rolls back unless run with `-v commit=1`: run it once without, check the
+report at the end, then run `psql -v commit=1 "$DATABASE_URL" -f <file>`. The comments at
+the top explain each step. The fallback is editing the text in
 place on `/privacy` (or `/terms`), changing **Last updated** last, because new sign-ups
 record that date as the version they agreed to.
+
+The backup goes in a separate `backups` schema, never in `public`: preview builds and
+`db:push` see any table in `public` that isn't in `src/db/schema.ts` as one to drop, and the
+preview push refuses to drop data, so every later preview build would fail. Both only
+look at `public`, since neither sets a schema filter and drizzle-kit defaults to `public`. Once `/privacy`
+shows the right text, drop the backup table
+(`drop table backups.site_content_privacy_20261026;`). Drop the whole schema only if
+nothing else lives in it.
 
 ### Preview databases
 

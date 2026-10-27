@@ -4,25 +4,29 @@
 -- Run with the production connection string after the code deploys and before the first newsletter goes out:
 --   psql "$DATABASE_URL" -f scripts/sql/2026-10-26-privacy-newsletters.sql
 --
--- By default it ROLLS BACK, so running or pasting it as is changes nothing. Read the check at the end,
--- then change the last line to COMMIT and run the file again. Each key ends in one of these states:
+-- By default it ROLLS BACK, so running it as is changes nothing. Read the check at the end, then commit with:
+--   psql -v commit=1 "$DATABASE_URL" -f scripts/sql/2026-10-26-privacy-newsletters.sql
+-- Without it, or with commit=0, it rolls back. Each key ends in one of these states:
 --   applied now     the row still held the old default and now holds the new text;
 --   already new     an earlier run already applied it (safe to run again: nothing changes);
 --   officer-edited  an officer changed that section, so it is left alone. Right after the COMMIT,
 --                   rewrite it by hand on /privacy, because the new "Last updated" date is already live;
 --   missing         no row: the page shows the new default text already.
 -- privacy.updated is in the same transaction, so the date and the text change together.
--- The backup keeps each row as it was the first time this ran; later runs never overwrite it.
+-- The backup keeps each row as it was the first time this ran; later runs never overwrite it. It lives in its
+-- own schema, backups, because preview builds and db:push treat any unknown table in public as one to drop.
+-- Once /privacy shows the right text, remove it with: drop table backups.site_content_privacy_20261026;
 
 \set ON_ERROR_STOP on
 begin;
 
-create table if not exists site_content_backup_20261026_privacy (
+create schema if not exists backups;
+create table if not exists backups.site_content_privacy_20261026 (
   key text primary key,
   value text not null,
   backed_up_at timestamptz not null default now()
 );
-insert into site_content_backup_20261026_privacy (key, value)
+insert into backups.site_content_privacy_20261026 (key, value)
   select key, value from site_content where key in ('privacy.updated', 'privacy.collect.items', 'privacy.use.items', 'privacy.processors.items', 'privacy.retention.items', 'privacy.choices.items')
   on conflict (key) do nothing;
 
@@ -164,4 +168,12 @@ left join site_content s on s.key = k.key
 left join privacy_applied_now a on a.key = k.key
 order by k.key;
 
-rollback;
+\if :{?commit}
+\else
+  \set commit 0
+\endif
+\if :commit
+  commit;
+\else
+  rollback;
+\endif
