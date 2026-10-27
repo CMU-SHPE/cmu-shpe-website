@@ -407,6 +407,22 @@ describe('processNewsletterSend retries and failures', () => {
     expect(rows.filter(([, status]) => status === 'sent')).toEqual([[12, 'sent', 're_1', null]])
   })
 
+  // Bug: a throw from building or sending the batch leaves the claimed rows in 'sending' until the
+  // 10-minute stale reclaim instead of releasing them at once (newsletter-send.ts sendChunk).
+  it.fails('releases the chunk to pending when sending the batch throws', async () => {
+    fake.sendBatch.mockRejectedValue(new Error('unexpected'))
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4).catch(() => {})
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))
+    expect(release?.params).toEqual([11, 12, 13])
+  })
+
+  it.todo(
+    'never splits one chunk between two concurrent claimers (bug: claimNextChunk locks rows with SKIP LOCKED, so two ' +
+      'concurrent processNewsletterSend calls split a chunk about 2% of the time against real Postgres 17; the halves go out ' +
+      'under one idempotency key with different payloads and the second half ends as unknown_outcome. Needs a real-SQL test.)',
+  )
+
   it('claims no further chunk once the time budget is spent', async () => {
     fake.respond = respondWith(
       world({

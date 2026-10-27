@@ -134,6 +134,11 @@ describe('renderNewsletter against hostile input', () => {
     expect(text).toContain('Sign up (https://shpe.example/join). Then: https://shpe.example/a?b=1!')
   })
 
+  it.todo(
+    'keeps a balanced closing parenthesis inside a link such as https://en.wikipedia.org/wiki/SHPE_(organization) ' +
+      '(needs-decision: TRAILING_PUNCTUATION in newsletter-render.ts strips it today, so that link 404s)',
+  )
+
   it('keeps unicode text, emoji and RTL characters intact without breaking the markup', () => {
     const body = 'Bienvenidos, ¡año nuevo! 🎉\n\nمرحبا ‮gnp.exe‬ and ‏⁦isolated⁩'
     const { html, text } = render(body, { subject: 'Año nuevo 🎉 ‮cmu' })
@@ -143,6 +148,10 @@ describe('renderNewsletter against hostile input', () => {
     expect(html).toContain('<title>Año nuevo 🎉 ‮cmu</title>')
   })
 
+  it.todo(
+    'keeps bidi and zero-width control characters out of link hrefs (needs-decision: URL_PATTERN in ' +
+      'newsletter-render.ts matches U+202E, so "https://shpe.example/\\u202Efdp.exe" links with the override inside)',
+  )
 })
 
 describe('newsletterSubject header safety', () => {
