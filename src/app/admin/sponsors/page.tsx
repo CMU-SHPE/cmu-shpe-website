@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import ImageCropField from '@/components/image-crop-field'
 import SponsorLogo from '@/components/SponsorLogo'
 import SubmitButton from '@/components/submit-button'
@@ -13,6 +14,7 @@ import {
   mutedTextClass,
   pageHeadingClass,
   primaryButtonClass,
+  secondaryButtonClass,
   sectionHeadingClass,
 } from '@/components/admin/styles'
 import type { Sponsor } from '@/db/schema'
@@ -20,7 +22,7 @@ import { requireAdmin } from '@/lib/admin'
 import { DEFAULT_LOGO_BACKGROUND } from '@/lib/colors'
 import { HTTP_URL_INPUT, IMAGE_SOURCE_INPUT } from '@/lib/form-fields'
 import { getSponsors } from '@/lib/queries'
-import { LOGO_FIELD_NAMES } from '@/lib/sponsor-schema'
+import { LOGO_FIELD_NAMES, MAX_SPONSOR_DESCRIPTION_LENGTH } from '@/lib/sponsor-schema'
 import { SPONSOR_TIERS } from '@/lib/sponsor-tiers'
 import { createSponsor, deleteSponsor, moveSponsor, updateSponsor } from './actions'
 
@@ -61,6 +63,16 @@ function SponsorFields({ sponsor }: { sponsor?: Sponsor }) {
           {...HTTP_URL_INPUT}
           defaultValue={sponsor?.website ?? ''}
           placeholder="https://…"
+          className={inputClass}
+        />
+      </label>
+      <label className={labelClass}>
+        Description (optional)
+        <textarea
+          name="description"
+          rows={4}
+          maxLength={MAX_SPONSOR_DESCRIPTION_LENGTH}
+          defaultValue={sponsor?.description ?? ''}
           className={inputClass}
         />
       </label>
@@ -157,6 +169,10 @@ export default async function AdminSponsorsPage(props: {
                           <p className={`break-all ${mutedTextClass}`}>{sponsor.website}</p>
                         )}
                       </div>
+                      <Link href={`/admin/sponsors/${sponsor.id}`} className={`${secondaryButtonClass} inline-block`}>
+                        {'Details '}
+                        <span className="sr-only">for {sponsor.name}</span>
+                      </Link>
                       <MoveButtons
                         name={sponsor.name}
                         moveUp={index > 0 ? moveSponsor.bind(null, sponsor.id, 'up') : undefined}
@@ -167,7 +183,10 @@ export default async function AdminSponsorsPage(props: {
                         }
                       />
                       <form action={deleteSponsor.bind(null, sponsor.id)}>
-                        <DeleteButton name={sponsor.name} />
+                        <DeleteButton
+                          name={sponsor.name}
+                          warning="Anyone linked to this listing loses sponsor access and becomes a supporter, and its receipts and edit history are deleted."
+                        />
                       </form>
                     </div>
                     <EditDetails name={sponsor.name}>
