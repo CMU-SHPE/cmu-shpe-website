@@ -156,10 +156,19 @@ describe('renderNewsletter against hostile input', () => {
     expect(html).toContain('<title>Año nuevo 🎉 ‮cmu</title>')
   })
 
-  it.todo(
-    'keeps bidi and zero-width control characters out of link hrefs (needs-decision: URL_PATTERN in ' +
-      'newsletter-render.ts matches U+202E, so "https://shpe.example/\\u202Efdp.exe" links with the override inside)',
-  )
+  it.each([
+    ['right-to-left override', '\u202E'],
+    ['left-to-right mark', '\u200E'],
+    ['zero-width space', '\u200B'],
+    ['first strong isolate', '\u2068'],
+    ['pop directional isolate', '\u2069'],
+    ['byte order mark', '\uFEFF'],
+  ])('ends a link at a %s so it never lands inside an href', (_, control) => {
+    const { html, text } = render(`Get https://shpe.example/${control}fdp.exe now`)
+    expect(hrefsOf(bodyOf(html))).toEqual(['https://shpe.example/'])
+    expect(bodyOf(html)).toContain(`https://shpe.example/</a>${control}fdp.exe now`)
+    expect(text).toContain(`https://shpe.example/${control}fdp.exe`)
+  })
 })
 
 describe('newsletterSubject header safety', () => {

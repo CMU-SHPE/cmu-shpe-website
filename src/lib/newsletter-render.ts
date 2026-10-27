@@ -19,8 +19,10 @@ export type RenderedNewsletter = {
 
 export const SAMPLE_UNSUBSCRIBE_LABEL = 'Unsubscribe (sample: each recipient gets their own link here)'
 
-// Only http(s) is matched, so javascript:, data: and other schemes stay plain text.
-const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`]+/gi
+// Only http(s) is matched, so javascript:, data: and other schemes stay plain text. A link also
+// ends at bidi and zero-width characters, so an override can't hide inside an href or reorder
+// how the visible link reads.
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]+/gi
 const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?', ')', ']', '}'])
 
 function count(text: string, char: string): number {
