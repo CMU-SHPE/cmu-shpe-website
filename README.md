@@ -19,17 +19,21 @@ Chapter officers sign in and edit the whole site without touching code:
   navigation, buttons and form labels stay fixed.
 - **Officers and faculty advisor** — add, edit, reorder and remove people, with a
   square-cropped photo.
-- **Sponsors** — name, tier, website, logo (with cropping) and the logo tile's background
-  color; reorder within a tier.
-- **Events** — title, description, location, type, date and optional time. Events move
-  from Upcoming to Past on their own, using Denver time.
+- **Sponsors** — name, tier, website, description, logo (with cropping) and the logo
+  tile's background color; reorder within a tier. Each sponsor's **Details** page shows
+  the accounts linked to it, their edit history and its receipts (see
+  [Sponsor portal](#sponsor-portal)).
+- **Events** — title, description, location, type, date, optional time and optional
+  capacity. Events move from Upcoming to Past on their own, using Denver time. Each event
+  shows its RSVP count, the attendee list (name and email) and a CSV download of it.
 - **Page lists** — the home page stats and pillars, the SHPE National stats on the About
   page, and the sponsor benefits table.
 - **Site settings** — contact email, weekly meeting day, time and location, social links
   (a blank link hides its icon), the contact form's subject options and the chapter's
   mailing address for newsletters.
 - **Members** — search member accounts by name or email, see whether each confirmed their
-  email and how many newsletters they chose, and delete an account (see
+  email, how many newsletters they chose and which sponsor listing they are linked to,
+  give a confirmed member sponsor access or take it away, and delete an account (see
   [Member accounts](#member-accounts)).
 - **Newsletter topics** — add, edit, reorder and delete the topics members can choose.
   Deleting a topic removes every member's choice of it.
@@ -135,7 +139,8 @@ link. Officers without a photo show their initials.
 
 ## Member accounts
 
-Anyone 13 or older can create a member account to choose which newsletters they want.
+Anyone 13 or older can create a member account to choose which newsletters they want and
+to RSVP to events.
 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
@@ -145,20 +150,77 @@ Anyone 13 or older can create a member account to choose which newsletters they 
   a new link. Accounts never confirmed are deleted once they are 7 days old and have no
   unexpired link; there is no scheduled job, so this happens the next time anyone signs
   up or asks for a new link.
-- **Signing in:** members use the same **Sign in** page as admins and land on `/account`.
-- **`/account`:** change name and password, choose newsletter topics, and **Delete my
-  account** (asks for the password and the word DELETE; it removes the account and its
-  newsletter choices right away).
+- **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
+  sponsors land on `/sponsor` instead.
+- **`/account`:** change name and password, choose newsletter topics, see and cancel
+  upcoming RSVPs, and **Delete my account** (asks for the password and the word DELETE;
+  it removes the account, its newsletter choices and its RSVPs right away). Sponsors also
+  get a **Sponsor portal** link here.
+- **RSVPs:** any signed-in member with a confirmed email can RSVP to an upcoming event on
+  `/events` and cancel before it happens. See [Sponsor portal](#sponsor-portal) for
+  capacity and the attendee CSV.
 - **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour.
   Admins don't get one; the master resets admin passwords from **Admin accounts**.
 - **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
-  also removes their newsletter choices and pending email links.
+  also removes their newsletter choices, RSVPs and pending email links. Any sponsor listing
+  edits they made stay in that listing's history under the name they had at the time,
+  marked "(account deleted)".
 - **Privacy Policy and Terms of Use** (`/privacy`, `/terms`) are linked from the footer
   and edited in place like other page text. They are required disclosures for member
   accounts: keep them accurate and never blank a section. New sign-ups record the
   Privacy Policy's "Last updated" date as the version they agreed to.
 - **Newsletters aren't sent yet.** Members' topic choices are saved for when sending is
   added, and sending will require the **Mailing address** in **Site settings** (CAN-SPAM).
+
+## Sponsor portal
+
+Sponsors are member accounts linked to a sponsor listing. A listing can have several
+linked accounts; an account can be linked to one listing.
+
+- **Giving access:** the sponsor's contact creates a normal member account at `/join` and
+  confirms their email. An admin then opens **Members**, picks the listing next to their
+  name and chooses **Make sponsor**. Unconfirmed accounts can't be linked. **Change
+  listing** moves a sponsor to another listing and **Remove sponsor access** makes them a
+  supporter again. Deleting a listing removes sponsor access from everyone linked to it
+  (the confirmation says so) and deletes its receipts and edit history.
+- **`/sponsor`:** sponsors edit their own listing's name, website, description, logo (by
+  uploading and cropping; they can't paste an image link) and logo background color.
+  Changes are live on `/sponsors` straight away. Tier and order stay with admins. The page
+  also lists upcoming events with RSVP buttons, the sponsor's RSVPs and their receipts.
+  The listing is always the one the signed-in account is linked to, decided on the server.
+  Admins who open `/sponsor` see a preview where they can edit the page's text. Search
+  engines are asked not to index it.
+- **Edit history:** every save that changes something records who made it (their name at
+  the time), when and which fields changed. Admins see it on the listing's **Details**
+  page, newest first. A deleted account's entries stay, marked "(account deleted)".
+- **Receipts:** admins upload PDF receipts (title, date, file up to 4 MB, checked to really
+  be a PDF) on the listing's **Details** page and can delete them. They are stored in the
+  database, not in Vercel Blob, so they are never at a public URL. Only admins and the
+  accounts linked to that listing can download them, and every download is sent as a
+  private, uncached attachment.
+- **RSVPs and capacity:** an event's optional capacity is enforced when the RSVP is saved,
+  so two people can't take the last place at once. Full events show **Full**; capped
+  events show how many spots are left. RSVPs are only possible for upcoming events.
+- **Attendee CSV:** **Events** → an event's attendees → download a CSV of name, email and
+  RSVP time (UTC). Cells that a spreadsheet would read as a formula are escaped. The file
+  holds members' personal information: keep it to the people running the event.
+
+### Production steps for stage 3
+
+- **Schema:** apply the new columns and tables (`members.sponsor_id`, `events.capacity`,
+  `sponsors.description`, `event_rsvps`, `sponsor_edits`, `sponsor_receipts`) to production
+  with `npm run db:push` *before* merging, as described under
+  [Preview databases](#preview-databases).
+- **Policy text:** `npm run db:seed` never overwrites `site_content` rows that already exist,
+  so production keeps its current Privacy Policy and Terms of Use until they are updated
+  by hand. Either an admin edits them in place on `/privacy` and `/terms`, or someone
+  deliberately writes the new defaults from `src/db/seed-data/content.ts` into those rows.
+  The keys that changed are `privacy.updated`, `privacy.collect.items`,
+  `privacy.use.items`, `privacy.retention.items`, `privacy.choices.items`, `terms.updated`
+  and `terms.use.items`. Update `privacy.updated` last: new sign-ups record it as the
+  policy version they agreed to.
+- **Sponsor portal text:** the `sponsor.*` keys are new, so the portal shows their defaults
+  until an admin edits them; running `npm run db:seed` also stores them.
 
 ## Scripts
 
@@ -183,9 +245,12 @@ Anyone 13 or older can create a member account to choose which newsletters they 
 src/
   app/          Routes (App Router): the public pages, /login, the member pages
                 (/join, /account, /forgot-password, /reset-password, /privacy,
-                /terms), and the /admin pages, each with their server actions
+                /terms), the sponsor portal (/sponsor, with receipt downloads at
+                /sponsor/receipts/[id]), and the /admin pages, each with their
+                server actions
   components/   Shared UI: Navbar, Footer, ThemeProvider (dark mode), the inline
-                editor (editable.tsx), and admin form components
+                editor (editable.tsx), admin form components, and the RSVP (rsvp/)
+                and sponsor portal (sponsor/) components
   db/           Drizzle schema, the Neon client, and the seed script with its data
                 in seed-data/
   lib/          Queries, validation schemas, auth helpers and other shared logic
