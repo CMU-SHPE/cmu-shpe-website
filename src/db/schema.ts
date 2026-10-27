@@ -76,6 +76,7 @@ export const sponsors = pgTable('sponsors', {
   logoCrop: text('logo_crop'),
   bgColor: text('bg_color').notNull().default('#ffffff'),
   sortOrder: integer('sort_order').notNull().default(0),
+  description: text('description').notNull().default(''),
 })
 
 export const officers = pgTable('officers', {

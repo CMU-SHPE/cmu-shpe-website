@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSponsorForm } from './sponsor-schema'
+import { MAX_SPONSOR_DESCRIPTION_LENGTH, parseSponsorForm, parseSponsorListingForm } from './sponsor-schema'
 import { compareSponsors } from './sponsor-tiers'
 
 function sponsorForm(overrides: Record<string, string> = {}) {
@@ -10,6 +10,7 @@ function sponsorForm(overrides: Record<string, string> = {}) {
     website: 'https://sgm-inc.com/',
     logoUrl: '/sponsors/sgm-inc-logo.svg',
     bgColor: '#555555',
+    description: 'Builds bridges.',
     ...overrides,
   }
   for (const [name, value] of Object.entries(values)) formData.set(name, value)
@@ -25,7 +26,14 @@ describe('parseSponsorForm', () => {
       website: 'https://sgm-inc.com/',
       logoUrl: '/sponsors/sgm-inc-logo.svg',
       bgColor: '#555555',
+      description: 'Builds bridges.',
     })
+  })
+
+  it('caps the description length', () => {
+    const atLimit = 'x'.repeat(MAX_SPONSOR_DESCRIPTION_LENGTH)
+    expect(parseSponsorForm(sponsorForm({ description: atLimit })).success).toBe(true)
+    expect(parseSponsorForm(sponsorForm({ description: `${atLimit}x` })).success).toBe(false)
   })
 
   it('treats a blank website and logo path as none', () => {
@@ -53,6 +61,30 @@ describe('parseSponsorForm', () => {
 
   it('requires a name', () => {
     expect(parseSponsorForm(sponsorForm({ name: '  ' })).success).toBe(false)
+  })
+})
+
+describe('parseSponsorListingForm', () => {
+  it('keeps only the fields a sponsor may edit, ignoring tier, logo path and ids', () => {
+    const form = sponsorForm({ description: '  Trimmed.  ' })
+    form.set('id', '99')
+    form.set('sponsorId', '99')
+    form.set('sortOrder', '0')
+    expect(parseSponsorListingForm(form).data).toEqual({
+      name: 'SGM',
+      website: 'https://sgm-inc.com/',
+      bgColor: '#555555',
+      description: 'Trimmed.',
+    })
+  })
+
+  it('applies the admin field rules', () => {
+    expect(parseSponsorListingForm(sponsorForm({ name: ' ' })).success).toBe(false)
+    expect(parseSponsorListingForm(sponsorForm({ website: 'javascript:alert(1)' })).success).toBe(false)
+    expect(parseSponsorListingForm(sponsorForm({ bgColor: 'red' })).success).toBe(false)
+    expect(
+      parseSponsorListingForm(sponsorForm({ description: 'x'.repeat(MAX_SPONSOR_DESCRIPTION_LENGTH + 1) })).success,
+    ).toBe(false)
   })
 })
 

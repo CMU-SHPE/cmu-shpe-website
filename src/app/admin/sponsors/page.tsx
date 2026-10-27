@@ -20,7 +20,7 @@ import { requireAdmin } from '@/lib/admin'
 import { DEFAULT_LOGO_BACKGROUND } from '@/lib/colors'
 import { HTTP_URL_INPUT, IMAGE_SOURCE_INPUT } from '@/lib/form-fields'
 import { getSponsors } from '@/lib/queries'
-import { LOGO_FIELD_NAMES } from '@/lib/sponsor-schema'
+import { LOGO_FIELD_NAMES, MAX_SPONSOR_DESCRIPTION_LENGTH } from '@/lib/sponsor-schema'
 import { SPONSOR_TIERS } from '@/lib/sponsor-tiers'
 import { createSponsor, deleteSponsor, moveSponsor, updateSponsor } from './actions'
 
@@ -61,6 +61,16 @@ function SponsorFields({ sponsor }: { sponsor?: Sponsor }) {
           {...HTTP_URL_INPUT}
           defaultValue={sponsor?.website ?? ''}
           placeholder="https://…"
+          className={inputClass}
+        />
+      </label>
+      <label className={labelClass}>
+        Description (optional)
+        <textarea
+          name="description"
+          rows={4}
+          maxLength={MAX_SPONSOR_DESCRIPTION_LENGTH}
+          defaultValue={sponsor?.description ?? ''}
           className={inputClass}
         />
       </label>
