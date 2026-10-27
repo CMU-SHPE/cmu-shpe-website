@@ -472,14 +472,34 @@ describe('processNewsletterSend retries and failures', () => {
     expect(rows.filter(([, status]) => status === 'sent')).toEqual([[12, 'sent', 're_1', null]])
   })
 
-  // Bug: a throw from building or sending the batch leaves the claimed rows in 'sending' until the
-  // 10-minute stale reclaim instead of releasing them at once (newsletter-send.ts sendChunk).
-  it.fails('releases the chunk to pending when sending the batch throws', async () => {
+  it('releases the chunk to pending when sending the batch throws', async () => {
     fake.sendBatch.mockRejectedValue(new Error('unexpected'))
     fake.respond = respondWith(world())
-    await processNewsletterSend(4).catch(() => {})
+    await expect(processNewsletterSend(4)).rejects.toThrow('unexpected')
     const release = fake.queries.find((query) => is(query, "set status = 'pending'"))
     expect(release?.params).toEqual([11, 12, 13])
+    expect(squash(release!.sql)).not.toContain('claimed_at = null')
+    expect(fake.queries.some((query) => is(query, 'set status = v.status'))).toBe(false)
+  })
+
+  it('releases the chunk when recording the results fails, never reporting the rows as sent', async () => {
+    const state = world()
+    fake.respond = (query) => {
+      if (is(query, 'set status = v.status')) throw new Error('connection lost')
+      return respondWith(state)(query)
+    }
+    await expect(processNewsletterSend(4)).rejects.toThrow('connection lost')
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))
+    expect(release?.params).toEqual([11, 12, 13])
+    expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
+  })
+
+  it('releases the chunk when preparing links fails before anything is sent', async () => {
+    vi.stubEnv('AUTH_SECRET', '')
+    fake.respond = respondWith(world())
+    await expect(processNewsletterSend(4)).rejects.toThrow(/AUTH_SECRET/)
+    expect(fake.sendBatch).not.toHaveBeenCalled()
+    expect(fake.queries.find((query) => is(query, "set status = 'pending'"))?.params).toEqual([11, 12, 13])
   })
 
   // Real-SQL check: scratchpad nlt-pg/run-split.sh runs two concurrent claimers 200 times against Postgres 17.

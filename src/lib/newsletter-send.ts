@@ -339,12 +339,28 @@ function permanentErrorCode(reason: string): string {
   return reason === 'invalid_idempotent_request' ? 'unknown_outcome' : reason
 }
 
-async function sendChunk(
+type ChunkOutcome = 'done' | 'retry_later' | 'outcome_unconfirmed'
+
+/**
+ * Anything that throws after the claim (a database error, a missing secret) releases the rows
+ * at once rather than leaving them looking in flight for 10 minutes. They keep their claim time,
+ * since the batch may already have reached Resend.
+ */
+async function sendChunk(newsletterId: number, newsletter: FrozenNewsletter, claimed: ClaimedChunk): Promise<ChunkOutcome> {
+  if (claimed.recipientIds.length === 0) return 'done'
+  try {
+    return await sendClaimedChunk(newsletterId, newsletter, claimed)
+  } catch (error) {
+    await releaseForRetry(claimed.recipientIds, { neverSent: false }).catch(() => {})
+    throw error
+  }
+}
+
+async function sendClaimedChunk(
   newsletterId: number,
   newsletter: FrozenNewsletter,
   claimed: ClaimedChunk,
-): Promise<'done' | 'retry_later' | 'outcome_unconfirmed'> {
-  if (claimed.recipientIds.length === 0) return 'done'
+): Promise<ChunkOutcome> {
   const prepared = await prepareRecipients(claimed.recipientIds)
   // The secret changed after an earlier attempt that may have gone out: resending would carry
   // links that resolve to nothing, under a key whose first payload differed.
