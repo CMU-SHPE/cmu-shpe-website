@@ -203,6 +203,16 @@ describe('newsletter detail page', () => {
     expect(screen.getByRole('button', { name: 'Continue sending' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Press Continue sending to send the rest')
   })
+
+  it.each([
+    ['outcome_unconfirmed', 'within 24 hours'],
+    ['retry_later', 'nobody in it got the newsletter yet'],
+  ])('explains what %s means for the next Continue sending', async (progress, text) => {
+    mocks.newsletter = { ...sentNewsletter, status: 'sending', sentAt: null }
+    mocks.recipients = [recipient({ status: 'pending' })]
+    render(await detailPage.default({ params: params(), searchParams: searchParams({ progress }) }))
+    expect(screen.getByRole('status')).toHaveTextContent(text)
+  })
 })
 
 describe('confirm send page', () => {

@@ -396,19 +396,24 @@ describe('processNewsletterSend recipients and links', () => {
 
 describe('processNewsletterSend retries and failures', () => {
   it.each([
-    ['rate_limit_exceeded'],
-    ['timeout'],
-    ['exception'],
-    ['concurrent_idempotent_requests'],
-    ['missing_config'],
-  ])('releases the chunk to pending on a retryable %s, records nothing and does not finish', async (reason) => {
+    ['rate_limit_exceeded', 'retry_later', true],
+    ['daily_quota_exceeded', 'retry_later', true],
+    ['monthly_quota_exceeded', 'retry_later', true],
+    ['missing_config', 'retry_later', true],
+    ['timeout', 'outcome_unconfirmed', false],
+    ['exception', 'outcome_unconfirmed', false],
+    ['internal_server_error', 'outcome_unconfirmed', false],
+    ['concurrent_idempotent_requests', 'outcome_unconfirmed', false],
+  ])('releases the chunk to pending on a retryable %s, records nothing and does not finish', async (reason, expected, forgetsClaim) => {
     fake.sendBatch.mockResolvedValue({ ok: false, reason, retryable: true })
     fake.respond = respondWith(world())
-    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: 'retry_later' })
+    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: expected })
     const release = fake.queries.filter((query) => is(query, "set status = 'pending'"))
     expect(release).toHaveLength(1)
     expect(release[0].params).toEqual([11, 12, 13])
     expect(squash(release[0].sql)).toContain("and status = 'sending'")
+    // Only a batch Resend turned down outright starts over with a fresh claim and 24-hour window.
+    expect(squash(release[0].sql).includes('claimed_at = null')).toBe(forgetsClaim)
     expect(fake.queries.some((query) => is(query, 'set status = v.status'))).toBe(false)
     expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
     expect(fake.sendBatch).toHaveBeenCalledTimes(1)

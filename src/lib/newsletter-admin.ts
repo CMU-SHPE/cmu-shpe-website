@@ -208,7 +208,9 @@ export const newsletterProgressMessages: Record<string, string> = {
   time_budget:
     'Part of the newsletter is sent. Sending stops after a few minutes per click to stay within the server’s time limit. Press Continue sending to send the rest.',
   retry_later:
-    'The email service asked us to slow down or was briefly unavailable. Nothing was lost. Press Continue sending to try the rest again.',
+    'The email service turned the last batch down before sending it (a rate limit, a daily quota, or missing email settings), so nobody in it got the newsletter yet. Press Continue sending to try again; there is no deadline.',
+  outcome_unconfirmed:
+    'The email service didn’t confirm whether the last batch went out (it timed out or had an error). Press Continue sending within 24 hours to finish it without anyone getting it twice. After 24 hours, those emails are marked “unknown outcome” instead of being sent again.',
   busy:
     'Some emails are still being handed to the email service by another request. If nothing changes, an interrupted batch can be retried about 10 minutes after it started: press Continue sending then.',
 }

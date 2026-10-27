@@ -26,7 +26,7 @@ export type StartResult = { started: true; recipients: number } | { started: fal
 
 export type ProcessResult =
   | { status: 'sent' }
-  | { status: 'sending'; reason: 'time_budget' | 'busy' | 'retry_later' }
+  | { status: 'sending'; reason: 'time_budget' | 'busy' | 'retry_later' | 'outcome_unconfirmed' }
   | { status: 'draft' | 'missing' }
 
 export type SendBlocker = 'no_mailing_address' | 'email_not_configured' | 'site_url_invalid' | 'auth_secret_missing'
@@ -308,9 +308,18 @@ function recordOutcomes(outcomes: Outcome[]) {
   `)
 }
 
-function releaseForRetry(recipientIds: number[]) {
+// Resend turns these down before accepting the batch, so nothing was sent and its idempotency
+// key was not used: the rows can start over as never claimed, with a fresh 24-hour window.
+const REFUSED_BEFORE_ACCEPTING = new Set(['rate_limit_exceeded', 'daily_quota_exceeded', 'monthly_quota_exceeded', 'missing_config'])
+
+/**
+ * A batch that may have gone out keeps its first claim time, so a retry after Resend has forgotten
+ * the key is recorded as unknown instead of sent again.
+ */
+function releaseForRetry(recipientIds: number[], { neverSent }: { neverSent: boolean }) {
+  const forgetClaim = neverSent ? sql`claimed_at = null, ` : sql``
   return run(sql`
-    update newsletter_recipients set status = 'pending', updated_at = now()
+    update newsletter_recipients set status = 'pending', ${forgetClaim}updated_at = now()
     where id in (${sql.join(recipientIds.map((id) => sql`${id}`), sql`, `)}) and status = 'sending'
   `)
 }
@@ -325,7 +334,7 @@ async function sendChunk(
   newsletterId: number,
   newsletter: FrozenNewsletter,
   claimed: ClaimedChunk,
-): Promise<'done' | 'retry_later'> {
+): Promise<'done' | 'retry_later' | 'outcome_unconfirmed'> {
   if (claimed.recipientIds.length === 0) return 'done'
   const recipients = await prepareRecipients(claimed.recipientIds)
   if (recipients.length === 0) return 'done'
@@ -337,8 +346,12 @@ async function sendChunk(
   })
 
   if (!result.ok && result.retryable) {
-    await releaseForRetry(recipients.map((r) => r.id))
-    return 'retry_later'
+    const neverSent = REFUSED_BEFORE_ACCEPTING.has(result.reason)
+    await releaseForRetry(
+      recipients.map((r) => r.id),
+      { neverSent },
+    )
+    return neverSent ? 'retry_later' : 'outcome_unconfirmed'
   }
 
   const outcomes: Outcome[] = recipients.map((recipient, index) => {
@@ -387,9 +400,8 @@ export async function processNewsletterSend(
     if (now() - startedAt >= budgetMs) return { status: 'sending', reason: 'time_budget' }
     const claimed = await claimNextChunk(newsletterId)
     if (!claimed) break
-    if ((await sendChunk(newsletterId, newsletter, claimed)) === 'retry_later') {
-      return { status: 'sending', reason: 'retry_later' }
-    }
+    const outcome = await sendChunk(newsletterId, newsletter, claimed)
+    if (outcome !== 'done') return { status: 'sending', reason: outcome }
   }
 
   return (await finishIfDone(newsletterId)) ? { status: 'sent' } : { status: 'sending', reason: 'busy' }
