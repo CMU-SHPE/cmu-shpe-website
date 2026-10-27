@@ -38,6 +38,7 @@
  * 10. Admin creates redirect with ?saved= (as at fd1db2d); creating a listing may land on
  *     /admin/sponsors or /admin/sponsors/<id>. Every Delete uses the shared "Delete <name>" button.
  */
+import { readFile } from 'node:fs/promises'
 import type { Browser, BrowserContext, Page } from '@playwright/test'
 import { bypassHeaders, expect, expectNoAxeViolations, installBypass, test, type Theme } from './fixtures'
 
@@ -109,6 +110,8 @@ const UI = {
     add: 'Add event',
   },
   rsvp: { join: /^RSVP/, cancel: /^Cancel RSVP/, full: 'Full' },
+  sponsorCalendar: 'Upcoming events',
+  attendees: { link: `Attendees for ${EVENT_TITLE}`, csv: `Download CSV of attendees for ${EVENT_TITLE}` },
 } as const
 
 const ROUTES = {
@@ -429,6 +432,14 @@ test.describe('sponsor journey', () => {
         await expectSaved(admin, '/admin/events', 'Creating the event')
       })
 
+      await test.step('member A sees the event on the /sponsor calendar', async () => {
+        await open(sponsor, ROUTES.sponsorHome)
+        const calendar = sponsor
+          .locator('main section')
+          .filter({ has: sponsor.getByRole('heading', { level: 2, name: UI.sponsorCalendar, exact: true }) })
+        await expect(calendar.getByRole('heading', { name: EVENT_TITLE, exact: true })).toBeVisible()
+      })
+
       await test.step('member A takes the only place and member B sees the event as full', async () => {
         assertPreviewHost(baseURL, 'RSVP as member A')
         await open(sponsor, '/events')
@@ -449,6 +460,25 @@ test.describe('sponsor journey', () => {
 
         await open(supporter, '/events')
         await expect(eventCard(supporter).getByRole('button', { name: UI.rsvp.join })).toBeVisible()
+      })
+
+      await test.step('member B RSVPs and the admin exports the attendee CSV', async () => {
+        assertPreviewHost(baseURL, 'RSVP as member B')
+        await eventCard(supporter).getByRole('button', { name: UI.rsvp.join }).click()
+        await expect(eventCard(supporter).getByRole('button', { name: UI.rsvp.cancel })).toBeVisible()
+
+        await open(admin, '/admin/events')
+        await admin.getByRole('link', { name: UI.attendees.link, exact: true }).click()
+        await expect(admin.locator('main')).toContainText(SUPPORTER_MEMBER.email)
+        const [download] = await Promise.all([
+          admin.waitForEvent('download'),
+          admin.getByRole('link', { name: UI.attendees.csv, exact: true }).click(),
+        ])
+        expect(download.suggestedFilename()).toMatch(/^event-\d+-attendees\.csv$/)
+        const csv = await readFile(await download.path(), 'utf8')
+        const lines = csv.trim().split(/\r?\n/)
+        expect(lines[0]).toBe('Name,Email,RSVP time (UTC)')
+        expect(lines.slice(1)).toEqual([expect.stringContaining(SUPPORTER_MEMBER.email)])
       })
     } finally {
       for (const context of contexts) await context.close()
