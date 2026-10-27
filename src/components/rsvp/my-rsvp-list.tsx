@@ -29,7 +29,7 @@ export default function MyRsvpList({ headingId, rsvps }: { headingId: string; rs
           You haven’t RSVPed to any upcoming events.{' '}
           <Link
             href="/events"
-            className={`rounded text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`}
+            className={`rounded text-shpe-red dark:text-shpe-gold underline hover:no-underline ${focusRingClass}`}
           >
             See upcoming events
           </Link>

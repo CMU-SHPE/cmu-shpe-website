@@ -40,7 +40,7 @@ const savedMessages: Record<string, string> = {
   unchanged: 'Nothing changed, so there was nothing to save.',
 }
 
-const linkClass = `rounded font-medium text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`
+const linkClass = `rounded font-medium text-shpe-red dark:text-shpe-gold underline hover:no-underline ${focusRingClass}`
 
 export default async function SponsorPortalPage(props: {
   searchParams: Promise<{ saved?: string; error?: string }>
