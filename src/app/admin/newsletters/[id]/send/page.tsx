@@ -13,6 +13,8 @@ import {
 import { requireAdmin } from '@/lib/admin'
 import { recordId } from '@/lib/form-fields'
 import { bannerParams, countNewsletterAudience, getNewsletter, newsletterErrorMessages } from '@/lib/newsletter-admin'
+import { previewAudienceOnly } from '@/lib/newsletter-audience'
+import { PREVIEW_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
 import { newsletterSubject } from '@/lib/newsletter-render'
 import { loadSendSnapshot } from '@/lib/newsletter-send'
 import { sendNewsletter } from '../../actions'
@@ -53,6 +55,15 @@ export default async function ConfirmSendPage(props: {
       <h1 className={pageHeadingClass}>Send newsletter</h1>
 
       <StatusBanner error={error ?? blocker ?? (incomplete ? 'incomplete' : undefined)} errorMessages={newsletterErrorMessages} />
+
+      {previewAudienceOnly() && (
+        <p
+          role="note"
+          className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm text-blue-900 dark:text-blue-200"
+        >
+          {PREVIEW_AUDIENCE_NOTICE}
+        </p>
+      )}
 
       {blocker === 'no_mailing_address' && (
         <p className="text-sm">

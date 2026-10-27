@@ -146,6 +146,26 @@ describe('startNewsletterSend', () => {
     expect(fake.queries[0].params).toEqual(expect.arrayContaining([2, 'Ada', 'Addr', 'shpe@cmu.edu', 'https://shpe.example', 'from', 100]))
   })
 
+  it('limits a preview deployment’s audience to @resend.dev test inboxes in both the count and the snapshot', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
+    const sql = squash(fake.queries[0].sql)
+    const filters = sql.match(/lower\(m\.email\) like \$\d+/g) ?? []
+    expect(filters).toHaveLength(2)
+    expect(sql).toMatch(/where s\.newsletter_id = \$\d+ and lower\(m\.email\) like \$\d+ \) where id/)
+    expect(sql).toMatch(/m\.email_confirmed_at is not null where lower\(m\.email\) like \$\d+ \), inserted/)
+    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(2)
+  })
+
+  it('leaves a production audience unfiltered', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
+    expect(squash(fake.queries[0].sql)).not.toContain('like')
+    expect(fake.queries[0].params).not.toContain('%@resend.dev')
+  })
+
   it('reports nothing started when the draft was already claimed', async () => {
     fake.respond = () => [{ claimed: 0, recipients: 0 }]
     await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false })

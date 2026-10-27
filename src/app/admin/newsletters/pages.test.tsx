@@ -216,6 +216,14 @@ describe('confirm send page', () => {
     expect(container.querySelector('input[name="expectedCount"]')).toHaveValue('1234')
   })
 
+  it('warns on a preview deployment that only @resend.dev test addresses are counted and sent to', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    mocks.newsletter = { ...sentNewsletter, status: 'draft' }
+    render(await confirmPage.default({ params: params(), searchParams: searchParams() }))
+    expect(screen.getByRole('note')).toHaveTextContent('only @resend.dev test addresses receive this newsletter')
+    vi.unstubAllEnvs()
+  })
+
   it('refuses without a mailing address and links to settings', async () => {
     mocks.newsletter = { ...sentNewsletter, status: 'draft' }
     mocks.ready = { ok: false, blocker: 'no_mailing_address' }

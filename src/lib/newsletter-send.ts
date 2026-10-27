@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { newsletterFromAddress, sendNewsletterBatch, type NewsletterEmail } from '@/lib/email'
+import { audienceEmailCondition } from '@/lib/newsletter-audience'
 import { hashToken } from '@/lib/member-tokens'
 import { renderNewsletter } from '@/lib/newsletter-render'
 import { getSiteSettings } from '@/lib/queries'
@@ -97,6 +98,7 @@ export async function startNewsletterSend(
   admin: { id: number; name: string },
   snapshot: SendSnapshot,
 ): Promise<StartResult> {
+  const audienceEmail = audienceEmailCondition(sql`m.email`)
   const [row] = await run<{ claimed: number; recipients: number }>(sql`
     with claimed as (
       update newsletters set
@@ -119,7 +121,7 @@ export async function startNewsletterSend(
           from newsletter_topic_selections s
           join member_topic_subscriptions mts on mts.topic_id = s.topic_id
           join members m on m.id = mts.member_id and m.email_confirmed_at is not null
-          where s.newsletter_id = ${newsletterId}
+          where s.newsletter_id = ${newsletterId} and ${audienceEmail}
         )
       where id = ${newsletterId}
         and status = 'draft'
@@ -134,6 +136,7 @@ export async function startNewsletterSend(
       join newsletter_topic_selections s on s.newsletter_id = claimed.id
       join member_topic_subscriptions mts on mts.topic_id = s.topic_id
       join members m on m.id = mts.member_id and m.email_confirmed_at is not null
+      where ${audienceEmail}
     ),
     inserted as (
       insert into newsletter_recipients (newsletter_id, member_id, chunk)

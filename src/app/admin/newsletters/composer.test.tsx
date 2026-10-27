@@ -93,4 +93,14 @@ describe('Composer', () => {
     expect(actions.review).not.toHaveBeenCalled()
     expect(preview().getAttribute('srcdoc')).toContain('[Mailing address: add it in Site settings]')
   })
+
+  it('says on a preview deployment that only @resend.dev test addresses will receive it', () => {
+    setup({ previewAudienceOnly: true })
+    expect(screen.getByRole('note')).toHaveTextContent('Preview deployment: only @resend.dev test addresses receive this newsletter.')
+  })
+
+  it('shows no preview notice in production', () => {
+    setup()
+    expect(screen.queryByRole('note')).toBeNull()
+  })
 })

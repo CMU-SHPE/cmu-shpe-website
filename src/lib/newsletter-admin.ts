@@ -12,6 +12,7 @@ import {
   type NewsletterRecipientStatus,
 } from '@/db/schema'
 import { recordId } from './form-fields'
+import { audienceEmailCondition } from './newsletter-audience'
 import { siteUrl } from './site-url'
 import { MAX_NEWSLETTER_BODY_LENGTH, MAX_NEWSLETTER_SUBJECT_LENGTH } from './newsletter-limits'
 
@@ -45,6 +46,7 @@ function confirmedSubscriberCount() {
     select count(*)::int from ${memberTopicSubscriptions}
     join ${members} on ${members.id} = ${memberTopicSubscriptions.memberId}
     where ${memberTopicSubscriptions.topicId} = ${newsletterTopics.id} and ${members.emailConfirmedAt} is not null
+      and ${audienceEmailCondition(members.email)}
   )`
 }
 
@@ -63,7 +65,13 @@ export async function countNewsletterAudience(topicIdList: readonly number[]): P
     .select({ count: sql<number>`count(distinct ${members.id})::int` })
     .from(memberTopicSubscriptions)
     .innerJoin(members, eq(members.id, memberTopicSubscriptions.memberId))
-    .where(and(inArray(memberTopicSubscriptions.topicId, [...topicIdList]), isNotNull(members.emailConfirmedAt)))
+    .where(
+      and(
+        inArray(memberTopicSubscriptions.topicId, [...topicIdList]),
+        isNotNull(members.emailConfirmedAt),
+        audienceEmailCondition(members.email),
+      ),
+    )
   return row?.count ?? 0
 }
 
