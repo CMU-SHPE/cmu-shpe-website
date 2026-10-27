@@ -14,6 +14,7 @@ import { passwordChanged } from '@/lib/email-templates'
 import { clientIp } from '@/lib/login-throttle'
 import { requireMember } from '@/lib/member'
 import {
+  accountResultPath,
   diffTopics,
   findMemberForAction,
   getMemberTopicIds,
@@ -42,10 +43,10 @@ async function isThrottled(email: string) {
 export async function updateName(formData: FormData) {
   const member = await currentMemberRow()
   const parsed = parseNameForm(formData)
-  if (!parsed.success) redirect('/account?error=name')
+  if (!parsed.success) redirect(accountResultPath({ error: 'name' }))
 
   await getDb().update(members).set({ name: parsed.data }).where(eq(members.id, member.id))
-  redirect('/account?saved=name')
+  redirect(accountResultPath({ saved: 'name' }))
 }
 
 // The notice is a courtesy; the password has already changed, so a failed send is only logged.
@@ -65,11 +66,11 @@ export async function changePassword(formData: FormData) {
     newPassword: formData.get('newPassword'),
     confirmPassword: formData.get('confirmPassword'),
   })
-  if (!parsed.success) redirect(`/account?error=password-${parsed.code}`)
+  if (!parsed.success) redirect(accountResultPath({ error: `password-${parsed.code}` }))
 
-  if (await isThrottled(member.email)) redirect('/account?error=password-throttled')
+  if (await isThrottled(member.email)) redirect(accountResultPath({ error: 'password-throttled' }))
   if (!(await bcrypt.compare(parsed.data.currentPassword, member.passwordHash))) {
-    redirect('/account?error=password-current')
+    redirect(accountResultPath({ error: 'password-current' }))
   }
 
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12)
@@ -86,7 +87,7 @@ export async function changePassword(formData: FormData) {
     await signIn('credentials', {
       email: member.email,
       password: parsed.data.newPassword,
-      redirectTo: '/account?saved=password',
+      redirectTo: accountResultPath({ saved: 'password' }),
     })
   } catch (error) {
     unstable_rethrow(error)
@@ -97,10 +98,10 @@ export async function changePassword(formData: FormData) {
 export async function saveTopics(formData: FormData) {
   const member = await currentMemberRow()
   const parsed = parseTopicSelection(formData)
-  if (!parsed.success) redirect('/account?error=topics')
+  if (!parsed.success) redirect(accountResultPath({ error: 'topics' }))
 
   const selected = parsed.data
-  if ((await countExistingTopics(selected)) !== selected.length) redirect('/account?error=topics')
+  if ((await countExistingTopics(selected)) !== selected.length) redirect(accountResultPath({ error: 'topics' }))
 
   const db = getDb()
 
@@ -130,16 +131,18 @@ export async function saveTopics(formData: FormData) {
   const [first, ...rest] = writes
   if (first) await db.batch([first, ...rest])
 
-  redirect('/account?saved=topics')
+  redirect(accountResultPath({ saved: 'topics' }))
 }
 
 export async function deleteAccount(formData: FormData) {
   const member = await currentMemberRow()
   const parsed = parseDeleteConfirmation(formData)
-  if (!parsed.success) redirect(`/account?error=${parsed.code}`)
+  if (!parsed.success) redirect(accountResultPath({ error: parsed.code }))
 
-  if (await isThrottled(member.email)) redirect('/account?error=delete-throttled')
-  if (!(await bcrypt.compare(parsed.password, member.passwordHash))) redirect('/account?error=delete-current')
+  if (await isThrottled(member.email)) redirect(accountResultPath({ error: 'delete-throttled' }))
+  if (!(await bcrypt.compare(parsed.password, member.passwordHash))) {
+    redirect(accountResultPath({ error: 'delete-current' }))
+  }
 
   const db = getDb()
   await db.batch(memberDeletion(db, member.id))

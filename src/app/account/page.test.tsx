@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 
 const mocks = vi.hoisted(() => ({
   requireMember: vi.fn(),
@@ -22,8 +22,10 @@ vi.mock('./actions', () => ({
 
 import AccountPage from './page'
 
-async function renderPage(searchParams: { saved?: string; error?: string } = {}) {
-  render(await AccountPage({ searchParams: Promise.resolve(searchParams) }))
+type Params = { saved?: string; error?: string; n?: string }
+
+async function renderPage(searchParams: Params = {}) {
+  return render(await AccountPage({ searchParams: Promise.resolve(searchParams) }))
 }
 
 beforeEach(() => {
@@ -62,6 +64,12 @@ describe('AccountPage', () => {
     expect(events).not.toBeChecked()
     expect(events).toHaveAccessibleDescription('Meetups and socials')
     expect(within(group).getByRole('checkbox', { name: 'Jobs' })).toBeChecked()
+  })
+
+  it('explains the newsletter choices without saying sending has not started', async () => {
+    await renderPage()
+    expect(screen.getByText('Choose which newsletters we email you. Every newsletter also has an unsubscribe link.')).toBeInTheDocument()
+    expect(screen.queryByText(/haven’t started/)).toBeNull()
   })
 
   it('starts a new member with every topic unchecked', async () => {
@@ -121,5 +129,21 @@ describe('AccountPage', () => {
   it('shows no banner for an unknown saved value', async () => {
     await renderPage({ saved: 'whatever' })
     expect(document.getElementById('account-status')).toBeNull()
+  })
+
+  it.each([
+    ['the same error', { error: 'password-current' }],
+    ['the same saved message', { saved: 'name' }],
+  ])('moves focus to %s again when it comes back from a second submit', async (_label, result: Params) => {
+    const { rerender } = await renderPage({ ...result, n: 'aaaa1111' })
+    expect(document.activeElement).toBe(document.getElementById('account-status'))
+
+    const submit = screen.getByRole('button', { name: 'Change password' })
+    submit.focus()
+    expect(document.activeElement).toBe(submit)
+
+    const next = await AccountPage({ searchParams: Promise.resolve({ ...result, n: 'bbbb2222' }) })
+    await act(async () => rerender(next))
+    expect(document.activeElement).toBe(document.getElementById('account-status'))
   })
 })

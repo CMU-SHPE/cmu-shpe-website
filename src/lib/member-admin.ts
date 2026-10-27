@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { type SQL, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { type Db, getDb } from '@/db'
 import { loginAttempts, memberTopicSubscriptions, members, requestThrottle } from '@/db/schema'
+import { qualified } from './qualified-column'
 
 export const MEMBERS_PAGE_SIZE = 50
 export const MAX_MEMBER_SEARCH_LENGTH = 100
@@ -38,7 +39,7 @@ export async function listMembers({ q, page }: MemberListParams) {
       role: members.role,
       emailConfirmedAt: members.emailConfirmedAt,
       createdAt: members.createdAt,
-      topicCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${memberTopicSubscriptions.memberId} = ${members.id})`,
+      topicCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${qualified(memberTopicSubscriptions.memberId)} = ${qualified(members.id)})`,
     })
     .from(members)
     .where(memberSearchCondition(q))

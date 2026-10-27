@@ -3,7 +3,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { getDb, type Db } from '@/db'
 import { admins, members } from '@/db/schema'
 import { isUniqueViolation } from '@/lib/db-errors'
@@ -36,6 +36,12 @@ function confirmLink(base: string, token: string) {
   return `${base}/join/confirm?token=${token}`
 }
 
+// The new and unconfirmed paths spend one more round trip on their write batch. This
+// read-only one stops an existing account from answering measurably faster.
+function matchWriteRoundTrip(db: Db) {
+  return db.execute(sql`select 1`)
+}
+
 /**
  * Picks the one email this sign-up sends. An existing account is never changed or
  * revealed; an unconfirmed one is taken over by the newest sign-up, so registering
@@ -54,8 +60,14 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
       .where(eq(members.email, email))
       .limit(1),
   ])
-  if (admin) return adminAccountExists(admin.name, `${base}/login`)
-  if (member?.emailConfirmedAt) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
+  if (admin) {
+    await matchWriteRoundTrip(db)
+    return adminAccountExists(admin.name, `${base}/login`)
+  }
+  if (member?.emailConfirmedAt) {
+    await matchWriteRoundTrip(db)
+    return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
+  }
 
   const now = new Date()
   const details = { name, passwordHash, privacyPolicyVersion, ageConfirmedAt: now, termsAcceptedAt: now }
@@ -63,7 +75,8 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
   if (member) {
     const { token, row } = newMemberToken(member.id, 'confirm_email')
     await db.batch([
-      db.update(members).set(details).where(eq(members.id, member.id)),
+      // A confirmation landing since the lookup above must not let this sign-up replace the password.
+      db.update(members).set(details).where(and(eq(members.id, member.id), isNull(members.emailConfirmedAt))),
       deleteMemberTokens(db, member.id, 'confirm_email'),
       insertMemberToken(db, row),
     ])

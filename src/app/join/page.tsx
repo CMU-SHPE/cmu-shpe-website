@@ -17,9 +17,11 @@ const fields: AccountField[] = [
   {
     name: 'termsAccepted',
     type: 'checkbox',
-    label: (
+    label: 'I agree to the Terms of Use and Privacy Policy',
+    // Links inside a label make the whole label a mix of click targets, so they sit in the hint.
+    hint: (
       <>
-        I agree to the{' '}
+        Read the{' '}
         <Link href="/terms" className={accountLinkClass}>
           Terms of Use
         </Link>{' '}
@@ -27,6 +29,7 @@ const fields: AccountField[] = [
         <Link href="/privacy" className={accountLinkClass}>
           Privacy Policy
         </Link>
+        .
       </>
     ),
   },

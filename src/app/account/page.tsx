@@ -61,11 +61,11 @@ const invalidFields: Record<string, string[]> = {
 }
 
 export default async function AccountPage(props: {
-  searchParams: Promise<{ saved?: string; error?: string }>
+  searchParams: Promise<{ saved?: string; error?: string; n?: string }>
 }) {
   const member = await requireMember()
   const memberId = Number(member.user.id)
-  const [{ saved, error }, topics, subscribed] = await Promise.all([
+  const [{ saved, error, n }, topics, subscribed] = await Promise.all([
     props.searchParams,
     getNewsletterTopics(),
     getMemberTopicIds(memberId),
@@ -96,7 +96,7 @@ export default async function AccountPage(props: {
         </div>
 
         {hasResult && (
-          <FocusOnMount key={error ?? knownSaved} id={STATUS_ID}>
+          <FocusOnMount key={`${error ?? knownSaved}:${n ?? ''}`} id={STATUS_ID}>
             {banner}
           </FocusOnMount>
         )}
@@ -129,7 +129,7 @@ export default async function AccountPage(props: {
             Newsletters
           </h2>
           <p className={`mt-1 ${mutedTextClass}`}>
-            Newsletters haven’t started yet; your choices are saved for when they do.
+            Choose which newsletters we email you. Every newsletter also has an unsubscribe link.
           </p>
           {topics.length === 0 ? (
             <p className={`mt-4 ${mutedTextClass}`}>There are no newsletters to choose from yet.</p>

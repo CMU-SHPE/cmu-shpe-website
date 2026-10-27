@@ -50,19 +50,21 @@ export async function confirmMemberEmail(_state: FormState, formData: FormData):
 
   if ((await consumeMemberToken(token, 'confirm_email')) === null) redirect(INVALID_LINK_PATH)
 
-  await db.batch([
-    db
-      .update(members)
-      .set({ emailConfirmedAt: new Date() })
-      .where(
-        and(
-          eq(members.id, memberId),
-          isNull(members.emailConfirmedAt),
-          // A sign-up landing between the password check and this write must not be the one activated.
-          eq(members.passwordHash, member.passwordHash),
-        ),
+  const confirmed = await db
+    .update(members)
+    .set({ emailConfirmedAt: new Date() })
+    .where(
+      and(
+        eq(members.id, memberId),
+        isNull(members.emailConfirmedAt),
+        // A sign-up landing between the password check and this write must not be the one activated.
+        eq(members.passwordHash, member.passwordHash),
       ),
-    deleteMemberTokens(db, memberId, 'confirm_email'),
-  ])
+    )
+    .returning({ id: members.id })
+  // That later sign-up's link must keep working, so nothing else is revoked unless this one took effect.
+  if (confirmed.length === 0) redirect(INVALID_LINK_PATH)
+
+  await deleteMemberTokens(db, memberId, 'confirm_email')
   redirect('/login?confirmed=1')
 }

@@ -1,0 +1,117 @@
+import { PgDialect } from 'drizzle-orm/pg-core'
+import type { SQL } from 'drizzle-orm'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const fake = vi.hoisted(() => ({ where: [] as unknown[] }))
+
+vi.mock('@/db', () => ({
+  getDb: () => ({
+    select: () => ({
+      from: () => ({
+        innerJoin: () => ({
+          where: async (condition: unknown) => {
+            fake.where.push(condition)
+            return [{ count: 2 }]
+          },
+        }),
+      }),
+    }),
+  }),
+}))
+
+import {
+  countNewsletterAudience,
+  describeRecipientResult,
+  formatSendTime,
+  parseNewsletterForm,
+  sendableNewsletterSchema,
+  splitTopicNames,
+} from './newsletter-admin'
+
+function form(values: Record<string, string | string[]>) {
+  const data = new FormData()
+  for (const [key, value] of Object.entries(values)) {
+    for (const item of Array.isArray(value) ? value : [value]) data.append(key, item)
+  }
+  return data
+}
+
+describe('parseNewsletterForm', () => {
+  it('accepts a half-written draft and de-duplicates topic ids', () => {
+    const parsed = parseNewsletterForm(form({ subject: '  Hi  ', body: '', topicIds: ['2', '2', '5'] }))
+    expect(parsed.success && parsed.data).toEqual({ subject: 'Hi', body: '', topicIds: [2, 5] })
+  })
+
+  it('rejects bad topic ids and over-long fields', () => {
+    expect(parseNewsletterForm(form({ subject: 'x', body: '', topicIds: ['abc'] })).success).toBe(false)
+    expect(parseNewsletterForm(form({ subject: 'x'.repeat(201), body: '' })).success).toBe(false)
+    expect(parseNewsletterForm(form({ subject: 'x', body: 'x'.repeat(50_001) })).success).toBe(false)
+  })
+})
+
+describe('sendableNewsletterSchema', () => {
+  it('needs a subject, a non-blank body and a topic', () => {
+    expect(sendableNewsletterSchema.safeParse({ subject: 'S', body: 'B', topicIds: [1] }).success).toBe(true)
+    expect(sendableNewsletterSchema.safeParse({ subject: ' ', body: 'B', topicIds: [1] }).success).toBe(false)
+    expect(sendableNewsletterSchema.safeParse({ subject: 'S', body: '\n ', topicIds: [1] }).success).toBe(false)
+    expect(sendableNewsletterSchema.safeParse({ subject: 'S', body: 'B', topicIds: [] }).success).toBe(false)
+  })
+})
+
+describe('describeRecipientResult', () => {
+  it('never describes a failure or unknown outcome as sent', () => {
+    expect(describeRecipientResult('sent', null)).toBe('Sent')
+    expect(describeRecipientResult('failed', 'unknown_outcome')).toMatch(/may or may not/)
+    expect(describeRecipientResult('failed', 'rejected')).toMatch(/^Rejected/)
+    expect(describeRecipientResult('failed', 'daily_quota_exceeded')).toBe('Failed (daily_quota_exceeded)')
+    expect(describeRecipientResult('skipped', 'unsubscribed')).toMatch(/^Skipped/)
+    expect(describeRecipientResult('skipped', 'topic_removed')).toBe('Skipped: a topic this newsletter went to was deleted before their turn')
+    expect(describeRecipientResult('skipped', 'not_test_audience')).toMatch(/not a @resend.dev test address/)
+    expect(describeRecipientResult('pending', null)).toBe('Not sent yet')
+  })
+})
+
+describe('formatSendTime', () => {
+  it('shows Denver time', () => {
+    expect(formatSendTime(new Date('2026-07-04T18:00:00Z'))).toBe('Jul 4, 2026, 12:00 PM MT')
+    expect(formatSendTime(null)).toBe('—')
+  })
+})
+
+describe('splitTopicNames', () => {
+  it('splits the newline-joined snapshot', () => {
+    expect(splitTopicNames('Events\nJobs')).toEqual(['Events', 'Jobs'])
+    expect(splitTopicNames(null)).toEqual([])
+  })
+})
+
+describe('countNewsletterAudience', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    fake.where.length = 0
+  })
+
+  function lastWhere() {
+    return new PgDialect().sqlToQuery(fake.where.at(-1) as SQL)
+  }
+
+  it('counts only @resend.dev test inboxes on a preview deployment, matching the send', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    await expect(countNewsletterAudience([1, 2])).resolves.toBe(2)
+    const query = lastWhere()
+    expect(query.sql).toContain('lower("members"."email") like $')
+    expect(query.params).toContain('%@resend.dev')
+  })
+
+  it('counts only @resend.dev test inboxes when VERCEL_ENV is missing', async () => {
+    vi.stubEnv('VERCEL_ENV', undefined)
+    await countNewsletterAudience([1])
+    expect(lastWhere().params).toContain('%@resend.dev')
+  })
+
+  it('counts every confirmed subscriber in production', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    await countNewsletterAudience([1])
+    expect(lastWhere().sql).not.toContain('like')
+  })
+})
