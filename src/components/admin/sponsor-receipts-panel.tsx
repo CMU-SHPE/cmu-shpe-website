@@ -21,8 +21,6 @@ import {
 import { formatEventDate } from '@/lib/event-dates'
 import { MAX_RECEIPT_TITLE_LENGTH, formatFileSize } from '@/lib/receipt-files'
 
-export const ADMIN_RECEIPTS_HEADING_ID = 'admin-receipts-heading'
-
 export type AdminReceipt = {
   id: number
   title: string
@@ -32,7 +30,7 @@ export type AdminReceipt = {
   uploadedBy: string | null
 }
 
-export const receiptMessages: Record<ReceiptActionResult['status'], string> = {
+const receiptMessages: Record<ReceiptActionResult['status'], string> = {
   uploaded: 'Receipt uploaded. The sponsor can download it from their portal.',
   deleted: 'Receipt deleted.',
   details: 'Enter a title (up to 200 characters) and a real date.',
@@ -54,7 +52,15 @@ function textField(formData: FormData, name: string) {
   return typeof value === 'string' ? value : ''
 }
 
-export default function SponsorReceiptsPanel({ sponsorId, receipts }: { sponsorId: number; receipts: AdminReceipt[] }) {
+export default function SponsorReceiptsPanel({
+  headingId,
+  sponsorId,
+  receipts,
+}: {
+  headingId: string
+  sponsorId: number
+  receipts: AdminReceipt[]
+}) {
   const [deleteResult, setDeleteResult] = useState<ReceiptActionResult | null>(null)
   // React resets the form after every submission, so a refused upload hands the typed title and date
   // back as the fields' defaults instead of making the admin retype them.
@@ -75,7 +81,7 @@ export default function SponsorReceiptsPanel({ sponsorId, receipts }: { sponsorI
   async function remove(receipt: AdminReceipt) {
     setDeleteResult(await deleteSponsorReceipt(sponsorId, receipt.id))
     // The deleted row and its focused button disappear, so focus goes back to the section.
-    document.getElementById(ADMIN_RECEIPTS_HEADING_ID)?.focus()
+    document.getElementById(headingId)?.focus()
   }
 
   return (

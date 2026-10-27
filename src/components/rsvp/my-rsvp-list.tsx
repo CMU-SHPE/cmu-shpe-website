@@ -7,18 +7,16 @@ import { dangerButtonClass, focusRingClass, mutedTextClass } from '@/components/
 import { cancelEventRsvp } from '@/app/events/actions'
 import { rsvpMessages } from './rsvp-button'
 
-export const MY_RSVPS_HEADING_ID = 'my-rsvps-heading'
-
 export type MyRsvp = { eventId: number; title: string; when: string; location: string }
 
-export default function MyRsvpList({ rsvps }: { rsvps: MyRsvp[] }) {
+export default function MyRsvpList({ headingId, rsvps }: { headingId: string; rsvps: MyRsvp[] }) {
   const [message, setMessage] = useState('')
 
   async function cancel({ eventId, title }: MyRsvp) {
     const { status } = await cancelEventRsvp(eventId)
     setMessage(status === 'cancelled' ? `Your RSVP to ${title} was cancelled.` : rsvpMessages['not-cancelled'])
     // The cancelled row and its focused button disappear, so focus goes back to the section.
-    document.getElementById(MY_RSVPS_HEADING_ID)?.focus()
+    document.getElementById(headingId)?.focus()
   }
 
   return (
