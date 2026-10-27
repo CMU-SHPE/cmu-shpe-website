@@ -119,7 +119,7 @@ export const contentDefaults = {
   'contact.subjects': 'General Inquiry\nMembership\nSponsorship\nEvents\nMedia / Press\nOther',
 
   'privacy.header.heading': 'Privacy Policy',
-  'privacy.updated': 'October 24, 2026',
+  'privacy.updated': 'October 27, 2026',
   'privacy.intro':
     'This policy explains what the Society of Hispanic Professional Engineers chapter at Colorado Mesa University (SHPE @ CMU) collects through this website, why, who helps us handle it, and how you can delete it. We are a student club: we collect as little as we can and never sell your information.',
   'privacy.collect.heading': 'What we collect',
@@ -128,7 +128,9 @@ export const contentDefaults = {
     'Your password in scrambled (hashed) form. We never store or see the password itself.',
     'When you confirmed you are 13 or older and agreed to this policy and our terms, and which version of this policy you agreed to.',
     'Which newsletter topics you choose to receive.',
-    'In the future, the club events you RSVP to.',
+    'The club events you RSVP to, and when you RSVPed.',
+    'If you are a sponsor contact: which sponsor listing your account is linked to, and a record of each change you make to that listing (your name at the time, when, and which parts you changed).',
+    'For sponsors, the receipts for their sponsorship (PDF files) that club officers upload. These are stored privately in our database, not in public file storage.',
     'Short-lived records of sign-in, sign-up and password reset attempts (the email address entered and your IP address), used to stop abuse.',
     'Whatever you type into the contact form, when you send us a message.',
   ].join('\n'),
@@ -137,7 +139,9 @@ export const contentDefaults = {
     'To create your account, keep it secure and sign you in.',
     'To send the emails your account needs: confirming your address, password resets and security notices.',
     'To send the newsletters you choose, and only those.',
-    'To plan club events and track RSVPs, once that feature launches.',
+    'To plan club events. Club officers see the name and email address of everyone who RSVPed to an event and can download that list as a spreadsheet (CSV) to run the event.',
+    'To run the sponsor portal. Club officers can give a confirmed account access by linking it to a sponsor’s listing. Linked accounts can edit that listing’s name, website, description, logo and logo background color, which appear publicly on our Sponsors page, and can download that sponsor’s receipts. Only club officers and the accounts linked to a listing can view its receipts.',
+    'To show club officers who changed a sponsor listing and when.',
     'To answer messages you send us.',
     'To protect the site from spam and abuse.',
   ].join('\n'),
@@ -160,9 +164,14 @@ export const contentDefaults = {
     'Records of sign-in, sign-up and password reset attempts: used for 15 minutes, then deleted automatically during later sign-in, sign-up or password-reset activity.',
     'Server logs of failed or blocked sign-in attempts (the email address entered and your IP address) and of blocked sign-up, new confirmation link and password reset requests (your IP address): kept for a limited time by our host, Vercel, then deleted.',
     'Email confirmation links stop working after 24 hours, and password reset links after 1 hour.',
+    'Your RSVPs: until you cancel them, the event is deleted, or you delete your account.',
+    'Records of changes to a sponsor listing: kept with the listing, including the editor’s name as it was at the time even after that account is deleted, and deleted together with the listing.',
+    'Sponsor receipts: kept until club officers delete them, and deleted together with the sponsor listing.',
   ].join('\n'),
   'privacy.choices.heading': 'Your choices',
   'privacy.choices.items': [
+    'Cancel an RSVP to an upcoming event from the events page or your account page.',
+    'If you have sponsor portal access and no longer want it, ask us and we will unlink your account.',
     'Change which newsletters you receive at any time from your account page.',
     'Delete your account at any time: sign in, open your account page and choose “Delete my account.” Your account and newsletter choices are removed right away.',
     'Ask us for a copy of your information, or to correct it, using the contact details below.',
@@ -177,7 +186,7 @@ export const contentDefaults = {
   'privacy.contact.body': 'Questions about your information or this policy? Email us:',
 
   'terms.header.heading': 'Terms of Use',
-  'terms.updated': 'October 24, 2026',
+  'terms.updated': 'October 27, 2026',
   'terms.intro':
     'These terms cover your use of the SHPE @ Colorado Mesa University website and your account on it. By creating an account you agree to them. They are meant to be short and plain; if anything is unclear, ask us.',
   'terms.accounts.heading': 'Your account',
@@ -190,6 +199,7 @@ export const contentDefaults = {
     'Try to get into accounts or parts of the site that aren’t yours.',
     'Send spam, or flood the site with automated requests.',
     'Interfere with the site, or use it for anything illegal or harassing.',
+    'Use sponsor portal access for anything other than keeping your own organization’s listing accurate, or share receipts or event information from it with people who shouldn’t have them.',
   ].join('\n'),
   'terms.termination.heading': 'Ending your account',
   'terms.termination.body':

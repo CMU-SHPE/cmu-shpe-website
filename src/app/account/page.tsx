@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import SubmitButton from '@/components/submit-button'
 import FocusOnMount from '@/components/focus-on-mount'
 import StatusBanner from '@/components/admin/status-banner'
@@ -94,6 +95,11 @@ export default async function AccountPage(props: {
         <div>
           <h1 className={pageHeadingClass}>Your account</h1>
           <p className={`mt-1 ${mutedTextClass}`}>Signed in as {member.user.email}</p>
+          {member.user.role === 'sponsor' && (
+            <Link href="/sponsor" className={`mt-3 inline-block ${primaryButtonClass}`}>
+              Sponsor portal
+            </Link>
+          )}
         </div>
 
         {hasResult && (

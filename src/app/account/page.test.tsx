@@ -41,6 +41,22 @@ beforeEach(() => {
 })
 
 describe('AccountPage', () => {
+  it('links a sponsor to the sponsor portal', async () => {
+    mocks.requireMember.mockResolvedValue({
+      user: { id: '7', name: 'Mia', email: 'mia@example.com', kind: 'member', role: 'sponsor' },
+    })
+    await renderPage()
+    expect(screen.getByRole('link', { name: 'Sponsor portal' })).toHaveAttribute('href', '/sponsor')
+  })
+
+  it('shows no sponsor portal link to a supporter', async () => {
+    mocks.requireMember.mockResolvedValue({
+      user: { id: '7', name: 'Mia', email: 'mia@example.com', kind: 'member', role: 'supporter' },
+    })
+    await renderPage()
+    expect(screen.queryByRole('link', { name: 'Sponsor portal' })).toBeNull()
+  })
+
   it('requires a member before rendering anything', async () => {
     mocks.requireMember.mockRejectedValue(new Error('REDIRECT /login'))
     await expect(AccountPage({ searchParams: Promise.resolve({}) })).rejects.toThrow('REDIRECT /login')

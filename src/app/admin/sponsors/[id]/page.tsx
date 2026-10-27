@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import SponsorLogo from '@/components/SponsorLogo'
+import AdminSponsorReceipts from '@/components/admin/sponsor-receipts'
 import {
   cardClass,
   focusRingClass,
@@ -153,7 +154,7 @@ export default async function AdminSponsorDetailPage(props: { params: Promise<{ 
         )}
       </section>
 
-      {/* receipts slot */}
+      <AdminSponsorReceipts sponsorId={listing.id} />
     </div>
   )
 }
