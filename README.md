@@ -242,6 +242,23 @@ npm test
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
 (lint, test, build).
 
+### Database integration tests
+
+```bash
+npm run test:db:docker
+```
+
+`*.pg.test.ts(x)` files run every newsletter, topic and member query (and the admin page
+loaders) against a real Postgres 17, under both `VERCEL_ENV=production` and
+`VERCEL_ENV=preview`, through the real `@neondatabase/serverless` driver.
+`scripts/test-db.sh` needs Docker: it starts Postgres and a
+[local Neon HTTP proxy](https://github.com/TimoWilhelm/local-neon-http-proxy) on
+127.0.0.1 only (ports 55440 and 4444, overridable with `TEST_DB_PG_PORT` and
+`TEST_DB_PROXY_PORT`), applies `drizzle/0*.sql`, runs `npm run test:db` and removes the
+containers. `npm test` skips these files, and `npm run test:db` on its own skips them
+unless `TEST_DATABASE_URL` and `TEST_NEON_FETCH_ENDPOINT` are set. Never point those at a
+real database: the tests truncate every table.
+
 ### Preview smoke tests
 
 `e2e/` holds Playwright tests for sign-up, the resend-confirmation and forgot-password
