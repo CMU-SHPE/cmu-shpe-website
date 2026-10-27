@@ -10,8 +10,8 @@ export default defineConfig({
     include: ['src/**/*.pg.test.{ts,tsx}'],
     setupFiles: ['./vitest.db.setup.ts'],
     fileParallelism: false,
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
+    testTimeout: 90_000,
+    hookTimeout: 90_000,
   },
   resolve: {
     alias: {

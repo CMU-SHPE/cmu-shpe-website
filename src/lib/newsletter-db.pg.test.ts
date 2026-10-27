@@ -242,3 +242,38 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     expect(await loadSendSnapshot()).toEqual({ ok: true, snapshot: SNAPSHOT })
   })
 })
+
+describe.skipIf(!hasTestDatabase)('a send continued outside production on real Postgres', () => {
+  beforeEach(async () => {
+    vi.stubEnv('AUTH_SECRET', 'pg-test-secret')
+    vi.stubEnv('VERCEL_ENV', 'production')
+    mail.send.mockReset().mockImplementation(async (emails) => okBatch(emails))
+    await seed(MEMBERS)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it.each([
+    ['refused outright, so the rows start over', 'daily_quota_exceeded'],
+    ['unconfirmed, so the rows keep their claim', 'timeout'],
+  ])('skips real members when a preview continues a production send %s', async (_, reason) => {
+    const id = await draft([1, 2])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+    mail.send.mockResolvedValueOnce({ ok: false, reason, retryable: true })
+    await processNewsletterSend(id)
+    mail.send.mockClear()
+
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    expect(await processNewsletterSend(id)).toEqual({ status: 'sent' })
+
+    const sentTo = mail.send.mock.calls.flatMap(([emails]) => emails.map((email) => email.to))
+    expect(sentTo).toEqual(['delivered+bo@resend.dev', 'delivered+di@resend.dev', 'Eve@Resend.Dev'])
+    expect(
+      await query('select m.email, r.status, r.error_code from newsletter_recipients r join members m on m.id = r.member_id where r.error_code = $1', [
+        'not_test_audience',
+      ]),
+    ).toEqual([{ email: 'ana@example.com', status: 'skipped', error_code: 'not_test_audience' }])
+  })
+})

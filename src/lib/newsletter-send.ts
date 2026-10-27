@@ -192,6 +192,10 @@ export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: 
  * rows claimed for the first time (claimed_at is the transaction's now()) whose member has since
  * unsubscribed or lost confirmation. A re-claim skips nothing, so its batch matches the first try.
  *
+ * Every claimed row (updated_at is the transaction's now()) is also checked against the test
+ * audience: a preview database copied mid-send holds production's pending rows, and pressing
+ * Continue there must not reach real members. In production the check renders `true`.
+ *
  * Claims for one newsletter take turns on its row lock. SKIP LOCKED alone let two concurrent
  * claimers pick the same chunk and each take part of it, sending two different payloads under
  * one idempotency key. A row lock rather than an advisory lock needs no key space shared with
@@ -200,6 +204,7 @@ export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: 
 export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk | null> {
   const db = getDb()
   const claimable = sql`(r.status = 'pending' or (r.status = 'sending' and r.updated_at < now() - ${STALE_CLAIM}))`
+  const inAudience = audienceEmailCondition(sql`m.email`)
   const [, claimed, skipped] = (await db.batch([
     db.execute(sql`select id from newsletters where id = ${newsletterId} for update`),
     db.execute(sql`
@@ -223,19 +228,29 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
     db.execute(sql`
       update newsletter_recipients r set
         status = 'skipped',
-        error_code = case when m.email_confirmed_at is null then 'unconfirmed' else 'unsubscribed' end,
+        error_code = case
+          when not (${inAudience}) then 'not_test_audience'
+          when m.email_confirmed_at is null then 'unconfirmed'
+          else 'unsubscribed'
+        end,
         updated_at = now()
       from members m
       where r.newsletter_id = ${newsletterId}
         and r.status = 'sending'
-        and r.claimed_at = now()
+        and r.updated_at = now()
         and m.id = r.member_id
         and (
-          m.email_confirmed_at is null
-          or not exists (
-            select 1 from member_topic_subscriptions mts
-            join newsletter_topic_selections s on s.topic_id = mts.topic_id
-            where mts.member_id = r.member_id and s.newsletter_id = ${newsletterId}
+          not (${inAudience})
+          or (
+            r.claimed_at = now()
+            and (
+              m.email_confirmed_at is null
+              or not exists (
+                select 1 from member_topic_subscriptions mts
+                join newsletter_topic_selections s on s.topic_id = mts.topic_id
+                where mts.member_id = r.member_id and s.newsletter_id = ${newsletterId}
+              )
+            )
           )
         )
       returning r.id

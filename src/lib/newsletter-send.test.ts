@@ -222,8 +222,27 @@ describe('processNewsletterSend', () => {
     expect(claim).toContain('for update of r skip locked')
     expect(claim).toContain('claimed_at = coalesce(r.claimed_at, now())')
     expect(skip).toContain("set status = 'skipped'")
-    expect(skip).toContain('r.claimed_at = now()')
-    expect(skip).toContain('m.email_confirmed_at is null or not exists')
+    expect(skip).toContain('r.claimed_at = now() and ( m.email_confirmed_at is null or not exists')
+  })
+
+  it('checks every claimed row, first claim or not, against the test audience outside production', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const [, , skip] = fake.batches[0]
+    const text = squash(skip.sql)
+    expect(text).toContain("and r.updated_at = now() and m.id = r.member_id and ( not (lower(m.email) like $")
+    expect(text).toContain("then 'not_test_audience'")
+    expect(skip.params).toContain('%@resend.dev')
+  })
+
+  it('renders the test-audience check as true in production, so retries stay byte-identical', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const [, , skip] = fake.batches[0]
+    expect(squash(skip.sql)).toContain('( not (true) or ( r.claimed_at = now()')
+    expect(skip.params).not.toContain('%@resend.dev')
   })
 
   it('leaves skipped recipients out of the batch', async () => {

@@ -293,9 +293,10 @@ from all newsletters** button) skip unless `E2E_UNSUBSCRIBE_TOKEN` is set.
 
 Preview and local databases are copies of production, so anywhere except production
 (`VERCEL_ENV` other than `production`, including when it isn't set) a real send only goes
-to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes); the
-composer and the send confirmation say so, and their recipient counts leave everyone else
-out. Test sends to yourself are not restricted. To get a token:
+to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes), even
+when it continues a send that production started and the database copy still holds;
+everyone else is skipped. The composer and the send confirmation say so, and their
+recipient counts leave everyone else out. Test sends to yourself are not restricted. To get a token:
 
 1. On the preview, create an account with an address like
    `delivered+unsubscribe-e2e@resend.dev`, open its confirmation email in the Resend
