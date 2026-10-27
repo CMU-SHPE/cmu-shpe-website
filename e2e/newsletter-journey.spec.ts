@@ -9,7 +9,9 @@
  *   E2E_ADMIN_PASSWORD
  * BASE_URL and the optional VERCEL_BYPASS are handled by playwright.config.ts and fixtures.ts.
  *
- * The preview's Site settings must have a mailing address; the spec never changes settings.
+ * Every write is refused unless BASE_URL is a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.
+ * If the preview has no mailing address, the spec sets MAILING_ADDRESS_IF_EMPTY through Site
+ * settings and leaves it there; an existing address is kept.
  */
 import type { Browser, BrowserContext, Page, PlaywrightWorkerArgs } from '@playwright/test'
 import { expect, installBypass, test } from './fixtures'
@@ -24,6 +26,14 @@ const TOPIC_NAME = `E2E journey ${RUN_ID}`
 const NEWSLETTER_SUBJECT = `E2E journey newsletter ${RUN_ID}`
 const NEWSLETTER_BODY = `This is an automated end-to-end check (run ${RUN_ID}).\n\nNo action is needed.`
 
+const MAILING_ADDRESS_IF_EMPTY = [
+  'SHPE @ Colorado Mesa University',
+  'Attn: Ulises Techera, Confluence Hall 337',
+  '1100 North Ave',
+  'Grand Junction, CO 81501',
+].join('\n')
+
+const PREVIEW_HOST = /^cmu-shpe-website-[a-z0-9]+-shpecmu\.vercel\.app$/
 const RESEND_API = 'https://api.resend.com'
 const EMAIL_WAIT_MS = 120_000
 
@@ -41,7 +51,7 @@ const UI = {
   },
   confirm: { password: 'Password', submit: 'Confirm my email' },
   topics: { name: 'Name', add: 'Add topic', delete: (name: string) => `Delete ${name}` },
-  settings: { mailingAddress: 'Mailing address' },
+  settings: { mailingAddress: 'Mailing address', save: 'Save settings' },
   composer: {
     subject: 'Subject',
     body: 'Body',
@@ -61,6 +71,16 @@ const UI = {
     done: (topic: string) => `You’re unsubscribed from ${topic}.`,
   },
 } as const
+
+/** Checked before each write rather than once, so a reordered step can't slip ahead of it. */
+function assertPreviewHost(baseURL: string | undefined, action: string) {
+  const host = baseURL ? new URL(baseURL).hostname : '(no BASE_URL)'
+  if (!PREVIEW_HOST.test(host)) {
+    throw new Error(
+      `Refusing to ${action} on ${host}: the newsletter journey only runs against a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.`,
+    )
+  }
+}
 
 function env(name: (typeof REQUIRED_ENV)[number]): string {
   return process.env[name]!.trim()
@@ -138,6 +158,50 @@ async function previewRequest(playwright: PlaywrightWorkerArgs['playwright'], ba
   })
 }
 
+function linesOf(value: string) {
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+}
+
+async function settingsFormValues(page: Page) {
+  const form = page.locator('form').filter({ has: page.getByLabel(UI.settings.mailingAddress, { exact: true }) })
+  const values = await form
+    .locator('input[name], textarea[name]')
+    .evaluateAll((fields) => fields.map((field) => [(field as HTMLInputElement).name, (field as HTMLInputElement).value] as const))
+  return Object.fromEntries(values.map(([name, value]) => [name, linesOf(value).join('\n')]))
+}
+
+function withoutMailingAddress(values: Record<string, string>) {
+  return Object.fromEntries(Object.entries(values).filter(([name]) => name !== 'mailingAddress'))
+}
+
+/** Uses the address already on the preview; only an empty one is filled in, through the normal form. */
+async function ensureMailingAddress(page: Page, baseURL: string | undefined): Promise<string[]> {
+  await open(page, '/admin/settings')
+  const field = page.getByLabel(UI.settings.mailingAddress, { exact: true })
+  const existing = linesOf(await field.inputValue())
+  if (existing.length > 0) return existing
+
+  assertPreviewHost(baseURL, 'set the mailing address')
+  const before = withoutMailingAddress(await settingsFormValues(page))
+  const form = page.locator('form').filter({ has: field })
+  await field.fill(MAILING_ADDRESS_IF_EMPTY)
+  if (!(await form.evaluate((element) => (element as HTMLFormElement).checkValidity()))) {
+    throw new Error('Site settings has an invalid or empty required field, so the mailing address cannot be saved. Fix it on the preview and rerun.')
+  }
+  await page.getByRole('button', { name: UI.settings.save, exact: true }).click()
+  await page.waitForURL((url) => url.pathname === '/admin/settings' && (url.searchParams.has('saved') || url.searchParams.has('error')))
+  if (new URL(page.url()).searchParams.get('saved') !== '1') {
+    throw new Error('Saving Site settings was refused. Set Site settings → Mailing address on the preview by hand and rerun.')
+  }
+
+  await open(page, '/admin/settings')
+  const saved = await settingsFormValues(page)
+  expect(withoutMailingAddress(saved), 'saving the mailing address should leave every other setting as it was').toEqual(before)
+  expect(saved.mailingAddress).toBe(MAILING_ADDRESS_IF_EMPTY)
+  test.info().annotations.push({ type: 'settings changed', description: 'The preview had no mailing address; the journey set it and left it set.' })
+  return linesOf(MAILING_ADDRESS_IF_EMPTY)
+}
+
 function previewPath(link: string) {
   const url = new URL(link)
   return `${url.pathname}${url.search}`
@@ -156,6 +220,7 @@ test.describe('newsletter journey', () => {
 
   test('sign up, confirm, subscribe, receive, unsubscribe and clean up', async ({ browser, baseURL, playwright }) => {
     test.setTimeout(8 * 60_000)
+    assertPreviewHost(baseURL, 'sign in as the admin')
     const contexts: BrowserContext[] = []
     const admin = await newContext(browser, baseURL).then((context) => (contexts.push(context), context.newPage()))
     const member = await newContext(browser, baseURL).then((context) => (contexts.push(context), context.newPage()))
@@ -165,18 +230,11 @@ test.describe('newsletter journey', () => {
     try {
       let mailingAddressLines: string[] = []
 
-      await test.step('admin signs in, checks the mailing address and adds the journey topic', async () => {
+      await test.step('admin signs in, makes sure there is a mailing address and adds the journey topic', async () => {
         await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', '/admin')
+        mailingAddressLines = await ensureMailingAddress(admin, baseURL)
 
-        await open(admin, '/admin/settings')
-        const address = await admin.getByLabel(UI.settings.mailingAddress, { exact: true }).inputValue()
-        mailingAddressLines = address.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-        if (mailingAddressLines.length === 0) {
-          throw new Error(
-            'The preview has no mailing address, so newsletters cannot be sent. Set Site settings → Mailing address on the preview, then rerun.',
-          )
-        }
-
+        assertPreviewHost(baseURL, 'create a topic')
         await open(admin, '/admin/topics')
         const addForm = admin.locator('form').filter({ has: admin.getByRole('button', { name: UI.topics.add, exact: true }) })
         await addForm.getByLabel(UI.topics.name, { exact: true }).fill(TOPIC_NAME)
@@ -186,6 +244,7 @@ test.describe('newsletter journey', () => {
       })
 
       await test.step('member signs up without opting into anything', async () => {
+        assertPreviewHost(baseURL, 'sign up a member')
         await open(member, '/join')
         await member.getByLabel(UI.join.name, { exact: true }).fill('E2E Journey Tester')
         await member.getByLabel(UI.join.email, { exact: true }).fill(MEMBER_EMAIL)
@@ -201,6 +260,7 @@ test.describe('newsletter journey', () => {
         const email = await waitForEmail('confirmation email', () => true)
         const link = `${email.text ?? ''}\n${email.html ?? ''}`.match(/https?:\/\/[^\s"<>]+\/join\/confirm\?token=[\w-]+/)?.[0]
         expect(link, 'the confirmation email should carry a /join/confirm link').toBeTruthy()
+        assertPreviewHost(baseURL, 'confirm the member')
         await open(member, previewPath(link!))
         await member.getByLabel(UI.confirm.password, { exact: true }).fill(MEMBER_PASSWORD)
         await member.getByRole('button', { name: UI.confirm.submit }).click()
@@ -210,6 +270,7 @@ test.describe('newsletter journey', () => {
       await test.step('member signs in and opts into the journey topic', async () => {
         await signIn(member, MEMBER_EMAIL, MEMBER_PASSWORD, 'Member', '/account')
         memberSignedIn = true
+        assertPreviewHost(baseURL, 'change the member’s topics')
         const box = await accountTopicBox(member)
         await expect(box).not.toBeChecked()
         await box.check()
@@ -223,6 +284,7 @@ test.describe('newsletter journey', () => {
         if (await admin.getByText(UI.composer.noAddress).isVisible()) {
           throw new Error('The composer says the mailing address is missing. Set Site settings → Mailing address on the preview.')
         }
+        assertPreviewHost(baseURL, 'compose a newsletter')
         await admin.getByLabel(UI.composer.subject, { exact: true }).fill(NEWSLETTER_SUBJECT)
         await admin.getByLabel(UI.composer.body, { exact: true }).fill(NEWSLETTER_BODY)
         await admin.getByRole('checkbox', { name: TOPIC_NAME }).check()
@@ -230,6 +292,7 @@ test.describe('newsletter journey', () => {
         await admin.waitForURL(/\/admin\/newsletters\/\d+\/send$/)
 
         await expect(admin.getByRole('heading', { level: 2, name: UI.confirmSend.heading })).toBeVisible()
+        assertPreviewHost(baseURL, 'send a newsletter')
         await admin.getByRole('button', { name: UI.confirmSend.send, exact: true }).click()
         await admin.waitForURL((url) => /^\/admin\/newsletters\/\d+$/.test(url.pathname) && url.searchParams.get('sent') === '1', {
           timeout: 120_000,
@@ -285,12 +348,14 @@ test.describe('newsletter journey', () => {
         await expect(await accountTopicBox(member)).toBeChecked()
 
         await open(member, previewPath(unsubscribeLink))
+        assertPreviewHost(baseURL, 'unsubscribe the member')
         await unsubscribeButton.click()
         await expect(member.getByText(UI.unsubscribe.done(TOPIC_NAME), { exact: true })).toBeVisible()
         await expect(await accountTopicBox(member)).not.toBeChecked()
       })
 
       await test.step('one-click POST answers 200, and 200 again on a repeat', async () => {
+        assertPreviewHost(baseURL, 'send a one-click unsubscribe')
         const request = await previewRequest(playwright, baseURL)
         try {
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -311,6 +376,7 @@ test.describe('newsletter journey', () => {
       await test.step('clean up the journey topic and member', async () => {
         if (topicCreated) {
           try {
+            assertPreviewHost(baseURL, 'delete the journey topic')
             await open(admin, '/admin/topics')
             admin.once('dialog', (dialog) => dialog.accept())
             await admin.getByRole('button', { name: UI.topics.delete(TOPIC_NAME), exact: true }).click()
@@ -322,6 +388,7 @@ test.describe('newsletter journey', () => {
         }
 
         try {
+          assertPreviewHost(baseURL, 'delete the journey member')
           if (!memberSignedIn) await signIn(member, MEMBER_EMAIL, MEMBER_PASSWORD, 'Member', '/account')
           await open(member, '/account')
           await member.getByLabel(UI.account.deletePassword, { exact: true }).fill(MEMBER_PASSWORD)
@@ -338,5 +405,14 @@ test.describe('newsletter journey', () => {
         test.info().annotations.push({ type: 'cleanup needed', description: cleanupProblems.join('; ') })
       }
     }
+  })
+
+  test('leaves out a confirmed subscriber who is not on @resend.dev', () => {
+    test.skip(
+      true,
+      'Not possible end to end: only @resend.dev test inboxes can be read, so a non-resend.dev member can never be confirmed ' +
+        'from here, and the spec does not create one. The preview-only filter is covered by the unit tests in ' +
+        'src/lib/newsletter-audience.test.ts, src/lib/newsletter-admin.test.ts and src/lib/newsletter-send.test.ts.',
+    )
   })
 })
