@@ -95,7 +95,7 @@ const UI = {
   listingForm: {
     name: 'Name',
     website: 'Website (optional)',
-    description: 'Description',
+    description: 'Description (optional)',
     bgColor: 'Logo background color',
     save: 'Save listing',
   },
@@ -332,7 +332,9 @@ test.describe('sponsor journey', () => {
 
       await test.step('member A signs in, lands on /sponsor and the page passes axe', async () => {
         await signIn(sponsor, SPONSOR_MEMBER.email, SPONSOR_MEMBER.password, 'Member A', ROUTES.sponsorHome)
-        await expect(sponsor.locator('main')).toContainText(LISTING_NAME)
+        await expect(
+          formWithButton(sponsor, UI.listingForm.save).getByLabel(UI.listingForm.name, { exact: true }),
+        ).toHaveValue(LISTING_NAME)
         await axeInBothThemes(sponsor, ROUTES.sponsorHome)
       })
 
