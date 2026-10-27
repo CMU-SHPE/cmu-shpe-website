@@ -101,7 +101,13 @@ describe('countNewsletterAudience', () => {
     expect(query.params).toContain('%@resend.dev')
   })
 
-  it('counts every confirmed subscriber elsewhere', async () => {
+  it('counts only @resend.dev test inboxes when VERCEL_ENV is missing', async () => {
+    vi.stubEnv('VERCEL_ENV', undefined)
+    await countNewsletterAudience([1])
+    expect(lastWhere().params).toContain('%@resend.dev')
+  })
+
+  it('counts every confirmed subscriber in production', async () => {
     vi.stubEnv('VERCEL_ENV', 'production')
     await countNewsletterAudience([1])
     expect(lastWhere().sql).not.toContain('like')

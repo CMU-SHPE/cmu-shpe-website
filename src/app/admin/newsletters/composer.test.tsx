@@ -94,9 +94,11 @@ describe('Composer', () => {
     expect(preview().getAttribute('srcdoc')).toContain('[Mailing address: add it in Site settings]')
   })
 
-  it('says on a preview deployment that only @resend.dev test addresses will receive it', () => {
-    setup({ previewAudienceOnly: true })
-    expect(screen.getByRole('note')).toHaveTextContent('Preview deployment: only @resend.dev test addresses receive this newsletter.')
+  it('says outside production that only @resend.dev test addresses will receive it', () => {
+    setup({ testAudienceOnly: true })
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Not the production site: only @resend.dev test addresses receive this newsletter. Real members are left out of the count and the send.',
+    )
   })
 
   it('shows no preview notice in production', () => {

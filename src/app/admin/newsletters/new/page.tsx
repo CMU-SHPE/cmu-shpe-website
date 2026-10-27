@@ -8,7 +8,7 @@ import {
   newsletterErrorMessages,
   previewSiteUrl,
 } from '@/lib/newsletter-admin'
-import { previewAudienceOnly } from '@/lib/newsletter-audience'
+import { testAudienceOnly } from '@/lib/newsletter-audience'
 import { getSiteSettings } from '@/lib/queries'
 import Composer from '../composer'
 import { reviewNewsletter, saveNewsletter, sendTestNewsletter } from '../actions'
@@ -37,7 +37,7 @@ export default async function NewNewsletterPage(props: {
         mailingAddress={settings?.mailingAddress ?? ''}
         siteUrl={previewSiteUrl()}
         adminEmail={admin.user.email ?? 'your email'}
-        previewAudienceOnly={previewAudienceOnly()}
+        testAudienceOnly={testAudienceOnly()}
         save={saveNewsletter.bind(null, null)}
         sendTest={sendTestNewsletter.bind(null, null)}
         review={reviewNewsletter.bind(null, null)}

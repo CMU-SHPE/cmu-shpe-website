@@ -137,6 +137,7 @@ describe('startNewsletterSend', () => {
   const snapshot = { mailingAddress: 'Addr', replyTo: 'shpe@cmu.edu', siteUrl: 'https://shpe.example', fromAddress: 'from' }
 
   it('claims the draft and snapshots distinct confirmed subscribers in one statement', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
     fake.respond = () => [{ claimed: 1, recipients: 3 }]
     await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: true, recipients: 3 })
     expect(fake.queries).toHaveLength(1)
@@ -159,6 +160,13 @@ describe('startNewsletterSend', () => {
     expect(filters).toHaveLength(2)
     expect(sql).toMatch(/where s\.newsletter_id = \$\d+ and lower\(m\.email\) like \$\d+ \) where id/)
     expect(sql).toMatch(/m\.email_confirmed_at is not null where lower\(m\.email\) like \$\d+ \), inserted/)
+    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(2)
+  })
+
+  it('limits the audience when VERCEL_ENV is missing, failing safe', async () => {
+    vi.stubEnv('VERCEL_ENV', undefined)
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
     expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(2)
   })
 

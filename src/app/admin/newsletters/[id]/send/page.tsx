@@ -19,8 +19,8 @@ import {
   newsletterErrorMessages,
   previewSiteUrl,
 } from '@/lib/newsletter-admin'
-import { previewAudienceOnly } from '@/lib/newsletter-audience'
-import { PREVIEW_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
+import { testAudienceOnly } from '@/lib/newsletter-audience'
+import { TEST_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
 import { newsletterSubject, renderNewsletter } from '@/lib/newsletter-render'
 import { loadSendSnapshot } from '@/lib/newsletter-send'
 import { sendNewsletter } from '../../actions'
@@ -70,12 +70,12 @@ export default async function ConfirmSendPage(props: {
 
       <StatusBanner error={error ?? blocker ?? (incomplete ? 'incomplete' : undefined)} errorMessages={newsletterErrorMessages} />
 
-      {previewAudienceOnly() && (
+      {testAudienceOnly() && (
         <p
           role="note"
           className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm text-blue-900 dark:text-blue-200"
         >
-          {PREVIEW_AUDIENCE_NOTICE}
+          {TEST_AUDIENCE_NOTICE}
         </p>
       )}
 

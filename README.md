@@ -269,10 +269,11 @@ to `/unsubscribe`, and runs axe on that page in light and dark mode.
 The working-link tests (the form, its axe scans, a one-click POST and the **Unsubscribe
 from all newsletters** button) skip unless `E2E_UNSUBSCRIBE_TOKEN` is set.
 
-Preview databases are copies of production, so on a preview deployment a real send only
-goes to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes);
-the composer and the send confirmation say so, and their recipient counts leave everyone
-else out. Test sends to yourself are not restricted. To get a token:
+Preview and local databases are copies of production, so anywhere except production
+(`VERCEL_ENV` other than `production`, including when it isn't set) a real send only goes
+to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes); the
+composer and the send confirmation say so, and their recipient counts leave everyone else
+out. Test sends to yourself are not restricted. To get a token:
 
 1. On the preview, create an account with an address like
    `delivered+unsubscribe-e2e@resend.dev`, open its confirmation email in the Resend

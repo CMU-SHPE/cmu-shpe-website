@@ -32,7 +32,7 @@ import {
   type NewsletterRecipientRow,
 } from '@/lib/newsletter-admin'
 import { renderNewsletter } from '@/lib/newsletter-render'
-import { previewAudienceOnly } from '@/lib/newsletter-audience'
+import { testAudienceOnly } from '@/lib/newsletter-audience'
 import { getSiteSettings } from '@/lib/queries'
 import Composer from '../composer'
 import { continueSending, reviewNewsletter, saveNewsletter, sendTestNewsletter } from '../actions'
@@ -97,7 +97,7 @@ async function draftView(newsletter: NewsletterDetail, searchParams: SearchParam
         mailingAddress={settings?.mailingAddress ?? ''}
         siteUrl={previewSiteUrl()}
         adminEmail={admin.user.email ?? 'your email'}
-        previewAudienceOnly={previewAudienceOnly()}
+        testAudienceOnly={testAudienceOnly()}
         save={saveNewsletter.bind(null, newsletter.id)}
         sendTest={sendTestNewsletter.bind(null, newsletter.id)}
         review={reviewNewsletter.bind(null, newsletter.id)}

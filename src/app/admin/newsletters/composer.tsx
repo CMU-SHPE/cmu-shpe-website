@@ -13,7 +13,7 @@ import {
   secondaryButtonClass,
   sectionHeadingClass,
 } from '@/components/admin/styles'
-import { MAX_NEWSLETTER_BODY_LENGTH, MAX_NEWSLETTER_SUBJECT_LENGTH, PREVIEW_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
+import { MAX_NEWSLETTER_BODY_LENGTH, MAX_NEWSLETTER_SUBJECT_LENGTH, TEST_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
 import { renderNewsletter } from '@/lib/newsletter-render'
 
 type Action = (formData: FormData) => void | Promise<void>
@@ -32,7 +32,7 @@ export default function Composer({
   mailingAddress,
   siteUrl,
   adminEmail,
-  previewAudienceOnly = false,
+  testAudienceOnly = false,
   save,
   sendTest,
   review,
@@ -42,7 +42,7 @@ export default function Composer({
   mailingAddress: string
   siteUrl: string
   adminEmail: string
-  previewAudienceOnly?: boolean
+  testAudienceOnly?: boolean
   save: Action
   sendTest: Action
   review: Action
@@ -93,12 +93,12 @@ export default function Composer({
 
   return (
     <div className="space-y-6">
-      {previewAudienceOnly && (
+      {testAudienceOnly && (
         <p
           role="note"
           className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm text-blue-900 dark:text-blue-200"
         >
-          {PREVIEW_AUDIENCE_NOTICE}
+          {TEST_AUDIENCE_NOTICE}
         </p>
       )}
       {!canSend && (
