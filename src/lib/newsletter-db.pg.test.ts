@@ -216,6 +216,17 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     ])
   })
 
+  it('skips a member whose only chosen topic was deleted mid-send as topic_removed', async () => {
+    const id = await draft([3])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+    await query('delete from newsletter_topics where id = 3')
+    expect(await processNewsletterSend(id)).toEqual({ status: 'sent' })
+    expect(mail.send).not.toHaveBeenCalled()
+    expect(
+      await query('select m.email, r.status, r.error_code from newsletter_recipients r join members m on m.id = r.member_id'),
+    ).toEqual([{ email: 'delivered+di@resend.dev', status: 'skipped', error_code: 'topic_removed' }])
+  })
+
   it('resolves and uses an unsubscribe link, removing and logging each subscription once', async () => {
     const id = await draft([1])
     await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)

@@ -192,6 +192,10 @@ export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: 
  * rows claimed for the first time (claimed_at is the transaction's now()) whose member has since
  * unsubscribed or lost confirmation. A re-claim skips nothing, so its batch matches the first try.
  *
+ * Deleting a topic removes its selection, so fewer selections than the topic names frozen at
+ * the start marks a skip as topic_removed. A member who also unsubscribed from a remaining topic
+ * is labelled the same way, since account-page changes leave no record to tell them apart.
+ *
  * Every claimed row (updated_at is the transaction's now()) is also checked against the test
  * audience: a preview database copied mid-send holds production's pending rows, and pressing
  * Continue there must not reach real members. In production the check renders `true`.
@@ -231,11 +235,14 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
         error_code = case
           when not (${inAudience}) then 'not_test_audience'
           when m.email_confirmed_at is null then 'unconfirmed'
+          when (select count(*) from newsletter_topic_selections s where s.newsletter_id = n.id)
+            < coalesce(array_length(string_to_array(n.topic_names, chr(10)), 1), 0) then 'topic_removed'
           else 'unsubscribed'
         end,
         updated_at = now()
-      from members m
+      from members m, newsletters n
       where r.newsletter_id = ${newsletterId}
+        and n.id = r.newsletter_id
         and r.status = 'sending'
         and r.updated_at = now()
         and m.id = r.member_id

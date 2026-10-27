@@ -65,6 +65,8 @@ describe('describeRecipientResult', () => {
     expect(describeRecipientResult('failed', 'rejected')).toMatch(/^Rejected/)
     expect(describeRecipientResult('failed', 'daily_quota_exceeded')).toBe('Failed (daily_quota_exceeded)')
     expect(describeRecipientResult('skipped', 'unsubscribed')).toMatch(/^Skipped/)
+    expect(describeRecipientResult('skipped', 'topic_removed')).toBe('Skipped: a topic this newsletter went to was deleted before their turn')
+    expect(describeRecipientResult('skipped', 'not_test_audience')).toMatch(/not a @resend.dev test address/)
     expect(describeRecipientResult('pending', null)).toBe('Not sent yet')
   })
 })

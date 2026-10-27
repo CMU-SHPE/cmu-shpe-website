@@ -223,6 +223,7 @@ describe('processNewsletterSend', () => {
     expect(claim).toContain('claimed_at = coalesce(r.claimed_at, now())')
     expect(skip).toContain("set status = 'skipped'")
     expect(skip).toContain('r.claimed_at = now() and ( m.email_confirmed_at is null or not exists')
+    expect(skip).toContain("< coalesce(array_length(string_to_array(n.topic_names, chr(10)), 1), 0) then 'topic_removed'")
   })
 
   it('checks every claimed row, first claim or not, against the test audience outside production', async () => {

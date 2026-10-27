@@ -163,6 +163,7 @@ const errorCodeLabels: Record<string, string> = {
   unknown_outcome: 'Unknown: it may or may not have been delivered',
   unsubscribed: 'Skipped: unsubscribed before it was sent',
   unconfirmed: 'Skipped: email no longer confirmed',
+  topic_removed: 'Skipped: a topic this newsletter went to was deleted before their turn',
   not_test_audience: 'Skipped: not a @resend.dev test address, and this is not the production site',
   validation_error: 'Rejected by the email service as invalid',
   invalid_from_address: 'Rejected: the sending address is not set up',
