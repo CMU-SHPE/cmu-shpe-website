@@ -125,6 +125,15 @@ export async function rsvpCounts(eventIds?: number[]): Promise<Map<number, numbe
   return new Map(rows.map((row) => [row.eventId, row.total]))
 }
 
+export async function findEvent(eventId: number) {
+  const [event] = await getDb()
+    .select({ id: events.id, title: events.title, date: events.date, time: events.time, capacity: events.capacity })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1)
+  return event ?? null
+}
+
 export async function listAttendees(eventId: number) {
   return getDb()
     .select({ name: members.name, email: members.email, rsvpAt: eventRsvps.createdAt })

@@ -1,9 +1,11 @@
+import Link from 'next/link'
 import SubmitButton from '@/components/submit-button'
 import DeleteButton from '@/components/admin/delete-button'
 import EditDetails from '@/components/admin/edit-details'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
+  focusRingClass,
   inputClass,
   labelClass,
   mutedTextClass,
@@ -14,13 +16,15 @@ import {
 import type { ClubEvent } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
-import { MAX_EVENT_DESCRIPTION_LENGTH } from '@/lib/event-schema'
+import { MAX_EVENT_CAPACITY, MAX_EVENT_DESCRIPTION_LENGTH } from '@/lib/event-schema'
 import { EVENT_TYPES } from '@/lib/event-types'
 import { getEvents } from '@/lib/queries'
+import { rsvpCounts } from '@/lib/rsvp'
 import { createEvent, deleteEvent, updateEvent } from './actions'
 
 const errorMessages: Record<string, string> = {
-  invalid: 'Please check the fields — the title, location, type and a real date are required.',
+  invalid:
+    'Please check the fields — the title, location, type and a real date are required, and a capacity must be a whole number from 1 to 10,000.',
   missing: 'That event no longer exists.',
 }
 
@@ -77,11 +81,56 @@ function EventFields({ event }: { event?: ClubEvent }) {
           />
         </label>
       </div>
+      <label className={labelClass}>
+        Capacity (optional)
+        <input
+          name="capacity"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={MAX_EVENT_CAPACITY}
+          step={1}
+          defaultValue={event?.capacity ?? ''}
+          aria-describedby={capacityHintId(event)}
+          className={inputClass}
+        />
+      </label>
+      <p id={capacityHintId(event)} className={`-mt-2 ${mutedTextClass}`}>
+        Leave blank for no limit. Members can RSVP until it is full.
+      </p>
     </>
   )
 }
 
-function EventList({ events, emptyText }: { events: ClubEvent[]; emptyText: string }) {
+function capacityHintId(event?: ClubEvent) {
+  return event ? `capacity-hint-${event.id}` : 'capacity-hint-new'
+}
+
+function RsvpSummary({ event, going }: { event: ClubEvent; going: number }) {
+  const label = going === 1 ? 'RSVP' : 'RSVPs'
+  return (
+    <p className={mutedTextClass}>
+      {event.capacity === null ? `${going} ${label}` : `${going} / ${event.capacity} ${label}`}
+      {' · '}
+      <Link
+        href={`/admin/events/${event.id}/attendees`}
+        className={`rounded text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`}
+      >
+        Attendees<span className="sr-only"> for {event.title}</span>
+      </Link>
+    </p>
+  )
+}
+
+function EventList({
+  events,
+  counts,
+  emptyText,
+}: {
+  events: ClubEvent[]
+  counts: Map<number, number>
+  emptyText: string
+}) {
   if (events.length === 0) return <p className={`mt-4 ${mutedTextClass}`}>{emptyText}</p>
 
   return (
@@ -95,6 +144,7 @@ function EventList({ events, emptyText }: { events: ClubEvent[]; emptyText: stri
                 {formatEventDate(event.date)}
                 {event.time && ` · ${event.time}`} · {event.type}
               </p>
+              <RsvpSummary event={event} going={counts.get(event.id) ?? 0} />
             </div>
             <form action={deleteEvent.bind(null, event.id)}>
               <DeleteButton name={event.title} />
@@ -118,7 +168,7 @@ export default async function AdminEventsPage(props: {
   searchParams: Promise<{ saved?: string; error?: string }>
 }) {
   await requireAdmin()
-  const [{ saved, error }, rows] = await Promise.all([props.searchParams, getEvents()])
+  const [{ saved, error }, rows, counts] = await Promise.all([props.searchParams, getEvents(), rsvpCounts()])
   const { upcoming, past } = splitEvents(rows, todayInDenver(new Date()))
 
   return (
@@ -146,14 +196,14 @@ export default async function AdminEventsPage(props: {
         <h2 id="upcoming-events-heading" className={sectionHeadingClass}>
           Upcoming events
         </h2>
-        <EventList events={upcoming} emptyText="No upcoming events." />
+        <EventList events={upcoming} counts={counts} emptyText="No upcoming events." />
       </section>
 
       <section className={cardClass} aria-labelledby="past-events-heading">
         <h2 id="past-events-heading" className={sectionHeadingClass}>
           Past events
         </h2>
-        <EventList events={past} emptyText="No past events." />
+        <EventList events={past} counts={counts} emptyText="No past events." />
       </section>
     </div>
   )
