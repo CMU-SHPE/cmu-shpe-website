@@ -126,17 +126,20 @@ export async function reviewNewsletter(id: number | null, formData: FormData) {
 }
 
 const expectedCount = z.string().regex(/^\d{1,9}$/).transform(Number)
+const reviewedVersion = z.iso.datetime().transform((value) => new Date(value))
 
 export async function sendNewsletter(id: number, formData: FormData) {
   const admin = await requireAdmin()
   const newsletterId = parseId(id)
   const confirmPath = `${LIST}/${newsletterId}/send`
   const expected = expectedCount.safeParse(formData.get('expectedCount'))
-  if (!expected.success) redirect(`${confirmPath}?error=invalid`)
+  const reviewed = reviewedVersion.safeParse(formData.get('reviewedAt'))
+  if (!expected.success || !reviewed.success) redirect(`${confirmPath}?error=invalid`)
 
   const newsletter = await getNewsletter(newsletterId)
   if (!newsletter) redirect(`${LIST}?error=missing`)
   if (newsletter.status !== 'draft') redirect(`${LIST}/${newsletterId}?error=not_draft`)
+  if (newsletter.updatedAt.getTime() !== reviewed.data.getTime()) redirect(`${confirmPath}?error=changed`)
 
   const sendable = sendableNewsletterSchema.safeParse(newsletter)
   if (!sendable.success) redirect(`${LIST}/${newsletterId}?error=incomplete`)
@@ -153,8 +156,11 @@ export async function sendNewsletter(id: number, formData: FormData) {
 
   const adminId = adminIdOf(admin)
   const name = (await getAdminName(adminId)) ?? admin.user.name ?? 'An admin'
-  const started = await startNewsletterSend(newsletterId, { id: adminId, name }, ready.snapshot)
-  if (!started.started) redirect(`${LIST}/${newsletterId}?error=not_draft`)
+  const started = await startNewsletterSend(newsletterId, { id: adminId, name }, ready.snapshot, reviewed.data)
+  if (!started.started) {
+    const now = await getNewsletter(newsletterId)
+    redirect(now?.status === 'draft' ? `${confirmPath}?error=changed` : `${LIST}/${newsletterId}?error=not_draft`)
+  }
 
   const result = await processNewsletterSend(newsletterId)
   redirect(`${LIST}/${newsletterId}?${result.status === 'sent' ? 'sent=1' : `progress=${'reason' in result ? result.reason : 'busy'}`}`)

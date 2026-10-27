@@ -200,6 +200,7 @@ export const newsletterErrorMessages: Record<string, string> = {
   auth_secret_missing: 'The site’s secret key (AUTH_SECRET) is missing, so unsubscribe links can’t be made.',
   test_failed: 'The test email could not be sent. Please try again in a minute.',
   no_recipients: 'No confirmed members are subscribed to the chosen topics, so there is no one to send to.',
+  changed: 'This newsletter was edited after you reviewed it. Check the version below, then confirm again.',
   count_changed:
     'The number of recipients changed since this page loaded. Check the new number below and confirm again.',
 }

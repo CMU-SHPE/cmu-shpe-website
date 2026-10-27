@@ -91,13 +91,17 @@ export async function sendNewsletterTest(
 
 /**
  * Claims the draft and snapshots its recipients in one statement, so two admins pressing Send
- * can't both start it, and the list can't drift between counting and inserting.
+ * can't both start it, and the list can't drift between counting and inserting. With
+ * reviewedAt, an edit saved after the admin reviewed the draft makes the claim fail, so the
+ * version sent is always the one confirmed.
  */
 export async function startNewsletterSend(
   newsletterId: number,
   admin: { id: number; name: string },
   snapshot: SendSnapshot,
+  reviewedAt?: Date,
 ): Promise<StartResult> {
+  const reviewedVersion = reviewedAt ? sql`and date_trunc('milliseconds', updated_at) = ${reviewedAt.toISOString()}::timestamptz` : sql``
   const audienceEmail = audienceEmailCondition(sql`m.email`)
   const [row] = await run<{ claimed: number; recipients: number }>(sql`
     with claimed as (
@@ -128,6 +132,7 @@ export async function startNewsletterSend(
         and btrim(subject) <> ''
         and btrim(body) <> ''
         and exists (select 1 from newsletter_topic_selections where newsletter_id = ${newsletterId})
+        ${reviewedVersion}
       returning id
     ),
     audience as (

@@ -8,7 +8,11 @@ const mocks = vi.hoisted(() => ({
   newsletter: null as Record<string, unknown> | null,
   recipients: [] as unknown[],
   audience: 3,
-  ready: { ok: true } as { ok: boolean; blocker?: string },
+  ready: { ok: true, snapshot: { mailingAddress: '5000 Forbes Ave', siteUrl: 'https://shpe.example' } } as {
+    ok: boolean
+    blocker?: string
+    snapshot?: { mailingAddress: string; siteUrl: string }
+  },
   settings: { mailingAddress: '5000 Forbes Ave' } as { mailingAddress: string } | null,
 }))
 
@@ -97,6 +101,7 @@ const sentNewsletter = {
   topicIds: [1],
   currentTopicNames: ['Events'],
   topicNames: 'Events',
+  updatedAt: new Date('2026-10-20T22:00:00.123Z'),
   sendStartedAt: sentAt,
   sentAt,
   sentByName: 'Ada',
@@ -114,7 +119,7 @@ beforeEach(() => {
   mocks.newsletter = null
   mocks.recipients = []
   mocks.audience = 3
-  mocks.ready = { ok: true }
+  mocks.ready = { ok: true, snapshot: { mailingAddress: '5000 Forbes Ave', siteUrl: 'https://shpe.example' } }
   mocks.settings = { mailingAddress: '5000 Forbes Ave' }
 })
 
@@ -224,6 +229,8 @@ describe('confirm send page', () => {
     expect(screen.getByRole('heading', { name: 'This will email 1,234 people now' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send to 1,234 people' })).toBeInTheDocument()
     expect(container.querySelector('input[name="expectedCount"]')).toHaveValue('1234')
+    expect(container.querySelector('input[name="reviewedAt"]')).toHaveValue('2026-10-20T22:00:00.123Z')
+    expect(screen.getByTitle('Newsletter preview').getAttribute('srcdoc')).toContain('5000 Forbes Ave')
   })
 
   it('warns on a preview deployment that only @resend.dev test addresses are counted and sent to', async () => {

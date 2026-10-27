@@ -109,6 +109,7 @@ import {
   sendTestNewsletter,
 } from './actions'
 
+const REVIEWED_AT = '2026-10-20T22:00:00.123Z'
 const SNAPSHOT = { mailingAddress: 'Addr', replyTo: null, siteUrl: 'https://shpe.example', fromAddress: 'from' }
 
 function form(values: Record<string, string | string[]>) {
@@ -141,6 +142,7 @@ beforeEach(() => {
     body: 'Hello',
     topicIds: [1],
     currentTopicNames: ['Events'],
+    updatedAt: new Date(REVIEWED_AT),
   }
   mocks.loadSendSnapshot.mockReset().mockResolvedValue({ ok: true, snapshot: SNAPSHOT })
   mocks.startNewsletterSend.mockReset().mockResolvedValue({ started: true, recipients: 3 })
@@ -226,12 +228,12 @@ describe('reviewNewsletter', () => {
 })
 
 describe('sendNewsletter', () => {
-  const confirmed = (count = '3') => form({ expectedCount: count })
+  const confirmed = (count = '3', reviewedAt = REVIEWED_AT) => form({ expectedCount: count, reviewedAt })
 
   it('starts the send with the admin name from the database and processes it', async () => {
     expect(await redirectOf(sendNewsletter(4, confirmed()))).toBe('/admin/newsletters/4?sent=1')
     expect(mocks.state.calls[0]).toBe('requireAdmin')
-    expect(mocks.startNewsletterSend).toHaveBeenCalledWith(4, { id: 2, name: 'Ada Lovelace' }, SNAPSHOT)
+    expect(mocks.startNewsletterSend).toHaveBeenCalledWith(4, { id: 2, name: 'Ada Lovelace' }, SNAPSHOT, new Date(REVIEWED_AT))
     expect(mocks.processNewsletterSend).toHaveBeenCalledWith(4)
   })
 
@@ -265,13 +267,30 @@ describe('sendNewsletter', () => {
     ['a changed recipient count', () => (mocks.state.audience = 5), undefined, '/admin/newsletters/4/send?error=count_changed'],
     [
       'a draft claimed by someone else',
-      () => mocks.startNewsletterSend.mockResolvedValue({ started: false }),
+      () =>
+        mocks.startNewsletterSend.mockImplementation(async () => {
+          mocks.state.newsletter = { ...mocks.state.newsletter, status: 'sending' }
+          return { started: false }
+        }),
       undefined,
       '/admin/newsletters/4?error=not_draft',
     ],
   ])('refuses %s', async (_, arrange, data, url) => {
     arrange()
     expect(await redirectOf(sendNewsletter(4, data ?? confirmed()))).toBe(url)
+    expect(mocks.processNewsletterSend).not.toHaveBeenCalled()
+  })
+
+  it('refuses a send when the draft was saved again after it was reviewed', async () => {
+    expect(await redirectOf(sendNewsletter(4, confirmed('3', '2026-10-20T21:59:59.000Z')))).toBe(
+      '/admin/newsletters/4/send?error=changed',
+    )
+    expect(mocks.startNewsletterSend).not.toHaveBeenCalled()
+  })
+
+  it('reports an edit that lands between the checks and the claim as a change, not as already sent', async () => {
+    mocks.startNewsletterSend.mockResolvedValue({ started: false })
+    expect(await redirectOf(sendNewsletter(4, confirmed()))).toBe('/admin/newsletters/4/send?error=changed')
     expect(mocks.processNewsletterSend).not.toHaveBeenCalled()
   })
 

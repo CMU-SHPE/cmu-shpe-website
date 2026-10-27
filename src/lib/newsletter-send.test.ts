@@ -166,6 +166,13 @@ describe('startNewsletterSend', () => {
     expect(fake.queries[0].params).not.toContain('%@resend.dev')
   })
 
+  it('claims only the reviewed version when given the time it was reviewed', async () => {
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot, new Date('2026-10-20T22:00:00.123Z'))
+    expect(squash(fake.queries[0].sql)).toMatch(/and date_trunc\('milliseconds', updated_at\) = \$\d+::timestamptz returning id/)
+    expect(fake.queries[0].params).toContain('2026-10-20T22:00:00.123Z')
+  })
+
   it('reports nothing started when the draft was already claimed', async () => {
     fake.respond = () => [{ claimed: 0, recipients: 0 }]
     await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false })
