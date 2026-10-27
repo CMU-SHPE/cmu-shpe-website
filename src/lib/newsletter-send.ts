@@ -180,11 +180,17 @@ export type ClaimedChunk = { chunk: number; recipientIds: number[] }
  * Claims every claimable row of the lowest open chunk and, in the same transaction, skips the
  * rows claimed for the first time (claimed_at is the transaction's now()) whose member has since
  * unsubscribed or lost confirmation. A re-claim skips nothing, so its batch matches the first try.
+ *
+ * Claims for one newsletter take turns on its row lock. SKIP LOCKED alone let two concurrent
+ * claimers pick the same chunk and each take part of it, sending two different payloads under
+ * one idempotency key. A row lock rather than an advisory lock needs no key space shared with
+ * other code, and waiting is short since the lock lasts only for this transaction.
  */
 export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk | null> {
   const db = getDb()
   const claimable = sql`(r.status = 'pending' or (r.status = 'sending' and r.updated_at < now() - ${STALE_CLAIM}))`
-  const [claimed, skipped] = (await db.batch([
+  const [, claimed, skipped] = (await db.batch([
+    db.execute(sql`select id from newsletters where id = ${newsletterId} for update`),
     db.execute(sql`
       with target as (
         select r.chunk from newsletter_recipients r
@@ -223,7 +229,7 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
         )
       returning r.id
     `),
-  ])) as unknown as [Rows<{ id: number; chunk: number }>, Rows<{ id: number }>]
+  ])) as unknown as [unknown, Rows<{ id: number; chunk: number }>, Rows<{ id: number }>]
 
   if (claimed.rows.length === 0) return null
   const skippedIds = new Set(skipped.rows.map((row) => row.id))

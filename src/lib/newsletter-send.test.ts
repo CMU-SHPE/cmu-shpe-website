@@ -175,7 +175,7 @@ describe('processNewsletterSend', () => {
   it('claims and checks subscriptions in one transaction, skipping only rows claimed for the first time', async () => {
     fake.respond = respondWith(world())
     await processNewsletterSend(4)
-    const [claim, skip] = fake.batches[0].map((query) => squash(query.sql))
+    const [, claim, skip] = fake.batches[0].map((query) => squash(query.sql))
     expect(claim).toContain('for update of r skip locked')
     expect(claim).toContain('claimed_at = coalesce(r.claimed_at, now())')
     expect(skip).toContain("set status = 'skipped'")
@@ -417,11 +417,15 @@ describe('processNewsletterSend retries and failures', () => {
     expect(release?.params).toEqual([11, 12, 13])
   })
 
-  it.todo(
-    'never splits one chunk between two concurrent claimers (bug: claimNextChunk locks rows with SKIP LOCKED, so two ' +
-      'concurrent processNewsletterSend calls split a chunk in 2% to 98% of trials across runs against real Postgres 17; the halves go out ' +
-      'under one idempotency key with different payloads and the second half ends as unknown_outcome. Needs a real-SQL test.)',
-  )
+  // Real-SQL check: scratchpad nlt-pg/run-split.sh runs two concurrent claimers 200 times against Postgres 17.
+  it('never splits one chunk between two concurrent claimers: claims take turns on the newsletter row lock', async () => {
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const [lock, claim] = fake.batches[0]
+    expect(squash(lock.sql)).toBe('select id from newsletters where id = $1 for update')
+    expect(lock.params).toEqual([4])
+    expect(squash(claim.sql)).toMatch(/^with target as/)
+  })
 
   it('claims no further chunk once the time budget is spent', async () => {
     fake.respond = respondWith(
