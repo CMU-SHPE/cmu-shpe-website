@@ -4,6 +4,7 @@ import {
   MAX_RECEIPT_BYTES,
   MAX_RECEIPT_FILE_NAME_LENGTH,
   contentDisposition,
+  formatFileSize,
   isPdf,
   parseReceiptUpload,
   receiptFileName,
@@ -140,5 +141,13 @@ describe('contentDisposition', () => {
 
   it('reduces a path to its last segment', () => {
     expect(contentDisposition('../../secret.pdf')).toBe(`attachment; filename="secret.pdf"; filename*=UTF-8''secret.pdf`)
+  })
+})
+
+describe('formatFileSize', () => {
+  it('uses B, KB and MB', () => {
+    expect(formatFileSize(900)).toBe('900 B')
+    expect(formatFileSize(340 * 1024)).toBe('340 KB')
+    expect(formatFileSize(MAX_RECEIPT_BYTES)).toBe('4.0 MB')
   })
 })
