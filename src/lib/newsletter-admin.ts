@@ -12,6 +12,7 @@ import {
   type NewsletterRecipientStatus,
 } from '@/db/schema'
 import { recordId } from './form-fields'
+import { audienceEmailCondition } from './newsletter-audience'
 import { siteUrl } from './site-url'
 import { MAX_NEWSLETTER_BODY_LENGTH, MAX_NEWSLETTER_SUBJECT_LENGTH } from './newsletter-limits'
 
@@ -45,6 +46,7 @@ function confirmedSubscriberCount() {
     select count(*)::int from ${memberTopicSubscriptions}
     join ${members} on ${members.id} = ${memberTopicSubscriptions.memberId}
     where ${memberTopicSubscriptions.topicId} = ${newsletterTopics.id} and ${members.emailConfirmedAt} is not null
+      and ${audienceEmailCondition(members.email)}
   )`
 }
 
@@ -63,7 +65,13 @@ export async function countNewsletterAudience(topicIdList: readonly number[]): P
     .select({ count: sql<number>`count(distinct ${members.id})::int` })
     .from(memberTopicSubscriptions)
     .innerJoin(members, eq(members.id, memberTopicSubscriptions.memberId))
-    .where(and(inArray(memberTopicSubscriptions.topicId, [...topicIdList]), isNotNull(members.emailConfirmedAt)))
+    .where(
+      and(
+        inArray(memberTopicSubscriptions.topicId, [...topicIdList]),
+        isNotNull(members.emailConfirmedAt),
+        audienceEmailCondition(members.email),
+      ),
+    )
   return row?.count ?? 0
 }
 
@@ -192,6 +200,7 @@ export const newsletterErrorMessages: Record<string, string> = {
   auth_secret_missing: 'The site’s secret key (AUTH_SECRET) is missing, so unsubscribe links can’t be made.',
   test_failed: 'The test email could not be sent. Please try again in a minute.',
   no_recipients: 'No confirmed members are subscribed to the chosen topics, so there is no one to send to.',
+  changed: 'This newsletter was edited after you reviewed it. Check the version below, then confirm again.',
   count_changed:
     'The number of recipients changed since this page loaded. Check the new number below and confirm again.',
 }
@@ -200,7 +209,9 @@ export const newsletterProgressMessages: Record<string, string> = {
   time_budget:
     'Part of the newsletter is sent. Sending stops after a few minutes per click to stay within the server’s time limit. Press Continue sending to send the rest.',
   retry_later:
-    'The email service asked us to slow down or was briefly unavailable. Nothing was lost. Press Continue sending to try the rest again.',
+    'The email service turned the last batch down before sending it (a rate limit, a daily quota, or missing email settings), so nobody in it got the newsletter yet. Press Continue sending to try again; there is no deadline.',
+  outcome_unconfirmed:
+    'The email service didn’t confirm whether the last batch went out (it timed out or had an error). Press Continue sending within 24 hours to finish it without anyone getting it twice. After 24 hours, those emails are marked “unknown outcome” instead of being sent again.',
   busy:
     'Some emails are still being handed to the email service by another request. If nothing changes, an interrupted batch can be retried about 10 minutes after it started: press Continue sending then.',
 }

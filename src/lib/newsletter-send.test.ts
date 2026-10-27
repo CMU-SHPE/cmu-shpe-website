@@ -62,6 +62,7 @@ const FROZEN = {
   reply_to: 'shpe@cmu.edu',
   site_url: 'https://shpe.example',
   from_address: '"SHPE @ CMU" <news@news.example>',
+  send_started_ms: '1793046283945',
 }
 
 function squash(text: string) {
@@ -74,9 +75,11 @@ function is(query: Query, fragment: string) {
 
 type World = {
   newsletter: Record<string, unknown> | undefined
-  chunks: { chunk: number; ids: number[]; skipped?: number[] }[]
+  chunks: { chunk: number; ids: number[]; skipped?: number[]; reclaimed?: boolean }[]
   emails: Record<number, string>
   finished: boolean
+  /** Rows whose stored link hash came from an earlier AUTH_SECRET. */
+  rotatedLinks?: number[]
 }
 
 function world(overrides: Partial<World> = {}): World {
@@ -94,12 +97,14 @@ function respondWith(state: World): Responder {
     if (is(query, 'select status, subject, body')) return state.newsletter ? [state.newsletter] : []
     if (is(query, 'with target as')) {
       const next = state.chunks.shift()
-      return next ? next.ids.map((id) => ({ id, chunk: next.chunk, skipped: next.skipped })) : []
+      return next ? next.ids.map((id) => ({ id, chunk: next.chunk, skipped: next.skipped, first_claim: !next.reclaimed })) : []
     }
     if (is(query, "set status = 'skipped'")) return []
     if (is(query, 'set unsubscribe_token_hash')) {
       const ids = query.params.filter((_, index) => index % 2 === 0) as number[]
-      return ids.filter((id) => state.emails[id]).map((id) => ({ id, email: state.emails[id] }))
+      return ids
+        .filter((id) => state.emails[id])
+        .map((id) => ({ id, email: state.emails[id], link_matches: !state.rotatedLinks?.includes(id) }))
     }
     if (is(query, "update newsletters set status = 'sent'")) return state.finished ? [{ id: 4 }] : []
     return []
@@ -145,6 +150,33 @@ describe('startNewsletterSend', () => {
     expect(fake.queries[0].params).toEqual(expect.arrayContaining([2, 'Ada', 'Addr', 'shpe@cmu.edu', 'https://shpe.example', 'from', 100]))
   })
 
+  it('limits a preview deployment’s audience to @resend.dev test inboxes in both the count and the snapshot', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
+    const sql = squash(fake.queries[0].sql)
+    const filters = sql.match(/lower\(m\.email\) like \$\d+/g) ?? []
+    expect(filters).toHaveLength(2)
+    expect(sql).toMatch(/where s\.newsletter_id = \$\d+ and lower\(m\.email\) like \$\d+ \) where id/)
+    expect(sql).toMatch(/m\.email_confirmed_at is not null where lower\(m\.email\) like \$\d+ \), inserted/)
+    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(2)
+  })
+
+  it('leaves a production audience unfiltered', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
+    expect(squash(fake.queries[0].sql)).not.toContain('like')
+    expect(fake.queries[0].params).not.toContain('%@resend.dev')
+  })
+
+  it('claims only the reviewed version when given the time it was reviewed', async () => {
+    fake.respond = () => [{ claimed: 1, recipients: 1 }]
+    await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot, new Date('2026-10-20T22:00:00.123Z'))
+    expect(squash(fake.queries[0].sql)).toMatch(/and date_trunc\('milliseconds', updated_at\) = \$\d+::timestamptz returning id/)
+    expect(fake.queries[0].params).toContain('2026-10-20T22:00:00.123Z')
+  })
+
   it('reports nothing started when the draft was already claimed', async () => {
     fake.respond = () => [{ claimed: 0, recipients: 0 }]
     await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false })
@@ -160,9 +192,12 @@ describe('processNewsletterSend', () => {
     expect(batch.options).toEqual({
       from: FROZEN.from_address,
       replyTo: 'shpe@cmu.edu',
-      idempotencyKey: chunkIdempotencyKey(4, 0),
+      idempotencyKey: chunkIdempotencyKey(4, '1793046283945', 0),
     })
-    expect(chunkIdempotencyKey(4, 0)).toBe('newsletter-4/chunk-0')
+    expect(chunkIdempotencyKey(4, '1793046283945', 0)).toBe('newsletter-4-1793046283945/chunk-0')
+    expect(chunkIdempotencyKey(4, '1800000000000', 0)).not.toBe(chunkIdempotencyKey(4, '1793046283945', 0))
+    const frozenRead = fake.queries.find((query) => is(query, 'select status, subject, body'))!
+    expect(squash(frozenRead.sql)).toContain('floor(extract(epoch from send_started_at) * 1000)::bigint::text as send_started_ms')
     expect(batch.emails.map((email) => email.to)).toEqual(['ana@example.com', 'luis@example.com', 'sofia@example.com'])
     expect(batch.emails[0].oneClickUnsubscribeUrl).toMatch(/^https:\/\/shpe\.example\/unsubscribe\/one-click\?token=[\w-]{43}$/)
     expect(batch.emails[0].text).toContain('https://shpe.example/unsubscribe?token=')
@@ -175,7 +210,7 @@ describe('processNewsletterSend', () => {
   it('claims and checks subscriptions in one transaction, skipping only rows claimed for the first time', async () => {
     fake.respond = respondWith(world())
     await processNewsletterSend(4)
-    const [claim, skip] = fake.batches[0].map((query) => squash(query.sql))
+    const [, claim, skip] = fake.batches[0].map((query) => squash(query.sql))
     expect(claim).toContain('for update of r skip locked')
     expect(claim).toContain('claimed_at = coalesce(r.claimed_at, now())')
     expect(skip).toContain("set status = 'skipped'")
@@ -224,6 +259,7 @@ describe('processNewsletterSend', () => {
 
     const [first, retry] = sentBatches()
     expect(JSON.stringify(retry)).toBe(JSON.stringify(first))
+    expect(retry.options.idempotencyKey).toBe('newsletter-4-1793046283945/chunk-0')
   })
 
   it('records per-index rejections as failures and the rest as sent', async () => {
@@ -259,7 +295,7 @@ describe('processNewsletterSend', () => {
     let clock = 0
     const result = await processNewsletterSend(4, { now: () => (clock += 100), budgetMs: 250 })
     expect(result).toEqual({ status: 'sending', reason: 'time_budget' })
-    expect(sentBatches().map((batch) => batch.options.idempotencyKey)).toEqual(['newsletter-4/chunk-0', 'newsletter-4/chunk-1'])
+    expect(sentBatches().map((batch) => batch.options.idempotencyKey)).toEqual(['newsletter-4-1793046283945/chunk-0', 'newsletter-4-1793046283945/chunk-1'])
     expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
   })
 
@@ -354,6 +390,41 @@ describe('processNewsletterSend recipients and links', () => {
     expect(fake.queries.indexOf(prepare)).toBeLessThan(fake.queries.findIndex((query) => is(query, 'set status = v.status')))
   })
 
+  it('keeps a stored link hash on a re-claim instead of overwriting it', async () => {
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const prepare = fake.queries.find((query) => is(query, 'set unsubscribe_token_hash'))!
+    expect(squash(prepare.sql)).toContain('set unsubscribe_token_hash = coalesce(r.unsubscribe_token_hash, v.hash)')
+    expect(squash(prepare.sql)).toContain('r.unsubscribe_token_hash = v.hash as link_matches')
+  })
+
+  it('never resends a recipient whose delivered link came from a rotated secret, recording it as unknown', async () => {
+    fake.respond = respondWith(world({ rotatedLinks: [12] }))
+    await processNewsletterSend(4)
+    expect(sentBatches()[0].emails.map((email) => email.to)).toEqual(['ana@example.com', 'sofia@example.com'])
+    const [unknown] = fake.queries.filter((query) => is(query, 'set status = v.status'))
+    expect(unknown.params).toEqual([12, 'failed', null, 'unknown_outcome'])
+  })
+
+  it('keeps the claim when Resend refuses a retry of a batch whose earlier attempt is unconfirmed', async () => {
+    fake.sendBatch.mockResolvedValue({ ok: false, reason: 'rate_limit_exceeded', retryable: true })
+    fake.respond = respondWith(world({ chunks: [{ chunk: 0, ids: [11, 12, 13], reclaimed: true }] }))
+    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: 'outcome_unconfirmed' })
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))!
+    expect(squash(release.sql)).not.toContain('claimed_at = null')
+    expect(squash(release.sql)).not.toContain('unsubscribe_token_hash = null')
+    const [, claim] = fake.batches[0]
+    expect(squash(claim.sql)).toContain('returning r.id, r.chunk, r.claimed_at = now() as first_claim')
+  })
+
+  it('forgets the stored link of a batch Resend refused outright, since nobody received it', async () => {
+    fake.sendBatch.mockResolvedValue({ ok: false, reason: 'rate_limit_exceeded', retryable: true })
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))!
+    expect(squash(release.sql)).toContain('claimed_at = null, unsubscribe_token_hash = null')
+  })
+
   it('folds line breaks out of a frozen subject before it reaches the email', async () => {
     fake.respond = respondWith(world({ newsletter: { ...FROZEN, subject: 'Spring\r\nBcc: everyone@example.com' } }))
     await processNewsletterSend(4)
@@ -371,19 +442,24 @@ describe('processNewsletterSend recipients and links', () => {
 
 describe('processNewsletterSend retries and failures', () => {
   it.each([
-    ['rate_limit_exceeded'],
-    ['timeout'],
-    ['exception'],
-    ['concurrent_idempotent_requests'],
-    ['missing_config'],
-  ])('releases the chunk to pending on a retryable %s, records nothing and does not finish', async (reason) => {
+    ['rate_limit_exceeded', 'retry_later', true],
+    ['daily_quota_exceeded', 'retry_later', true],
+    ['monthly_quota_exceeded', 'retry_later', true],
+    ['missing_config', 'retry_later', true],
+    ['timeout', 'outcome_unconfirmed', false],
+    ['exception', 'outcome_unconfirmed', false],
+    ['internal_server_error', 'outcome_unconfirmed', false],
+    ['concurrent_idempotent_requests', 'outcome_unconfirmed', false],
+  ])('releases the chunk to pending on a retryable %s, records nothing and does not finish', async (reason, expected, forgetsClaim) => {
     fake.sendBatch.mockResolvedValue({ ok: false, reason, retryable: true })
     fake.respond = respondWith(world())
-    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: 'retry_later' })
+    await expect(processNewsletterSend(4)).resolves.toEqual({ status: 'sending', reason: expected })
     const release = fake.queries.filter((query) => is(query, "set status = 'pending'"))
     expect(release).toHaveLength(1)
     expect(release[0].params).toEqual([11, 12, 13])
     expect(squash(release[0].sql)).toContain("and status = 'sending'")
+    // Only a batch Resend turned down outright starts over with a fresh claim and 24-hour window.
+    expect(squash(release[0].sql).includes('claimed_at = null')).toBe(forgetsClaim)
     expect(fake.queries.some((query) => is(query, 'set status = v.status'))).toBe(false)
     expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
     expect(fake.sendBatch).toHaveBeenCalledTimes(1)
@@ -407,21 +483,45 @@ describe('processNewsletterSend retries and failures', () => {
     expect(rows.filter(([, status]) => status === 'sent')).toEqual([[12, 'sent', 're_1', null]])
   })
 
-  // Bug: a throw from building or sending the batch leaves the claimed rows in 'sending' until the
-  // 10-minute stale reclaim instead of releasing them at once (newsletter-send.ts sendChunk).
-  it.fails('releases the chunk to pending when sending the batch throws', async () => {
+  it('releases the chunk to pending when sending the batch throws', async () => {
     fake.sendBatch.mockRejectedValue(new Error('unexpected'))
     fake.respond = respondWith(world())
-    await processNewsletterSend(4).catch(() => {})
+    await expect(processNewsletterSend(4)).rejects.toThrow('unexpected')
     const release = fake.queries.find((query) => is(query, "set status = 'pending'"))
     expect(release?.params).toEqual([11, 12, 13])
+    expect(squash(release!.sql)).not.toContain('claimed_at = null')
+    expect(fake.queries.some((query) => is(query, 'set status = v.status'))).toBe(false)
   })
 
-  it.todo(
-    'never splits one chunk between two concurrent claimers (bug: claimNextChunk locks rows with SKIP LOCKED, so two ' +
-      'concurrent processNewsletterSend calls split a chunk in 2% to 98% of trials across runs against real Postgres 17; the halves go out ' +
-      'under one idempotency key with different payloads and the second half ends as unknown_outcome. Needs a real-SQL test.)',
-  )
+  it('releases the chunk when recording the results fails, never reporting the rows as sent', async () => {
+    const state = world()
+    fake.respond = (query) => {
+      if (is(query, 'set status = v.status')) throw new Error('connection lost')
+      return respondWith(state)(query)
+    }
+    await expect(processNewsletterSend(4)).rejects.toThrow('connection lost')
+    const release = fake.queries.find((query) => is(query, "set status = 'pending'"))
+    expect(release?.params).toEqual([11, 12, 13])
+    expect(fake.queries.some((query) => is(query, "update newsletters set status = 'sent'"))).toBe(false)
+  })
+
+  it('releases the chunk when preparing links fails before anything is sent', async () => {
+    vi.stubEnv('AUTH_SECRET', '')
+    fake.respond = respondWith(world())
+    await expect(processNewsletterSend(4)).rejects.toThrow(/AUTH_SECRET/)
+    expect(fake.sendBatch).not.toHaveBeenCalled()
+    expect(fake.queries.find((query) => is(query, "set status = 'pending'"))?.params).toEqual([11, 12, 13])
+  })
+
+  // Real-SQL check: scratchpad nlt-pg/run-split.sh runs two concurrent claimers 200 times against Postgres 17.
+  it('never splits one chunk between two concurrent claimers: claims take turns on the newsletter row lock', async () => {
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const [lock, claim] = fake.batches[0]
+    expect(squash(lock.sql)).toBe('select id from newsletters where id = $1 for update')
+    expect(lock.params).toEqual([4])
+    expect(squash(claim.sql)).toMatch(/^with target as/)
+  })
 
   it('claims no further chunk once the time budget is spent', async () => {
     fake.respond = respondWith(

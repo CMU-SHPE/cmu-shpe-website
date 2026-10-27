@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import SubmitButton from '@/components/submit-button'
@@ -31,6 +32,7 @@ import {
   type NewsletterRecipientRow,
 } from '@/lib/newsletter-admin'
 import { renderNewsletter } from '@/lib/newsletter-render'
+import { previewAudienceOnly } from '@/lib/newsletter-audience'
 import { getSiteSettings } from '@/lib/queries'
 import Composer from '../composer'
 import { continueSending, reviewNewsletter, saveNewsletter, sendTestNewsletter } from '../actions'
@@ -95,6 +97,7 @@ async function draftView(newsletter: NewsletterDetail, searchParams: SearchParam
         mailingAddress={settings?.mailingAddress ?? ''}
         siteUrl={previewSiteUrl()}
         adminEmail={admin.user.email ?? 'your email'}
+        previewAudienceOnly={previewAudienceOnly()}
         save={saveNewsletter.bind(null, newsletter.id)}
         sendTest={sendTestNewsletter.bind(null, newsletter.id)}
         review={reviewNewsletter.bind(null, newsletter.id)}
@@ -173,10 +176,10 @@ async function sentView(newsletter: NewsletterDetail, searchParams: SearchParams
           <dt className="font-medium text-gray-700 dark:text-gray-300">Recipients when sending started</dt>
           <dd className="text-gray-900 dark:text-white">{newsletter.recipientCount ?? 0}</dd>
           {summary.map(([label, value]) => (
-            <div key={label} className="contents">
+            <Fragment key={label}>
               <dt className="font-medium text-gray-700 dark:text-gray-300">{label}</dt>
               <dd className="text-gray-900 dark:text-white">{value}</dd>
-            </div>
+            </Fragment>
           ))}
         </dl>
         {sending && (

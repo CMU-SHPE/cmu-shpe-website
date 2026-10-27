@@ -8,7 +8,11 @@ const mocks = vi.hoisted(() => ({
   newsletter: null as Record<string, unknown> | null,
   recipients: [] as unknown[],
   audience: 3,
-  ready: { ok: true } as { ok: boolean; blocker?: string },
+  ready: { ok: true, snapshot: { mailingAddress: '5000 Forbes Ave', siteUrl: 'https://shpe.example' } } as {
+    ok: boolean
+    blocker?: string
+    snapshot?: { mailingAddress: string; siteUrl: string }
+  },
   settings: { mailingAddress: '5000 Forbes Ave' } as { mailingAddress: string } | null,
 }))
 
@@ -97,6 +101,7 @@ const sentNewsletter = {
   topicIds: [1],
   currentTopicNames: ['Events'],
   topicNames: 'Events',
+  updatedAt: new Date('2026-10-20T22:00:00.123Z'),
   sendStartedAt: sentAt,
   sentAt,
   sentByName: 'Ada',
@@ -114,7 +119,7 @@ beforeEach(() => {
   mocks.newsletter = null
   mocks.recipients = []
   mocks.audience = 3
-  mocks.ready = { ok: true }
+  mocks.ready = { ok: true, snapshot: { mailingAddress: '5000 Forbes Ave', siteUrl: 'https://shpe.example' } }
   mocks.settings = { mailingAddress: '5000 Forbes Ave' }
 })
 
@@ -193,6 +198,10 @@ describe('newsletter detail page', () => {
     expect(problems).toHaveTextContent('Maybe <maybe@example.com>: Unknown: it may or may not have been delivered')
     expect(problems).not.toHaveTextContent('Gone')
     expect(screen.getByText('Accounts deleted since sending started').nextSibling).toHaveTextContent('1')
+    const summary = screen.getByText('Accounts deleted since sending started').closest('dl')!
+    expect([...summary.children].map((child) => child.tagName)).toEqual(
+      Array.from({ length: summary.children.length }, (_, index) => (index % 2 === 0 ? 'DT' : 'DD')),
+    )
     expect(screen.getByTitle('Newsletter preview')).toHaveAttribute('sandbox', '')
   })
 
@@ -202,6 +211,16 @@ describe('newsletter detail page', () => {
     render(await detailPage.default({ params: params(), searchParams: searchParams({ progress: 'time_budget' }) }))
     expect(screen.getByRole('button', { name: 'Continue sending' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Press Continue sending to send the rest')
+  })
+
+  it.each([
+    ['outcome_unconfirmed', 'within 24 hours'],
+    ['retry_later', 'nobody in it got the newsletter yet'],
+  ])('explains what %s means for the next Continue sending', async (progress, text) => {
+    mocks.newsletter = { ...sentNewsletter, status: 'sending', sentAt: null }
+    mocks.recipients = [recipient({ status: 'pending' })]
+    render(await detailPage.default({ params: params(), searchParams: searchParams({ progress }) }))
+    expect(screen.getByRole('status')).toHaveTextContent(text)
   })
 })
 
@@ -214,6 +233,16 @@ describe('confirm send page', () => {
     expect(screen.getByRole('heading', { name: 'This will email 1,234 people now' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send to 1,234 people' })).toBeInTheDocument()
     expect(container.querySelector('input[name="expectedCount"]')).toHaveValue('1234')
+    expect(container.querySelector('input[name="reviewedAt"]')).toHaveValue('2026-10-20T22:00:00.123Z')
+    expect(screen.getByTitle('Newsletter preview').getAttribute('srcdoc')).toContain('5000 Forbes Ave')
+  })
+
+  it('warns on a preview deployment that only @resend.dev test addresses are counted and sent to', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    mocks.newsletter = { ...sentNewsletter, status: 'draft' }
+    render(await confirmPage.default({ params: params(), searchParams: searchParams() }))
+    expect(screen.getByRole('note')).toHaveTextContent('only @resend.dev test addresses receive this newsletter')
+    vi.unstubAllEnvs()
   })
 
   it('refuses without a mailing address and links to settings', async () => {

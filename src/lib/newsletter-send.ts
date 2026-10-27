@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { newsletterFromAddress, sendNewsletterBatch, type NewsletterEmail } from '@/lib/email'
+import { audienceEmailCondition } from '@/lib/newsletter-audience'
 import { hashToken } from '@/lib/member-tokens'
 import { renderNewsletter } from '@/lib/newsletter-render'
 import { getSiteSettings } from '@/lib/queries'
@@ -25,7 +26,7 @@ export type StartResult = { started: true; recipients: number } | { started: fal
 
 export type ProcessResult =
   | { status: 'sent' }
-  | { status: 'sending'; reason: 'time_budget' | 'busy' | 'retry_later' }
+  | { status: 'sending'; reason: 'time_budget' | 'busy' | 'retry_later' | 'outcome_unconfirmed' }
   | { status: 'draft' | 'missing' }
 
 export type SendBlocker = 'no_mailing_address' | 'email_not_configured' | 'site_url_invalid' | 'auth_secret_missing'
@@ -90,13 +91,18 @@ export async function sendNewsletterTest(
 
 /**
  * Claims the draft and snapshots its recipients in one statement, so two admins pressing Send
- * can't both start it, and the list can't drift between counting and inserting.
+ * can't both start it, and the list can't drift between counting and inserting. With
+ * reviewedAt, an edit saved after the admin reviewed the draft makes the claim fail, so the
+ * version sent is always the one confirmed.
  */
 export async function startNewsletterSend(
   newsletterId: number,
   admin: { id: number; name: string },
   snapshot: SendSnapshot,
+  reviewedAt?: Date,
 ): Promise<StartResult> {
+  const reviewedVersion = reviewedAt ? sql`and date_trunc('milliseconds', updated_at) = ${reviewedAt.toISOString()}::timestamptz` : sql``
+  const audienceEmail = audienceEmailCondition(sql`m.email`)
   const [row] = await run<{ claimed: number; recipients: number }>(sql`
     with claimed as (
       update newsletters set
@@ -119,13 +125,14 @@ export async function startNewsletterSend(
           from newsletter_topic_selections s
           join member_topic_subscriptions mts on mts.topic_id = s.topic_id
           join members m on m.id = mts.member_id and m.email_confirmed_at is not null
-          where s.newsletter_id = ${newsletterId}
+          where s.newsletter_id = ${newsletterId} and ${audienceEmail}
         )
       where id = ${newsletterId}
         and status = 'draft'
         and btrim(subject) <> ''
         and btrim(body) <> ''
         and exists (select 1 from newsletter_topic_selections where newsletter_id = ${newsletterId})
+        ${reviewedVersion}
       returning id
     ),
     audience as (
@@ -134,6 +141,7 @@ export async function startNewsletterSend(
       join newsletter_topic_selections s on s.newsletter_id = claimed.id
       join member_topic_subscriptions mts on mts.topic_id = s.topic_id
       join members m on m.id = mts.member_id and m.email_confirmed_at is not null
+      where ${audienceEmail}
     ),
     inserted as (
       insert into newsletter_recipients (newsletter_id, member_id, chunk)
@@ -155,11 +163,13 @@ type FrozenNewsletter = {
   reply_to: string | null
   site_url: string | null
   from_address: string | null
+  send_started_ms: string | null
 }
 
 async function frozenNewsletter(newsletterId: number) {
   const [row] = await run<FrozenNewsletter>(sql`
-    select status, subject, body, topic_names, mailing_address, reply_to, site_url, from_address
+    select status, subject, body, topic_names, mailing_address, reply_to, site_url, from_address,
+      floor(extract(epoch from send_started_at) * 1000)::bigint::text as send_started_ms
     from newsletters where id = ${newsletterId}
   `)
   return row
@@ -174,17 +184,24 @@ function expireUnrepeatableClaims(newsletterId: number) {
   `)
 }
 
-export type ClaimedChunk = { chunk: number; recipientIds: number[] }
+/** firstClaim: every row was claimed for the first time now, so no earlier attempt can have sent it. */
+export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: boolean }
 
 /**
  * Claims every claimable row of the lowest open chunk and, in the same transaction, skips the
  * rows claimed for the first time (claimed_at is the transaction's now()) whose member has since
  * unsubscribed or lost confirmation. A re-claim skips nothing, so its batch matches the first try.
+ *
+ * Claims for one newsletter take turns on its row lock. SKIP LOCKED alone let two concurrent
+ * claimers pick the same chunk and each take part of it, sending two different payloads under
+ * one idempotency key. A row lock rather than an advisory lock needs no key space shared with
+ * other code, and waiting is short since the lock lasts only for this transaction.
  */
 export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk | null> {
   const db = getDb()
   const claimable = sql`(r.status = 'pending' or (r.status = 'sending' and r.updated_at < now() - ${STALE_CLAIM}))`
-  const [claimed, skipped] = (await db.batch([
+  const [, claimed, skipped] = (await db.batch([
+    db.execute(sql`select id from newsletters where id = ${newsletterId} for update`),
     db.execute(sql`
       with target as (
         select r.chunk from newsletter_recipients r
@@ -201,7 +218,7 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
         claimed_at = coalesce(r.claimed_at, now()),
         updated_at = now()
       from locked where r.id = locked.id
-      returning r.id, r.chunk
+      returning r.id, r.chunk, r.claimed_at = now() as first_claim
     `),
     db.execute(sql`
       update newsletter_recipients r set
@@ -223,12 +240,13 @@ export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk
         )
       returning r.id
     `),
-  ])) as unknown as [Rows<{ id: number; chunk: number }>, Rows<{ id: number }>]
+  ])) as unknown as [unknown, Rows<{ id: number; chunk: number; first_claim: boolean }>, Rows<{ id: number }>]
 
   if (claimed.rows.length === 0) return null
   const skippedIds = new Set(skipped.rows.map((row) => row.id))
   return {
     chunk: claimed.rows[0].chunk,
+    firstClaim: claimed.rows.every((row) => row.first_claim),
     recipientIds: claimed.rows
       .map((row) => row.id)
       .filter((id) => !skippedIds.has(id))
@@ -240,23 +258,32 @@ function valuesList(rows: SQL[]): SQL {
   return sql.join(rows, sql`, `)
 }
 
+type PreparedRecipient = { id: number; email: string; link_matches: boolean }
+
 /**
  * Stores each link's hash before the email goes out, so no recipient ever gets a link that
- * doesn't resolve; the token is derived from the row id, so redoing this after a crash is harmless.
+ * doesn't resolve. A hash already stored is kept, never replaced: an earlier attempt may have
+ * delivered that link, and it must keep working even if AUTH_SECRET has been rotated since.
  */
-async function prepareRecipients(recipientIds: number[]): Promise<{ id: number; email: string }[]> {
+async function prepareRecipients(recipientIds: number[]): Promise<PreparedRecipient[]> {
   const values = valuesList(recipientIds.map((id) => sql`(${id}::int, ${hashToken(unsubscribeTokenFor(id))})`))
-  const rows = await run<{ id: number; email: string }>(sql`
-    update newsletter_recipients r set unsubscribe_token_hash = v.hash, updated_at = now()
+  const rows = await run<PreparedRecipient>(sql`
+    update newsletter_recipients r
+    set unsubscribe_token_hash = coalesce(r.unsubscribe_token_hash, v.hash), updated_at = now()
     from (values ${values}) as v(id, hash), members m
     where r.id = v.id and m.id = r.member_id and r.status = 'sending'
-    returning r.id, m.email
+    returning r.id, m.email, r.unsubscribe_token_hash = v.hash as link_matches
   `)
   return rows.sort((a, b) => a.id - b.id)
 }
 
-export function chunkIdempotencyKey(newsletterId: number, chunk: number): string {
-  return `newsletter-${newsletterId}/chunk-${chunk}`
+/**
+ * Ids alone repeat across deployments and database restores, and Resend would then answer a new
+ * newsletter's chunk from another one's cached result. The send start time is set once when the
+ * send is claimed, so every retry of a chunk still gets the same key.
+ */
+export function chunkIdempotencyKey(newsletterId: number, sendStartedMs: string, chunk: number): string {
+  return `newsletter-${newsletterId}-${sendStartedMs}/chunk-${chunk}`
 }
 
 export function buildChunkEmails(newsletter: FrozenNewsletter, recipients: { id: number; email: string }[]): NewsletterEmail[] {
@@ -292,9 +319,18 @@ function recordOutcomes(outcomes: Outcome[]) {
   `)
 }
 
-function releaseForRetry(recipientIds: number[]) {
+// Resend turns these down before accepting the batch, so nothing was sent and its idempotency
+// key was not used: the rows can start over as never claimed, with a fresh 24-hour window.
+const REFUSED_BEFORE_ACCEPTING = new Set(['rate_limit_exceeded', 'daily_quota_exceeded', 'monthly_quota_exceeded', 'missing_config'])
+
+/**
+ * A batch that may have gone out keeps its first claim time, so a retry after Resend has forgotten
+ * the key is recorded as unknown instead of sent again.
+ */
+function releaseForRetry(recipientIds: number[], { neverSent }: { neverSent: boolean }) {
+  const forgetClaim = neverSent ? sql`claimed_at = null, unsubscribe_token_hash = null, ` : sql``
   return run(sql`
-    update newsletter_recipients set status = 'pending', updated_at = now()
+    update newsletter_recipients set status = 'pending', ${forgetClaim}updated_at = now()
     where id in (${sql.join(recipientIds.map((id) => sql`${id}`), sql`, `)}) and status = 'sending'
   `)
 }
@@ -305,24 +341,54 @@ function permanentErrorCode(reason: string): string {
   return reason === 'invalid_idempotent_request' ? 'unknown_outcome' : reason
 }
 
-async function sendChunk(
+type ChunkOutcome = 'done' | 'retry_later' | 'outcome_unconfirmed'
+
+/**
+ * Anything that throws after the claim (a database error, a missing secret) releases the rows
+ * at once rather than leaving them looking in flight for 10 minutes. They keep their claim time,
+ * since the batch may already have reached Resend.
+ */
+async function sendChunk(newsletterId: number, newsletter: FrozenNewsletter, claimed: ClaimedChunk): Promise<ChunkOutcome> {
+  if (claimed.recipientIds.length === 0) return 'done'
+  try {
+    return await sendClaimedChunk(newsletterId, newsletter, claimed)
+  } catch (error) {
+    await releaseForRetry(claimed.recipientIds, { neverSent: false }).catch(() => {})
+    throw error
+  }
+}
+
+async function sendClaimedChunk(
   newsletterId: number,
   newsletter: FrozenNewsletter,
   claimed: ClaimedChunk,
-): Promise<'done' | 'retry_later'> {
-  if (claimed.recipientIds.length === 0) return 'done'
-  const recipients = await prepareRecipients(claimed.recipientIds)
+): Promise<ChunkOutcome> {
+  const prepared = await prepareRecipients(claimed.recipientIds)
+  // The secret changed after an earlier attempt that may have gone out: resending would carry
+  // links that resolve to nothing, under a key whose first payload differed.
+  const unrepeatable = prepared.filter((row) => !row.link_matches)
+  if (unrepeatable.length > 0) {
+    await recordOutcomes(
+      unrepeatable.map((row) => ({ id: row.id, status: 'failed', resendId: null, errorCode: 'unknown_outcome' })),
+    )
+  }
+  const recipients = prepared.filter((row) => row.link_matches)
   if (recipients.length === 0) return 'done'
 
   const result = await sendNewsletterBatch(buildChunkEmails(newsletter, recipients), {
     from: newsletter.from_address ?? '',
     replyTo: newsletter.reply_to,
-    idempotencyKey: chunkIdempotencyKey(newsletterId, claimed.chunk),
+    idempotencyKey: chunkIdempotencyKey(newsletterId, newsletter.send_started_ms ?? '0', claimed.chunk),
   })
 
   if (!result.ok && result.retryable) {
-    await releaseForRetry(recipients.map((r) => r.id))
-    return 'retry_later'
+    // A refusal now says nothing about an earlier unconfirmed attempt, which keeps its claim time.
+    const neverSent = REFUSED_BEFORE_ACCEPTING.has(result.reason) && claimed.firstClaim
+    await releaseForRetry(
+      recipients.map((r) => r.id),
+      { neverSent },
+    )
+    return neverSent ? 'retry_later' : 'outcome_unconfirmed'
   }
 
   const outcomes: Outcome[] = recipients.map((recipient, index) => {
@@ -371,9 +437,8 @@ export async function processNewsletterSend(
     if (now() - startedAt >= budgetMs) return { status: 'sending', reason: 'time_budget' }
     const claimed = await claimNextChunk(newsletterId)
     if (!claimed) break
-    if ((await sendChunk(newsletterId, newsletter, claimed)) === 'retry_later') {
-      return { status: 'sending', reason: 'retry_later' }
-    }
+    const outcome = await sendChunk(newsletterId, newsletter, claimed)
+    if (outcome !== 'done') return { status: 'sending', reason: outcome }
   }
 
   return (await finishIfDone(newsletterId)) ? { status: 'sent' } : { status: 'sending', reason: 'busy' }

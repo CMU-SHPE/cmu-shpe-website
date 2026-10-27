@@ -1,8 +1,26 @@
-import { describe, expect, it, vi } from 'vitest'
+import { PgDialect } from 'drizzle-orm/pg-core'
+import type { SQL } from 'drizzle-orm'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/db', () => ({ getDb: () => ({}) }))
+const fake = vi.hoisted(() => ({ where: [] as unknown[] }))
+
+vi.mock('@/db', () => ({
+  getDb: () => ({
+    select: () => ({
+      from: () => ({
+        innerJoin: () => ({
+          where: async (condition: unknown) => {
+            fake.where.push(condition)
+            return [{ count: 2 }]
+          },
+        }),
+      }),
+    }),
+  }),
+}))
 
 import {
+  countNewsletterAudience,
   describeRecipientResult,
   formatSendTime,
   parseNewsletterForm,
@@ -62,5 +80,30 @@ describe('splitTopicNames', () => {
   it('splits the newline-joined snapshot', () => {
     expect(splitTopicNames('Events\nJobs')).toEqual(['Events', 'Jobs'])
     expect(splitTopicNames(null)).toEqual([])
+  })
+})
+
+describe('countNewsletterAudience', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    fake.where.length = 0
+  })
+
+  function lastWhere() {
+    return new PgDialect().sqlToQuery(fake.where.at(-1) as SQL)
+  }
+
+  it('counts only @resend.dev test inboxes on a preview deployment, matching the send', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    await expect(countNewsletterAudience([1, 2])).resolves.toBe(2)
+    const query = lastWhere()
+    expect(query.sql).toContain('lower("members"."email") like $')
+    expect(query.params).toContain('%@resend.dev')
+  })
+
+  it('counts every confirmed subscriber elsewhere', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    await countNewsletterAudience([1])
+    expect(lastWhere().sql).not.toContain('like')
   })
 })

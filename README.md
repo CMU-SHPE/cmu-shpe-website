@@ -267,9 +267,21 @@ with them are refused (400 and 404), that a GET to `/unsubscribe/one-click` only
 to `/unsubscribe`, and runs axe on that page in light and dark mode.
 
 The working-link tests (the form, its axe scans, a one-click POST and the **Unsubscribe
-from all newsletters** button) skip unless `E2E_UNSUBSCRIBE_TOKEN` is set. To get one,
-send a newsletter on the preview to a confirmed account whose inbox you can read and
-that is subscribed to its topics, then copy the `token=` value from its unsubscribe link.
+from all newsletters** button) skip unless `E2E_UNSUBSCRIBE_TOKEN` is set.
+
+Preview databases are copies of production, so on a preview deployment a real send only
+goes to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes);
+the composer and the send confirmation say so, and their recipient counts leave everyone
+else out. Test sends to yourself are not restricted. To get a token:
+
+1. On the preview, create an account with an address like
+   `delivered+unsubscribe-e2e@resend.dev`, open its confirmation email in the Resend
+   dashboard (**Emails**) and follow the link to confirm it.
+2. Sign in as that account and choose at least one topic at `/account`.
+3. As an admin, send a newsletter to that topic. Only `@resend.dev` accounts receive it.
+4. Open that newsletter in the Resend dashboard and copy the `token=` value from its
+   unsubscribe link.
+
 A run unsubscribes that account, so each run needs a fresh token (or resubscribe the
 account from `/account` first).
 
