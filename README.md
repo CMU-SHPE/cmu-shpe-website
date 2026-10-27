@@ -6,7 +6,7 @@ Colorado Mesa University, served at [shpecmu.com](https://shpecmu.com).
 Built with [Next.js](https://nextjs.org) 16 (App Router), React 19, TypeScript and
 [Tailwind CSS](https://tailwindcss.com). Content lives in [Neon](https://neon.tech) Postgres
 through [Drizzle ORM](https://orm.drizzle.team), admin and member sign-in use
-[Auth.js](https://authjs.dev), account emails are sent with [Resend](https://resend.com),
+[Auth.js](https://authjs.dev), account emails and newsletters are sent with [Resend](https://resend.com),
 uploaded images go to [Vercel Blob](https://vercel.com/docs/vercel-blob), and the site is
 deployed on [Vercel](https://vercel.com).
 
@@ -37,6 +37,9 @@ Chapter officers sign in and edit the whole site without touching code:
   [Member accounts](#member-accounts)).
 - **Newsletter topics** — add, edit, reorder and delete the topics members can choose.
   Deleting a topic removes every member's choice of it.
+- **Newsletters** — write a newsletter, pick its topics, preview it, send a test to
+  yourself and send it to every confirmed member subscribed to one of those topics, then
+  see who it reached (see [Sending a newsletter](#sending-a-newsletter)).
 - **Admin accounts** — the master admin creates and removes the other admin accounts, and
   can allow individual admins to create accounts too. Those admins can only add regular
   admins and see the account list by name and role; email addresses, deleting accounts,
@@ -63,6 +66,11 @@ password resets only log the failure and still tell the visitor to check their e
 `SITE_URL` is optional
 locally: links in emails use `http://localhost:3000` under `npm run dev`, and a local
 `npm start` needs it set (for example `SITE_URL=http://localhost:3000`).
+
+Newsletters only reach `@resend.dev` test inboxes unless `VERCEL_ENV=production`. A
+`.env.local` pulled from Vercel's production environment (`vercel env pull`) contains
+`VERCEL_ENV=production`, which turns that guard off locally and would email real members;
+delete that line from `.env.local`.
 
 ### First-time database setup
 
@@ -124,7 +132,7 @@ connection string, edits made locally change the live site.
    per line. The Privacy Policy and Terms of Use pages are required disclosures for member
    accounts: edit them to keep them accurate, but never blank a section.
 3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
-   lists, site settings, members and newsletter topics.
+   lists, site settings, members, newsletter topics and newsletters.
 4. Choose **Change password** in the admin sidebar to change your own password. The master
    admin can reset another admin's password from **Admin accounts** and share it with them
    directly. Either change signs that account out on every other device.
@@ -154,23 +162,58 @@ to RSVP to events.
   sponsors land on `/sponsor` instead.
 - **`/account`:** change name and password, choose newsletter topics, see and cancel
   upcoming RSVPs, and **Delete my account** (asks for the password and the word DELETE;
-  it removes the account, its newsletter choices and its RSVPs right away). Sponsors also
-  get a **Sponsor portal** link here.
+  it removes the account, its newsletter choices, its newsletter send and unsubscribe
+  records and its RSVPs right away). Sponsors also get a **Sponsor portal** link here.
 - **RSVPs:** any signed-in member with a confirmed email can RSVP to an upcoming event on
   `/events` and cancel before it happens. See [Sponsor portal](#sponsor-portal) for
   capacity and the attendee CSV.
 - **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour.
   Admins don't get one; the master resets admin passwords from **Admin accounts**.
 - **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
-  also removes their newsletter choices, RSVPs and pending email links. Any sponsor listing
-  edits they made stay in that listing's history under the name they had at the time,
-  marked "(account deleted)".
+  also removes their newsletter choices, newsletter send and unsubscribe records, RSVPs and
+  pending email links. Any sponsor listing edits they made stay in that listing's history
+  under the name they had at the time, marked "(account deleted)".
 - **Privacy Policy and Terms of Use** (`/privacy`, `/terms`) are linked from the footer
   and edited in place like other page text. They are required disclosures for member
   accounts: keep them accurate and never blank a section. New sign-ups record the
   Privacy Policy's "Last updated" date as the version they agreed to.
-- **Newsletters aren't sent yet.** Members' topic choices are saved for when sending is
-  added, and sending will require the **Mailing address** in **Site settings** (CAN-SPAM).
+- **Newsletters** go only to confirmed members, from "SHPE @ CMU" at
+  `news@<RESEND_EMAIL_DOMAIN>`, one email per member however many of the newsletter's
+  topics they chose. Every one ends with the topics it was sent for, an unsubscribe link,
+  a link to `/account` and the chapter's mailing address.
+- **Unsubscribing:** the link in a newsletter opens `/unsubscribe`, which works without
+  signing in. Opening it changes nothing; the member presses **Unsubscribe from** that
+  newsletter's topics or **Unsubscribe from all newsletters**, and it takes effect right
+  away. Mail apps' own unsubscribe button posts to `/unsubscribe/one-click` (the
+  `List-Unsubscribe` header, RFC 8058), which removes that newsletter's topics; a plain
+  GET there only redirects to `/unsubscribe`. Links never expire. Each unsubscribe is
+  recorded (topic, time, and whether it came from the page or the one-click button) and
+  deleted with the account.
+
+### Sending a newsletter
+
+1. **Admin** → **Newsletters** → **New newsletter**. Write the subject and body (plain
+   text; blank lines start paragraphs and `https://` links become clickable) and tick the
+   topics it is for. Every button saves the draft first; drafts can be reopened, edited
+   and deleted from the list.
+2. The **Preview** under the form shows the email as members will get it, footer
+   included. **Send test to me** emails it to your own admin address with "[Test]" in
+   front of the subject and a sample in place of the unsubscribe link.
+3. **Review and send…** opens a confirmation page with the subject, topics and exact
+   number of recipients. **Send to N people** starts sending. If the count changed since
+   the page loaded, nothing is sent and the page asks you to check again.
+4. Testing and sending both need the **Mailing address** in **Site settings** (CAN-SPAM
+   requires it in every newsletter), plus `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN`,
+   `AUTH_SECRET` and a valid site URL. Without them the page says what is missing and
+   sends nothing.
+5. Emails go out in batches of 100. Sending stops after about four minutes per click to
+   stay inside Vercel's time limit, and pauses if Resend asks it to slow down. The
+   newsletter's page then says part of it is sent: press **Continue sending** (there or
+   in the list) until it finishes. Nobody gets it twice.
+6. Once sent, the newsletter's page shows who sent it and when, the topics, how many
+   emails Resend accepted, failed, have an unknown outcome or were skipped (the member
+   unsubscribed or lost confirmation before their turn), and lists everyone it didn't
+   reach for certain. A sent newsletter can't be edited or deleted.
 
 ## Sponsor portal
 
@@ -207,20 +250,25 @@ linked accounts; an account can be linked to one listing.
 
 ### Production steps for stage 3
 
-- **Schema:** apply the new columns and tables (`members.sponsor_id`, `events.capacity`,
-  `sponsors.description`, `event_rsvps`, `sponsor_edits`, `sponsor_receipts`) to production
-  with `npm run db:push` *before* merging, as described under
-  [Preview databases](#preview-databases).
-- **Policy text:** `npm run db:seed` never overwrites `site_content` rows that already exist,
-  so production keeps its current Privacy Policy and Terms of Use until they are updated
-  by hand. Either an admin edits them in place on `/privacy` and `/terms`, or someone
-  deliberately writes the new defaults from `src/db/seed-data/content.ts` into those rows.
-  The keys that changed are `privacy.updated`, `privacy.collect.items`,
-  `privacy.use.items`, `privacy.retention.items`, `privacy.choices.items`, `terms.updated`
-  and `terms.use.items`. Update `privacy.updated` last: new sign-ups record it as the
-  policy version they agreed to.
-- **Sponsor portal text:** the `sponsor.*` keys are new, so the portal shows their defaults
-  until an admin edits them; running `npm run db:seed` also stores them.
+Do these in order, all *before* merging to `main`, because the new code queries the new
+columns and shows the new policy as soon as it deploys.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** apply the new columns and tables (`members.sponsor_id`, `events.capacity`,
+   `sponsors.description`, `event_rsvps`, `sponsor_edits`, `sponsor_receipts`, reviewed in
+   `drizzle/0005_lovely_annihilus.sql`; it only adds) to production with `npm run db:push`,
+   as described under [Preview databases](#preview-databases).
+3. **Policy text (required):** run `scripts/sql/2026-10-27-privacy-sponsor-portal.sql` as
+   described under
+   [Releasing a change to the Privacy Policy or Terms](#releasing-a-change-to-the-privacy-policy-or-terms):
+   once without `-v commit=1`, check that every key shows `applied now` or `already new`,
+   then again with `-v commit=1`. It updates `privacy.collect.items`, `privacy.use.items`,
+   `privacy.retention.items`, `privacy.choices.items` and `terms.use.items`, then the two
+   "Last updated" dates. It expects the newsletter release's text: if any key shows
+   `older`, commit `2026-10-26-privacy-newsletters.sql` first and run this one again.
+
+The `sponsor.*` text keys are new, so the portal shows their defaults until an admin edits
+them; running `npm run db:seed` also stores them.
 
 ## Scripts
 
@@ -245,15 +293,19 @@ linked accounts; an account can be linked to one listing.
 src/
   app/          Routes (App Router): the public pages, /login, the member pages
                 (/join, /account, /forgot-password, /reset-password, /privacy,
-                /terms), the sponsor portal (/sponsor, with receipt downloads at
-                /sponsor/receipts/[id]), and the /admin pages, each with their
-                server actions
+                /terms), /unsubscribe and /unsubscribe/one-click, the sponsor portal
+                (/sponsor, with receipt downloads at /sponsor/receipts/[id]), and the
+                /admin pages (including /admin/newsletters), each with their server
+                actions
   components/   Shared UI: Navbar, Footer, ThemeProvider (dark mode), the inline
                 editor (editable.tsx), admin form components, and the RSVP (rsvp/)
                 and sponsor portal (sponsor/) components
   db/           Drizzle schema, the Neon client, and the seed script with its data
                 in seed-data/
-  lib/          Queries, validation schemas, auth helpers and other shared logic
+  lib/          Queries, validation schemas, auth helpers and other shared logic,
+                including newsletter rendering (newsletter-render.ts), sending
+                (newsletter-send.ts) and unsubscribe links
+                (newsletter-unsubscribe-token.ts)
 ```
 
 ## Testing
@@ -271,16 +323,19 @@ Runs in `.github/workflows/ci.yml` on every push to `main` and every pull reques
 npm run test:db
 ```
 
-Runs the `*.db.test.ts` files against a real Postgres 17 so queries, `db.batch`
-transactions and locking behave as they do in production. It needs Docker and nothing
-else: no `.env.local`, no Neon account. The script starts a throwaway Postgres and a
-[local Neon HTTP proxy](https://github.com/TimoWilhelm/local-neon-http-proxy) (so the
-production `@neondatabase/serverless` driver runs unchanged), applies the committed
+Runs the `*.db.test.ts` and `*.pg.test.ts(x)` files against a real Postgres 17 so
+queries, `db.batch` transactions and locking behave as they do in production; the
+newsletter `*.pg.test` files run every query under both `VERCEL_ENV=production` and
+`VERCEL_ENV=preview`. It needs Docker and nothing else: no `.env.local`, no Neon account.
+`scripts/test-db.sh` starts a throwaway Postgres, reachable only from a
+[local Neon HTTP proxy](https://github.com/TimoWilhelm/local-neon-http-proxy) that listens
+on 127.0.0.1 on a free port Docker picks (so the production `@neondatabase/serverless`
+driver runs unchanged and overlapping runs don't collide), applies the committed
 `drizzle/` migrations, adds a few rows, then brings the schema up to date with the same
 push a preview build runs. Both containers are removed afterwards, even if a test fails.
-The tests refuse to run against anything but that local database. `npm test` skips these
-files and never needs Docker; pass a path to run one file, e.g.
-`npm run test:db -- src/db/harness.db.test.ts`.
+The tests refuse to run against anything but that local database: they truncate every
+table. `npm test` skips these files and never needs Docker; pass a path to run one file,
+e.g. `npm run test:db -- src/db/harness.db.test.ts`.
 
 ### Preview smoke tests
 
@@ -301,6 +356,36 @@ BASE_URL=https://<preview>.vercel.app VERCEL_BYPASS=<protection bypass secret> n
 `VERCEL_BYPASS` is only needed when the preview has Deployment Protection on; it is sent
 as `x-vercel-protection-bypass` to the preview's own origin only.
 
+`e2e/newsletters.spec.ts` checks unsubscribe links. Without any setup it checks that
+malformed and unknown links show the "This link doesn't work" page, that one-click POSTs
+with them are refused (400 and 404), that a GET to `/unsubscribe/one-click` only redirects
+to `/unsubscribe`, and runs axe on that page in light and dark mode.
+
+The working-link tests (the form, its axe scans, a one-click POST and the **Unsubscribe
+from all newsletters** button) skip unless `E2E_UNSUBSCRIBE_TOKEN` is set.
+
+Preview and local databases are copies of production, so anywhere except production
+(`VERCEL_ENV` other than `production`, including when it isn't set) a real send only goes
+to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes), even
+when it continues a send that production started and the database copy still holds;
+everyone else is skipped. The composer and the send confirmation say so, and their
+recipient counts leave everyone else out. Test sends to yourself are not restricted. To get a token:
+
+1. On the preview, create an account with an address like
+   `delivered+unsubscribe-e2e@resend.dev`, open its confirmation email in the Resend
+   dashboard (**Emails**) and follow the link to confirm it.
+2. Sign in as that account and choose at least one topic at `/account`.
+3. As an admin, send a newsletter to that topic. Only `@resend.dev` accounts receive it.
+4. Open that newsletter in the Resend dashboard and copy the `token=` value from its
+   unsubscribe link.
+
+A run unsubscribes that account, so each run needs a fresh token (or resubscribe the
+account from `/account` first).
+
+```bash
+E2E_UNSUBSCRIBE_TOKEN=<token> BASE_URL=https://<preview>.vercel.app npm run test:e2e
+```
+
 ## Deployment
 
 The site is deployed on Vercel, connected to this GitHub repository: every push to
@@ -315,6 +400,37 @@ from). Links in emails use the deployment's own URL; set `SITE_URL` (an `https:/
 address) only for Production, and only if that URL should differ from the project's
 production domain. `MASTER_EMAIL` and `MASTER_PASSWORD` are only read by
 `npm run db:seed` and `npm run db:reset-master`.
+
+In Resend, turn **click tracking** and **open tracking** off for the sending domain (the
+domain's settings page). The Privacy Policy promises we don't track opens or clicks, and
+click tracking would send every newsletter link through Resend's tracking redirect.
+
+In Vercel's project settings (**Build and Deployment**), leave **Build Command** without an
+override. Vercel then runs `npm run vercel-build`, which preview deployments need to apply
+the schema; an override would skip it.
+
+### Releasing a change to the Privacy Policy or Terms
+
+New default text in `src/db/seed-data/content.ts` never reaches production on its own:
+`db:seed` doesn't overwrite rows that already exist. Ship it with a SQL file in
+`scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`; for the
+sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
+committed first). Run it
+with the production connection string after the code deploys and before the first
+newsletter goes out. It backs the old rows up, only replaces text still matching the old
+default, and rolls back unless run with `-v commit=1`: run it once without, check the
+report at the end, then run `psql -v commit=1 "$DATABASE_URL" -f <file>`. The comments at
+the top explain each step. The fallback is editing the text in
+place on `/privacy` (or `/terms`), changing **Last updated** last, because new sign-ups
+record that date as the version they agreed to.
+
+The backup goes in a separate `backups` schema, never in `public`: preview builds and
+`db:push` see any table in `public` that isn't in `src/db/schema.ts` as one to drop, and the
+preview push refuses to drop data, so every later preview build would fail. Both only
+look at `public`, since neither sets a schema filter and drizzle-kit defaults to `public`. Once `/privacy`
+shows the right text, drop the backup table
+(`drop table backups.site_content_privacy_20261026;`). Drop the whole schema only if
+nothing else lives in it.
 
 ### Preview databases
 

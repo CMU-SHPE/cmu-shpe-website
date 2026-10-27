@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
@@ -18,6 +19,14 @@ export const memberName = z
   .min(1)
   .max(MAX_MEMBER_NAME_LENGTH)
   .refine((value) => !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value))
+
+/**
+ * Each submit gets a fresh n, so the same result twice is still a new URL: the page remounts
+ * its message and moves focus there again instead of leaving the screen reader silent.
+ */
+export function accountResultPath(result: { error: string } | { saved: string }): string {
+  return `/account?${new URLSearchParams({ ...result, n: randomBytes(4).toString('hex') })}`
+}
 
 export function parseNameForm(formData: FormData) {
   return memberName.safeParse(formData.get('name'))

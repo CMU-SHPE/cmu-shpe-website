@@ -151,6 +151,7 @@ describe('admin server action discovery', () => {
         'admin/admins/actions.ts',
         'admin/events/actions.ts',
         'admin/lists/actions.ts',
+        'admin/newsletters/actions.ts',
         'admin/officers/actions.ts',
         'admin/settings/actions.ts',
         'admin/sponsors/actions.ts',
@@ -158,6 +159,18 @@ describe('admin server action discovery', () => {
       ]),
     )
     expect(actions.length).toBeGreaterThanOrEqual(32)
+  })
+
+  it('covers every newsletter action, including the ones that send email', () => {
+    const newsletterActions = actions.filter(({ name }) => name.startsWith('admin/newsletters/actions.ts '))
+    expect(newsletterActions.map(({ name }) => name.split(' ')[1]).sort()).toEqual([
+      'continueSending',
+      'deleteNewsletterDraft',
+      'reviewNewsletter',
+      'saveNewsletter',
+      'sendNewsletter',
+      'sendTestNewsletter',
+    ])
   })
 })
 

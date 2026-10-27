@@ -10,7 +10,7 @@ export type AccountField = {
   label: React.ReactNode
   type: 'text' | 'email' | 'password' | 'checkbox'
   autoComplete?: string
-  hint?: string
+  hint?: React.ReactNode
   maxLength?: number
 }
 
@@ -81,6 +81,7 @@ export default function AccountForm({
   submitLabel,
   pendingLabel,
   hidden = {},
+  username,
   children,
 }: {
   action: (state: FormState, formData: FormData) => Promise<FormState>
@@ -88,6 +89,8 @@ export default function AccountForm({
   submitLabel: string
   pendingLabel: string
   hidden?: Record<string, string>
+  /** For a password-only form, so password managers know which account the password belongs to. */
+  username?: string
   children?: React.ReactNode
 }) {
   const formId = useId()
@@ -104,6 +107,9 @@ export default function AccountForm({
         {Object.entries(hidden).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
+        {username !== undefined && (
+          <input type="email" name="username" value={username} autoComplete="username" readOnly hidden />
+        )}
         {fields.map((field) => {
           const id = fieldId(field.name)
           const error = state.errors?.[field.name]
