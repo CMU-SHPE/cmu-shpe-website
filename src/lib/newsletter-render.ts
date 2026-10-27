@@ -21,7 +21,23 @@ export const SAMPLE_UNSUBSCRIBE_LABEL = 'Unsubscribe (sample: each recipient get
 
 // Only http(s) is matched, so javascript:, data: and other schemes stay plain text.
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`]+/gi
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/
+const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?', ')', ']', '}'])
+
+function count(text: string, char: string): number {
+  return text.split(char).length - 1
+}
+
+// A closing parenthesis stays when the link opened one, as in https://en.wikipedia.org/wiki/SHPE_(organization).
+function withoutTrailingPunctuation(raw: string): string {
+  let url = raw
+  while (url.length > 0) {
+    const last = url[url.length - 1]
+    if (!TRAILING_PUNCTUATION.has(last)) break
+    if (last === ')' && count(url, '(') >= count(url, ')')) break
+    url = url.slice(0, -1)
+  }
+  return url
+}
 
 export function newsletterSubject(subject: string): string {
   return subject.replace(/[^\S\r\n]*[\r\n]+\s*/g, ' ').trim()
@@ -43,7 +59,7 @@ function linkify(line: string): string {
   let last = 0
   for (const match of line.matchAll(URL_PATTERN)) {
     const raw = match[0]
-    const url = raw.replace(TRAILING_PUNCTUATION, '')
+    const url = withoutTrailingPunctuation(raw)
     const start = match.index
     html += escapeHtml(line.slice(last, start))
     html += `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`

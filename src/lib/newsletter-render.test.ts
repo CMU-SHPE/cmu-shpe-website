@@ -134,10 +134,18 @@ describe('renderNewsletter against hostile input', () => {
     expect(text).toContain('Sign up (https://shpe.example/join). Then: https://shpe.example/a?b=1!')
   })
 
-  it.todo(
-    'keeps a balanced closing parenthesis inside a link such as https://en.wikipedia.org/wiki/SHPE_(organization) ' +
-      '(needs-decision: TRAILING_PUNCTUATION in newsletter-render.ts strips it today, so that link 404s)',
-  )
+  it('keeps a balanced closing parenthesis inside a link such as a Wikipedia page', () => {
+    const { html } = render(
+      'Read https://en.wikipedia.org/wiki/SHPE_(organization). Also (see https://en.wikipedia.org/wiki/A_(b)) and https://x.example/a)b)',
+    )
+    expect(hrefsOf(bodyOf(html))).toEqual([
+      'https://en.wikipedia.org/wiki/SHPE_(organization)',
+      'https://en.wikipedia.org/wiki/A_(b)',
+      'https://x.example/a)b',
+    ])
+    expect(bodyOf(html)).toContain('SHPE_(organization)</a>.')
+    expect(bodyOf(html)).toContain('A_(b)</a>) and')
+  })
 
   it('keeps unicode text, emoji and RTL characters intact without breaking the markup', () => {
     const body = 'Bienvenidos, ¡año nuevo! 🎉\n\nمرحبا ‮gnp.exe‬ and ‏⁦isolated⁩'
