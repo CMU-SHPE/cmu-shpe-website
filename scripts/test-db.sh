@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # Runs the *.pg.test files against a throwaway Postgres 17 behind a local Neon HTTP proxy, so
-# queries go through the real @neondatabase/serverless driver. Both containers listen on
-# 127.0.0.1 only and are removed afterwards. Never point this at a real database.
+# queries go through the real @neondatabase/serverless driver. Postgres is reachable only from the
+# proxy, the proxy only on 127.0.0.1, and both are removed afterwards. Never point this at a real database.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 PREFIX="cmu-shpe-test-db-$$"
 NETWORK="$PREFIX-net"
-PG_PORT="${TEST_DB_PG_PORT:-55440}"
-PROXY_PORT="${TEST_DB_PROXY_PORT:-4444}"
 PROXY_IMAGE="ghcr.io/timowilhelm/local-neon-http-proxy:main"
 
 cleanup() {
@@ -20,7 +18,7 @@ trap cleanup EXIT
 docker network create "$NETWORK" >/dev/null
 docker run -d --name "$PREFIX-pg" --network "$NETWORK" \
   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=main \
-  -p "127.0.0.1:$PG_PORT:5432" postgres:17 >/dev/null
+  postgres:17 >/dev/null
 until docker exec "$PREFIX-pg" pg_isready -U postgres -d main -q; do sleep 1; done
 # pg_isready can pass during the init restart; wait for a real query to succeed.
 until docker exec "$PREFIX-pg" psql -U postgres -d main -qtAc 'select 1' >/dev/null 2>&1; do sleep 1; done
@@ -32,7 +30,9 @@ done
 
 docker run -d --name "$PREFIX-proxy" --network "$NETWORK" \
   -e "PG_CONNECTION_STRING=postgres://postgres:postgres@$PREFIX-pg:5432/main" \
-  -p "127.0.0.1:$PROXY_PORT:4444" "$PROXY_IMAGE" >/dev/null
+  -p 127.0.0.1::4444 "$PROXY_IMAGE" >/dev/null
+# Docker picks a free host port, so overlapping runs don't collide.
+PROXY_PORT=$(docker port "$PREFIX-proxy" 4444/tcp | head -n 1 | sed 's/.*://')
 
 export TEST_DATABASE_URL="postgres://postgres:postgres@db.localtest.me:5432/main"
 export TEST_NEON_FETCH_ENDPOINT="http://127.0.0.1:$PROXY_PORT/sql"
