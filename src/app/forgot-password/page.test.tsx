@@ -12,12 +12,16 @@ describe('ForgotPasswordPage', () => {
     render(await ForgotPasswordPage({ searchParams: Promise.resolve({}) }))
     expect(screen.getByRole('heading', { level: 1, name: 'Forgot your password?' })).toBeInTheDocument()
     expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'email')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(document.getElementById('request-sent')).toBeNull()
   })
 
   it('confirms a request only conditionally, never claiming an email was sent', async () => {
     render(await ForgotPasswordPage({ searchParams: Promise.resolve({ sent: '1' }) }))
-    expect(screen.getByRole('status')).toHaveTextContent("If an account exists for that email, we've sent a reset link.")
+    const notice = document.getElementById('request-sent')
+    expect(notice).toHaveTextContent("If an account exists for that email, we've sent a reset link.")
+    expect(notice).toHaveFocus()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it.each([{}, { sent: '1' }])('moves focus to the error on every failed submit, even the same error twice (%o)', async (params) => {

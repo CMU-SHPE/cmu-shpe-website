@@ -10,9 +10,11 @@ import ResendConfirmationPage from './page'
 describe('ResendConfirmationPage', () => {
   it('confirms a request only conditionally', async () => {
     render(await ResendConfirmationPage({ searchParams: Promise.resolve({ sent: '1' }) }))
-    expect(screen.getByRole('status')).toHaveTextContent(
-      "If an unconfirmed account exists for that email, we've sent a new confirmation link.",
-    )
+    const notice = document.getElementById('request-sent')
+    expect(notice).toHaveTextContent("If an unconfirmed account exists for that email, we've sent a new confirmation link.")
+    expect(notice).toHaveFocus()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
   })
 

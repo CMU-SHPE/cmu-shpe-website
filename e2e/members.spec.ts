@@ -51,7 +51,8 @@ async function emailRequestOutcome(page: Page, path: string, submitLabel: string
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByRole('button', { name: submitLabel }).click()
   await page.waitForURL((url) => url.searchParams.get('sent') === '1')
-  await expect(page.locator('main').getByRole('status')).toBeVisible()
+  // Focus moves to the notice instead of a live region announcing it, so it is read once.
+  await expect(page.locator('main #request-sent')).toBeFocused()
   const url = new URL(page.url())
   return { location: `${url.pathname}${url.search}`, text: (await page.locator('main').innerText()).trim() }
 }
@@ -192,7 +193,7 @@ test.describe('email requests do not reveal who has an account', () => {
 
       expect(knownOutcome).toEqual(unknownOutcome)
       expect(knownOutcome.location).toBe(`${path}?sent=1`)
-      await expect(page.locator('main').getByRole('status')).toContainText('If an')
+      await expect(page.locator('main #request-sent')).toContainText('If an')
     })
   }
 })
