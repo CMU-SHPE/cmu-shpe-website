@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import ImageCropField from '@/components/image-crop-field'
 import SponsorLogo from '@/components/SponsorLogo'
 import SubmitButton from '@/components/submit-button'
@@ -13,6 +14,7 @@ import {
   mutedTextClass,
   pageHeadingClass,
   primaryButtonClass,
+  secondaryButtonClass,
   sectionHeadingClass,
 } from '@/components/admin/styles'
 import type { Sponsor } from '@/db/schema'
@@ -167,6 +169,10 @@ export default async function AdminSponsorsPage(props: {
                           <p className={`break-all ${mutedTextClass}`}>{sponsor.website}</p>
                         )}
                       </div>
+                      <Link href={`/admin/sponsors/${sponsor.id}`} className={`${secondaryButtonClass} inline-block`}>
+                        {'Details '}
+                        <span className="sr-only">for {sponsor.name}</span>
+                      </Link>
                       <MoveButtons
                         name={sponsor.name}
                         moveUp={index > 0 ? moveSponsor.bind(null, sponsor.id, 'up') : undefined}
