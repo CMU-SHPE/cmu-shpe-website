@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { draft, hasTestDatabase, query, seed, type SeedMember } from '@/db/pg-test-support'
 import type { NewsletterBatchResult, NewsletterEmail } from '@/lib/email'
@@ -31,7 +32,15 @@ import {
   getTopicsWithConfirmedSubscriberCounts,
   listNewsletters,
 } from '@/lib/newsletter-admin'
-import { claimNextChunk, loadSendSnapshot, processNewsletterSend, startNewsletterSend } from '@/lib/newsletter-send'
+import {
+  claimChunkStatement,
+  claimNextChunk,
+  loadSendSnapshot,
+  lockNewsletterStatement,
+  processNewsletterSend,
+  startNewsletterSend,
+} from '@/lib/newsletter-send'
+import { getDb } from '@/db'
 import { getNewsletterTopicsWithSubscriberCounts } from '@/lib/newsletter-topics'
 import { resolveUnsubscribeToken, unsubscribe } from '@/lib/newsletter-unsubscribe'
 import { unsubscribeTokenFor } from '@/lib/newsletter-unsubscribe-token'
@@ -362,5 +371,42 @@ describe.skipIf(!hasTestDatabase)('statements otherwise covered only by mocks, o
     )
     expect(row.status).toBe('sent')
     expect(row.unsubscribe_token_hash).toHaveLength(64)
+  })
+})
+
+describe.skipIf(!hasTestDatabase)('two claims sharing one now() on real Postgres', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it.each(['production', 'preview'])('a later claim never skips rows an earlier claim took (VERCEL_ENV=%s)', async (env) => {
+    vi.stubEnv('VERCEL_ENV', env)
+    vi.stubEnv('AUTH_SECRET', 'pg-test-secret')
+    await seed([])
+    await query(
+      "insert into members (email, name, password_hash, email_confirmed_at, age_confirmed_at, privacy_policy_version, terms_accepted_at) select 'delivered+m' || g || '@resend.dev', 'n', 'h', now(), now(), '1', now() from generate_series(1, 150) g",
+    )
+    await query('insert into member_topic_subscriptions (member_id, topic_id) select id, 1 from members')
+    const id = await draft([1])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+
+    // Inside one transaction both claims see the same now(), as two claims starting in the same
+    // microsecond do when the second waits on the first's lock. Member 1 leaves in between.
+    const db = getDb()
+    const [, first, , second] = (await db.batch([
+      db.execute(lockNewsletterStatement(id)),
+      db.execute(claimChunkStatement(id)),
+      db.execute(sql`delete from member_topic_subscriptions where member_id = 1`),
+      db.execute(claimChunkStatement(id)),
+    ])) as unknown as { rows: { id: number; chunk: number; skipped: boolean }[] }[]
+
+    expect(first.rows.every((row) => row.chunk === 0 && !row.skipped)).toBe(true)
+    expect(first.rows).toHaveLength(100)
+    expect(second.rows.every((row) => row.chunk === 1)).toBe(true)
+    expect(second.rows).toHaveLength(50)
+    expect(await query("select chunk, status, count(*)::int as n from newsletter_recipients group by 1, 2 order by 1, 2")).toEqual([
+      { chunk: 0, status: 'sending', n: 100 },
+      { chunk: 1, status: 'sending', n: 50 },
+    ])
   })
 })

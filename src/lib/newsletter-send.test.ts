@@ -97,9 +97,10 @@ function respondWith(state: World): Responder {
     if (is(query, 'select status, subject, body')) return state.newsletter ? [state.newsletter] : []
     if (is(query, 'with target as')) {
       const next = state.chunks.shift()
-      return next ? next.ids.map((id) => ({ id, chunk: next.chunk, skipped: next.skipped, first_claim: !next.reclaimed })) : []
+      return next
+        ? next.ids.map((id) => ({ id, chunk: next.chunk, skipped: next.skipped?.includes(id) ?? false, first_claim: !next.reclaimed }))
+        : []
     }
-    if (is(query, "set status = 'skipped'")) return []
     if (is(query, 'set unsubscribe_token_hash')) {
       const ids = query.params.filter((_, index) => index % 2 === 0) as number[]
       return ids
@@ -215,43 +216,48 @@ describe('processNewsletterSend', () => {
     expect(record.params).toEqual([11, 'sent', 're_0', null, 12, 'sent', 're_1', null, 13, 'sent', 're_2', null])
   })
 
-  it('claims and checks subscriptions in one transaction, skipping only rows claimed for the first time', async () => {
+  it('claims and decides skips in one statement, for exactly the rows it claims', async () => {
     fake.respond = respondWith(world())
     await processNewsletterSend(4)
-    const [, claim, skip] = fake.batches[0].map((query) => squash(query.sql))
+    expect(fake.batches[0]).toHaveLength(2)
+    const [, claim] = fake.batches[0].map((query) => squash(query.sql))
     expect(claim).toContain('for update of r skip locked')
     expect(claim).toContain('claimed_at = coalesce(r.claimed_at, now())')
-    expect(skip).toContain("set status = 'skipped'")
-    expect(skip).toContain('r.claimed_at = now() and ( m.email_confirmed_at is null or not exists')
-    expect(skip).toContain("< coalesce(array_length(string_to_array(n.topic_names, chr(10)), 1), 0) then 'topic_removed'")
+    expect(claim).toContain("status = (case when locked.skip_reason is null then 'sending' else 'skipped' end)")
+    expect(claim).toContain('from locked where r.id = locked.id')
+    expect(claim).not.toContain('= now() and')
+  })
+
+  it('applies the unsubscribe and confirmation rules to first claims only, and topic_removed when topics shrank', async () => {
+    fake.respond = respondWith(world())
+    await processNewsletterSend(4)
+    const [, claim] = fake.batches[0].map((query) => squash(query.sql))
+    expect(claim).toContain("when r.claimed_at is not null then null when m.email_confirmed_at is null then 'unconfirmed'")
+    expect(claim).toContain("< coalesce(array_length(string_to_array(n.topic_names, chr(10)), 1), 0) then 'topic_removed'")
+    expect(claim).toContain('r.claimed_at is null as first_claim')
   })
 
   it('checks every claimed row, first claim or not, against the test audience outside production', async () => {
     vi.stubEnv('VERCEL_ENV', 'preview')
     fake.respond = respondWith(world())
     await processNewsletterSend(4)
-    const [, , skip] = fake.batches[0]
-    const text = squash(skip.sql)
-    expect(text).toContain("and r.updated_at = now() and m.id = r.member_id and ( not (lower(m.email) like $")
-    expect(text).toContain("then 'not_test_audience'")
-    expect(skip.params).toContain('%@resend.dev')
+    const [, claim] = fake.batches[0]
+    const text = squash(claim.sql)
+    expect(text).toMatch(/case when not \(lower\(m\.email\) like \$\d+\) then 'not_test_audience' when r\.claimed_at is not null then null/)
+    expect(claim.params).toContain('%@resend.dev')
   })
 
   it('renders the test-audience check as true in production, so retries stay byte-identical', async () => {
     vi.stubEnv('VERCEL_ENV', 'production')
     fake.respond = respondWith(world())
     await processNewsletterSend(4)
-    const [, , skip] = fake.batches[0]
-    expect(squash(skip.sql)).toContain('( not (true) or ( r.claimed_at = now()')
-    expect(skip.params).not.toContain('%@resend.dev')
+    const [, claim] = fake.batches[0]
+    expect(squash(claim.sql)).toContain("case when not (true) then 'not_test_audience'")
+    expect(claim.params).not.toContain('%@resend.dev')
   })
 
   it('leaves skipped recipients out of the batch', async () => {
-    const state = world()
-    fake.respond = (query) => {
-      if (is(query, "set status = 'skipped'")) return [{ id: 12 }]
-      return respondWith(state)(query)
-    }
+    fake.respond = respondWith(world({ chunks: [{ chunk: 0, ids: [11, 12, 13], skipped: [12] }] }))
     await processNewsletterSend(4)
     expect(sentBatches()[0].emails.map((email) => email.to)).toEqual(['ana@example.com', 'sofia@example.com'])
   })
@@ -442,7 +448,7 @@ describe('processNewsletterSend recipients and links', () => {
     expect(squash(release.sql)).not.toContain('claimed_at = null')
     expect(squash(release.sql)).not.toContain('unsubscribe_token_hash = null')
     const [, claim] = fake.batches[0]
-    expect(squash(claim.sql)).toContain('returning r.id, r.chunk, r.claimed_at = now() as first_claim')
+    expect(squash(claim.sql)).toContain('returning r.id, r.chunk, locked.first_claim, locked.skip_reason is not null as skipped')
   })
 
   it('forgets the stored link of a batch Resend refused outright, since nobody received it', async () => {

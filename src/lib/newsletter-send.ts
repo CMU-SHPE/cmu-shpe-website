@@ -187,18 +187,71 @@ function expireUnrepeatableClaims(newsletterId: number) {
 /** firstClaim: every row was claimed for the first time now, so no earlier attempt can have sent it. */
 export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: boolean }
 
+type ClaimedRow = { id: number; chunk: number; first_claim: boolean; skipped: boolean }
+
+/** Exported so a test can run two claims inside one transaction, where they share now(). */
+export function claimChunkStatement(newsletterId: number): SQL {
+  const claimable = sql`(r.status = 'pending' or (r.status = 'sending' and r.updated_at < now() - ${STALE_CLAIM}))`
+  const inAudience = audienceEmailCondition(sql`m.email`)
+  return sql`
+      with target as (
+        select r.chunk from newsletter_recipients r
+        where r.newsletter_id = ${newsletterId} and ${claimable}
+        order by r.chunk limit 1
+      ),
+      locked as (
+        select
+          r.id,
+          r.claimed_at is null as first_claim,
+          case
+            when not (${inAudience}) then 'not_test_audience'
+            when r.claimed_at is not null then null
+            when m.email_confirmed_at is null then 'unconfirmed'
+            when not exists (
+              select 1 from member_topic_subscriptions mts
+              join newsletter_topic_selections s on s.topic_id = mts.topic_id
+              where mts.member_id = r.member_id and s.newsletter_id = ${newsletterId}
+            ) then
+              case
+                when (select count(*) from newsletter_topic_selections s where s.newsletter_id = n.id)
+                  < coalesce(array_length(string_to_array(n.topic_names, chr(10)), 1), 0) then 'topic_removed'
+                else 'unsubscribed'
+              end
+          end as skip_reason
+        from newsletter_recipients r
+        join target on r.chunk = target.chunk
+        join members m on m.id = r.member_id
+        join newsletters n on n.id = r.newsletter_id
+        where r.newsletter_id = ${newsletterId} and ${claimable}
+        for update of r skip locked
+      )
+      update newsletter_recipients r set
+        status = (case when locked.skip_reason is null then 'sending' else 'skipped' end)::newsletter_recipient_status,
+        error_code = coalesce(locked.skip_reason, r.error_code),
+        claimed_at = coalesce(r.claimed_at, now()),
+        updated_at = now()
+      from locked where r.id = locked.id
+      returning r.id, r.chunk, locked.first_claim, locked.skip_reason is not null as skipped
+`
+}
+
+export function lockNewsletterStatement(newsletterId: number): SQL {
+  return sql`select id from newsletters where id = ${newsletterId} for update`
+}
+
 /**
- * Claims every claimable row of the lowest open chunk and, in the same transaction, skips the
- * rows claimed for the first time (claimed_at is the transaction's now()) whose member has since
- * unsubscribed or lost confirmation. A re-claim skips nothing, so its batch matches the first try.
+ * Claims every claimable row of the lowest open chunk and decides in the same statement which of
+ * exactly those rows to skip, so a concurrent claim can never mark another claimer's rows.
+ * Rows claimed for the first time are skipped if the member has since unsubscribed or lost
+ * confirmation; a re-claim skips nothing for those reasons, so its batch matches the first try.
  *
  * Deleting a topic removes its selection, so fewer selections than the topic names frozen at
  * the start marks a skip as topic_removed. A member who also unsubscribed from a remaining topic
  * is labelled the same way, since account-page changes leave no record to tell them apart.
  *
- * Every claimed row (updated_at is the transaction's now()) is also checked against the test
- * audience: a preview database copied mid-send holds production's pending rows, and pressing
- * Continue there must not reach real members. In production the check renders `true`.
+ * Every claimed row, first claim or not, is also checked against the test audience: a preview
+ * database copied mid-send holds production's pending rows, and pressing Continue there must not
+ * reach real members. In production the check renders `true`.
  *
  * Claims for one newsletter take turns on its row lock. SKIP LOCKED alone let two concurrent
  * claimers pick the same chunk and each take part of it, sending two different payloads under
@@ -207,71 +260,18 @@ export type ClaimedChunk = { chunk: number; recipientIds: number[]; firstClaim: 
  */
 export async function claimNextChunk(newsletterId: number): Promise<ClaimedChunk | null> {
   const db = getDb()
-  const claimable = sql`(r.status = 'pending' or (r.status = 'sending' and r.updated_at < now() - ${STALE_CLAIM}))`
-  const inAudience = audienceEmailCondition(sql`m.email`)
-  const [, claimed, skipped] = (await db.batch([
-    db.execute(sql`select id from newsletters where id = ${newsletterId} for update`),
-    db.execute(sql`
-      with target as (
-        select r.chunk from newsletter_recipients r
-        where r.newsletter_id = ${newsletterId} and ${claimable}
-        order by r.chunk limit 1
-      ),
-      locked as (
-        select r.id from newsletter_recipients r join target on r.chunk = target.chunk
-        where r.newsletter_id = ${newsletterId} and ${claimable}
-        for update of r skip locked
-      )
-      update newsletter_recipients r set
-        status = 'sending',
-        claimed_at = coalesce(r.claimed_at, now()),
-        updated_at = now()
-      from locked where r.id = locked.id
-      returning r.id, r.chunk, r.claimed_at = now() as first_claim
-    `),
-    db.execute(sql`
-      update newsletter_recipients r set
-        status = 'skipped',
-        error_code = case
-          when not (${inAudience}) then 'not_test_audience'
-          when m.email_confirmed_at is null then 'unconfirmed'
-          when (select count(*) from newsletter_topic_selections s where s.newsletter_id = n.id)
-            < coalesce(array_length(string_to_array(n.topic_names, chr(10)), 1), 0) then 'topic_removed'
-          else 'unsubscribed'
-        end,
-        updated_at = now()
-      from members m, newsletters n
-      where r.newsletter_id = ${newsletterId}
-        and n.id = r.newsletter_id
-        and r.status = 'sending'
-        and r.updated_at = now()
-        and m.id = r.member_id
-        and (
-          not (${inAudience})
-          or (
-            r.claimed_at = now()
-            and (
-              m.email_confirmed_at is null
-              or not exists (
-                select 1 from member_topic_subscriptions mts
-                join newsletter_topic_selections s on s.topic_id = mts.topic_id
-                where mts.member_id = r.member_id and s.newsletter_id = ${newsletterId}
-              )
-            )
-          )
-        )
-      returning r.id
-    `),
-  ])) as unknown as [unknown, Rows<{ id: number; chunk: number; first_claim: boolean }>, Rows<{ id: number }>]
+  const [, claimed] = (await db.batch([
+    db.execute(lockNewsletterStatement(newsletterId)),
+    db.execute(claimChunkStatement(newsletterId)),
+  ])) as unknown as [unknown, Rows<ClaimedRow>]
 
   if (claimed.rows.length === 0) return null
-  const skippedIds = new Set(skipped.rows.map((row) => row.id))
   return {
     chunk: claimed.rows[0].chunk,
     firstClaim: claimed.rows.every((row) => row.first_claim),
     recipientIds: claimed.rows
+      .filter((row) => !row.skipped)
       .map((row) => row.id)
-      .filter((id) => !skippedIds.has(id))
       .sort((a, b) => a - b),
   }
 }
