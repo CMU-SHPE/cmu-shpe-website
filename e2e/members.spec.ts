@@ -244,6 +244,7 @@ const ACCESSIBILITY_PAGES = [
   `/reset-password?token=${WELL_FORMED_UNKNOWN_TOKEN}`,
   '/reset-password',
   '/login',
+  '/events',
   '/privacy',
   '/terms',
 ]
