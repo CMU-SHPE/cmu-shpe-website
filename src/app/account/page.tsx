@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import SubmitButton from '@/components/submit-button'
 import FocusOnMount from '@/components/focus-on-mount'
 import StatusBanner from '@/components/admin/status-banner'
+import MyRsvps from '@/components/rsvp/my-rsvps'
 import {
   cardClass,
   dangerButtonClass,
@@ -172,6 +173,8 @@ export default async function AccountPage(props: {
             </form>
           )}
         </section>
+
+        <MyRsvps memberId={memberId} />
 
         <section className={cardClass} aria-labelledby="password-heading">
           <h2 id="password-heading" className={sectionHeadingClass}>

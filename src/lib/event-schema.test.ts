@@ -26,11 +26,29 @@ describe('parseEventForm', () => {
       type: 'Networking',
       date: '2026-04-15',
       time: '6:00 PM – 9:00 PM',
+      capacity: null,
     })
   })
 
   it('treats a blank time as none', () => {
     expect(parseEventForm(eventForm({ time: '  ' })).data?.time).toBeNull()
+  })
+
+  it('treats a blank or missing capacity as unlimited', () => {
+    expect(parseEventForm(eventForm({ capacity: '' })).data?.capacity).toBeNull()
+    expect(parseEventForm(eventForm({ capacity: '  ' })).data?.capacity).toBeNull()
+  })
+
+  it('accepts a whole-number capacity from 1 to 10000', () => {
+    expect(parseEventForm(eventForm({ capacity: '1' })).data?.capacity).toBe(1)
+    expect(parseEventForm(eventForm({ capacity: ' 40 ' })).data?.capacity).toBe(40)
+    expect(parseEventForm(eventForm({ capacity: '10000' })).data?.capacity).toBe(10000)
+  })
+
+  it('rejects a capacity that is not a positive whole number up to 10000', () => {
+    for (const capacity of ['0', '-3', '2.5', '10001', 'ten', '1e3x', 'Infinity']) {
+      expect(parseEventForm(eventForm({ capacity })).success, capacity).toBe(false)
+    }
   })
 
   it('rejects a type outside the list', () => {

@@ -13,6 +13,9 @@ vi.mock('@/lib/member-account', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/member-account')>()),
   getMemberTopicIds: async () => mocks.subscribed,
 }))
+vi.mock('@/components/rsvp/my-rsvps', () => ({
+  default: ({ memberId }: { memberId: number }) => <p>My RSVPs for member {memberId}</p>,
+}))
 vi.mock('./actions', () => ({
   updateName: vi.fn(),
   changePassword: vi.fn(),
@@ -53,6 +56,11 @@ describe('AccountPage', () => {
       'Delete my account',
     ])
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Mia')
+  })
+
+  it('shows the signed-in member’s RSVPs', async () => {
+    await renderPage()
+    expect(screen.getByText('My RSVPs for member 7')).toBeInTheDocument()
   })
 
   it('lists every topic as a labelled checkbox reflecting current choices', async () => {
