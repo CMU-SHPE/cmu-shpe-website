@@ -6,6 +6,9 @@
  * Ids 1 are lookup keys that may or may not exist on the preview; a signed-out visitor must be refused
  * either way, so a 404 is as acceptable as a 401 or a redirect to /login. What must never come back is
  * the file itself.
+ *
+ * None of these routes existed when this was written, so they pass on a plain 404 today. Once the
+ * receipt and CSV handlers land, pin each one to the status its handler actually chose.
  */
 import { expect, previewRequest, test } from './fixtures'
 

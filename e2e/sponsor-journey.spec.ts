@@ -33,6 +33,10 @@
  *     card has a button whose name starts "RSVP", becomes "Cancel RSVP…" once going, and a full
  *     event shows the word "Full" with no RSVP button.
  *  8. Another member's request for a receipt gets a 404 (brief: 404, not 403).
+ *  9. eventCard() takes the innermost element on /events that contains the event's heading; the RSVP
+ *     button and the "Full" text must sit inside that element.
+ * 10. Admin creates redirect with ?saved= (as at fd1db2d); creating a listing may land on
+ *     /admin/sponsors or /admin/sponsors/<id>. Every Delete uses the shared "Delete <name>" button.
  */
 import type { Browser, BrowserContext, Page } from '@playwright/test'
 import { bypassHeaders, expect, expectNoAxeViolations, installBypass, test, type Theme } from './fixtures'
@@ -202,9 +206,9 @@ async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: stri
   await page.getByLabel(UI.join.confirmPassword, { exact: true }).fill(member.password)
   await page.getByLabel(UI.join.age).check()
   await page.getByLabel(UI.join.terms).check()
+  created.members.push(member)
   await page.getByRole('button', { name: UI.join.submit }).click()
   await page.waitForURL('**/join/check-email')
-  created.members.push(member)
 
   const email = await waitForConfirmationEmail(member.email)
   const link = `${email.text ?? ''}\n${email.html ?? ''}`.match(/https?:\/\/[^\s"<>]+\/join\/confirm\?token=[\w-]+/)?.[0]
@@ -252,10 +256,14 @@ function dateInDays(days: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-/** What afterAll has to remove; filled in as each thing is created so a failed step still gets cleaned up. */
+/**
+ * What afterAll has to remove. Each entry is recorded just before its submit, so a create that went
+ * through but failed a later check is still cleaned up; cleanup treats a missing record as gone.
+ * Listing names are newest first, since an edit may have landed without passing its checks.
+ */
 const created = {
   baseURL: undefined as string | undefined,
-  listing: null as null | { id: string; name: string },
+  listing: null as null | { id: string | null; names: string[] },
   receipt: false,
   event: false,
   members: [] as JourneyMember[],
@@ -287,14 +295,18 @@ test.describe('sponsor journey', () => {
         await open(admin, '/admin/sponsors')
         const addForm = formWithButton(admin, UI.adminSponsors.add)
         await addForm.getByLabel(UI.adminSponsors.name, { exact: true }).fill(LISTING_NAME)
+        created.listing = { id: null, names: [LISTING_NAME] }
         await addForm.getByRole('button', { name: UI.adminSponsors.add, exact: true }).click()
-        await expectSaved(admin, '/admin/sponsors', 'Creating the listing')
+        await expectSaved(admin, /^\/admin\/sponsors(\/\d+)?$/, 'Creating the listing')
 
-        const item = admin.locator('li').filter({ hasText: LISTING_NAME })
-        const href = await item.locator('a[href^="/admin/sponsors/"]').first().getAttribute('href')
-        const id = href?.match(ROUTES.listingDetail)?.[1]
+        let id = new URL(admin.url()).pathname.match(ROUTES.listingDetail)?.[1]
+        if (!id) {
+          const item = admin.locator('li').filter({ hasText: LISTING_NAME })
+          const href = await item.locator('a[href^="/admin/sponsors/"]').first().getAttribute('href')
+          id = href?.match(ROUTES.listingDetail)?.[1]
+        }
         if (!id) throw new Error(`No /admin/sponsors/<id> link found for "${LISTING_NAME}" (assumption 1)`)
-        created.listing = { id, name: LISTING_NAME }
+        created.listing.id = id
       })
 
       await test.step('members A and B sign up and confirm through the emailed links', async () => {
@@ -329,9 +341,9 @@ test.describe('sponsor journey', () => {
         await form.getByLabel(UI.listingForm.website, { exact: true }).fill(EDITED_LISTING.website)
         await form.getByLabel(UI.listingForm.description, { exact: true }).fill(EDITED_LISTING.description)
         await form.getByLabel(UI.listingForm.bgColor, { exact: true }).fill(EDITED_LISTING.bgColor)
+        created.listing!.names.unshift(EDITED_LISTING.name)
         await form.getByRole('button', { name: UI.listingForm.save, exact: true }).click()
         await expectSaved(sponsor, ROUTES.sponsorHome, 'Saving the listing')
-        created.listing = { id: created.listing!.id, name: EDITED_LISTING.name }
 
         await open(sponsor, ROUTES.sponsorHome)
         const saved = formWithButton(sponsor, UI.listingForm.save)
@@ -363,9 +375,9 @@ test.describe('sponsor journey', () => {
         await receipts
           .getByLabel(UI.receipts.file, { exact: true })
           .setInputFiles({ name: RECEIPT_FILE_NAME, mimeType: 'application/pdf', buffer: pdf })
+        created.receipt = true
         await receipts.getByRole('button', { name: UI.receipts.upload, exact: true }).click()
         await expectSaved(admin, detailPath, 'Uploading the receipt')
-        created.receipt = true
         await expect(admin.getByRole('region', { name: UI.receipts.region })).toContainText(RECEIPT_TITLE)
       })
 
@@ -412,9 +424,9 @@ test.describe('sponsor journey', () => {
         await addForm.getByLabel(UI.adminEvents.location, { exact: true }).fill('E2E test room')
         await addForm.getByLabel(UI.adminEvents.date, { exact: true }).fill(dateInDays(14))
         await addForm.getByLabel(UI.adminEvents.capacity, { exact: true }).fill('1')
+        created.event = true
         await addForm.getByRole('button', { name: UI.adminEvents.add, exact: true }).click()
         await expectSaved(admin, '/admin/events', 'Creating the event')
-        created.event = true
       })
 
       await test.step('member A takes the only place and member B sees the event as full', async () => {
@@ -463,32 +475,44 @@ test.describe('sponsor journey', () => {
       }
     }
 
+    /** Returns false when there was nothing to delete under that name. */
     async function deleteFrom(path: string, name: string, successPath: string) {
       await open(admin, path)
-      await admin.getByRole('button', { name: UI.delete(name), exact: true }).click()
+      const button = admin.getByRole('button', { name: UI.delete(name), exact: true })
+      if ((await button.count()) === 0) return false
+      await button.click()
       await expectSaved(admin, successPath, `Deleting ${name}`)
       await open(admin, path)
       await expect(admin.getByRole('button', { name: UI.delete(name), exact: true })).toHaveCount(0)
+      return true
     }
 
     try {
       await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
 
       const listing = created.listing
-      if (listing && created.receipt) {
+      if (listing?.id && created.receipt) {
         const detailPath = `/admin/sponsors/${listing.id}`
-        await attempt(`delete the receipt "${RECEIPT_TITLE}"`, () => deleteFrom(detailPath, RECEIPT_TITLE, detailPath))
+        await attempt(`delete the receipt "${RECEIPT_TITLE}"`, async () => {
+          await deleteFrom(detailPath, RECEIPT_TITLE, detailPath)
+        })
       }
       if (listing) {
-        await attempt(`delete the listing "${listing.name}"`, () => deleteFrom('/admin/sponsors', listing.name, '/admin/sponsors'))
+        await attempt(`delete the listing "${listing.names.join('" or "')}"`, async () => {
+          for (const name of listing.names) {
+            if (await deleteFrom('/admin/sponsors', name, '/admin/sponsors')) return
+          }
+        })
       }
       if (created.event) {
-        await attempt(`delete the event "${EVENT_TITLE}"`, () => deleteFrom('/admin/events', EVENT_TITLE, '/admin/events'))
+        await attempt(`delete the event "${EVENT_TITLE}"`, async () => {
+          await deleteFrom('/admin/events', EVENT_TITLE, '/admin/events')
+        })
       }
       for (const member of created.members) {
-        await attempt(`delete the member ${member.email}`, () =>
-          deleteFrom(`/admin/members?q=${encodeURIComponent(member.email)}`, member.name, '/admin/members'),
-        )
+        await attempt(`delete the member ${member.email}`, async () => {
+          await deleteFrom(`/admin/members?q=${encodeURIComponent(member.email)}`, member.name, '/admin/members')
+        })
       }
     } catch (error) {
       problems.push(`admin sign-in for cleanup: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
