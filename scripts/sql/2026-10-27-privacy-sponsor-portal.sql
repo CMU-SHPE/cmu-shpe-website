@@ -12,12 +12,14 @@
 -- Without it, or with commit=0, it rolls back. Each key ends in one of these states:
 --   applied now     the row held the newsletter release's text and now holds the new text;
 --   already new     an earlier run already applied it (safe to run again: nothing changes);
---   older           the row still holds the text from before the newsletter release, so nothing is changed and
---                   privacy.updated keeps its date. Commit 2026-10-26-privacy-newsletters.sql, then run this again;
---   officer-edited  an officer changed that section, so it is left alone. Right after the COMMIT,
---                   rewrite it by hand on /privacy or /terms, because the new "Last updated" date is already live;
+--   older           the row still holds the text from before the newsletter release, so it is left alone.
+--                   Commit 2026-10-26-privacy-newsletters.sql, then run this again;
+--   officer-edited  an officer changed that section, so it is left alone. After the COMMIT, rewrite it by hand
+--                   on /privacy or /terms, then change that page's "Last updated" to October 27, 2026 by hand, last;
 --   missing         no row: the page shows the new default text already.
--- The "Last updated" dates change last, in the same transaction, so a date never moves ahead of its text.
+-- The "Last updated" dates change last, in the same transaction, and only for a page whose every section is now
+-- the new text (applied now, already new or missing). If any section of that page is older or officer-edited,
+-- its date stays as it was and the check shows "held: older section" or "held: officer-edited section".
 -- The backup keeps each row as it was the first time this ran; later runs never overwrite it. It lives in its
 -- own schema, backups, because preview builds and db:push treat any unknown table in public as one to drop.
 -- Once /privacy and /terms show the right text, remove it with: drop table backups.site_content_policy_20261027;
@@ -139,20 +141,31 @@ with updated as (
   from policy_text t
   where s.key = t.key and t.key like '%.updated' and s.value = t.current_value
     and not exists (
-      select 1 from site_content older
-      join policy_text o on o.key = older.key
-      where split_part(o.key, '.', 1) = split_part(t.key, '.', 1) and older.value = o.older_value
+      select 1 from site_content section
+      join policy_text p on p.key = section.key
+      where p.key not like '%.updated' and split_part(p.key, '.', 1) = split_part(t.key, '.', 1)
+        and section.value <> p.new_value
     )
   returning s.key
 )
 insert into policy_applied_now select key from updated;
 
-\echo 'Each key must show applied now or already new. Fix any officer-edited key by hand after COMMIT.'
+\echo 'Each key must show applied now or already new. Fix any officer-edited key by hand after COMMIT, then its date.'
 select t.key,
   case
     when a.key is not null then 'applied now'
     when s.key is null then 'missing'
     when s.value = t.new_value then 'already new'
+    when t.key like '%.updated' and s.value = t.current_value then
+      case
+        when exists (
+          select 1 from site_content section
+          join policy_text p on p.key = section.key
+          where p.key not like '%.updated' and split_part(p.key, '.', 1) = split_part(t.key, '.', 1)
+            and section.value = p.older_value
+        ) then 'held: older section'
+        else 'held: officer-edited section'
+      end
     when s.value = t.older_value then 'older'
     else 'officer-edited'
   end as state

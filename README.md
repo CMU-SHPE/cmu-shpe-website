@@ -264,8 +264,12 @@ columns and shows the new policy as soon as it deploys.
    once without `-v commit=1`, check that every key shows `applied now` or `already new`,
    then again with `-v commit=1`. It updates `privacy.collect.items`, `privacy.use.items`,
    `privacy.retention.items`, `privacy.choices.items` and `terms.use.items`, then the two
-   "Last updated" dates. It expects the newsletter release's text: if any key shows
-   `older`, commit `2026-10-26-privacy-newsletters.sql` first and run this one again.
+   "Last updated" dates. A page's date only moves once every section of that page holds
+   the new text. It expects the newsletter release's text: if any key shows `older`, commit
+   `2026-10-26-privacy-newsletters.sql` first and run this one again. A section shown as
+   `officer-edited` is left alone and holds back its page's date (`held: officer-edited
+   section`): after the COMMIT, rewrite that section by hand on `/privacy` or `/terms`,
+   then change that page's **Last updated** to October 27, 2026 by hand, last.
 
 The `sponsor.*` text keys are new, so the portal shows their defaults until an admin edits
 them; running `npm run db:seed` also stores them.
