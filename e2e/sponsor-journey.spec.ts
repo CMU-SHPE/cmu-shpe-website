@@ -332,7 +332,7 @@ test.describe('sponsor journey', () => {
         const form = formWithButton(sponsor, UI.listingForm.save)
         await form.getByLabel(UI.listingForm.name, { exact: true }).fill(EDITED_LISTING.name)
         await form.getByLabel(UI.listingForm.website, { exact: true }).fill(EDITED_LISTING.website)
-        await form.getByLabel(UI.listingForm.description, { exact: true }).fill(EDITED_LISTING.description)
+        await form.getByRole('textbox', { name: UI.listingForm.description, exact: true }).fill(EDITED_LISTING.description)
         await form.getByLabel(UI.listingForm.bgColor, { exact: true }).fill(EDITED_LISTING.bgColor)
         created.listing!.names.unshift(EDITED_LISTING.name)
         await form.getByRole('button', { name: UI.listingForm.save, exact: true }).click()
@@ -341,7 +341,7 @@ test.describe('sponsor journey', () => {
         await open(sponsor, ROUTES.sponsorHome)
         const saved = formWithButton(sponsor, UI.listingForm.save)
         await expect(saved.getByLabel(UI.listingForm.name, { exact: true })).toHaveValue(EDITED_LISTING.name)
-        await expect(saved.getByLabel(UI.listingForm.description, { exact: true })).toHaveValue(EDITED_LISTING.description)
+        await expect(saved.getByRole('textbox', { name: UI.listingForm.description, exact: true })).toHaveValue(EDITED_LISTING.description)
         await expect(saved.getByLabel(UI.listingForm.bgColor, { exact: true })).toHaveValue(EDITED_LISTING.bgColor)
 
         await open(supporter, '/sponsors')
