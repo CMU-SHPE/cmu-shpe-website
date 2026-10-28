@@ -202,12 +202,12 @@ function EventCard({ event, children }: { event: ClubEvent; children?: React.Rea
           </span>
           <div className="text-right">
             <div className="text-gray-700 dark:text-gray-300 text-sm font-medium">{formatEventDate(event.date)}</div>
-            {event.time && <div className="text-gray-400 dark:text-gray-500 text-xs">{event.time}</div>}
+            {event.time && <div className="text-gray-500 dark:text-gray-400 text-xs">{event.time}</div>}
           </div>
         </div>
         <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
         <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-4">{event.description}</p>
-        <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
+        <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs">
           <LocationIcon className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
           {event.location}
         </div>
