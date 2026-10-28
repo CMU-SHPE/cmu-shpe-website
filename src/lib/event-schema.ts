@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { isRealDate } from './event-dates'
 import { EVENT_TYPES } from './event-types'
-import { optionalText, requiredText } from './form-fields'
+import { optional, optionalText, requiredText } from './form-fields'
 
 export const MAX_EVENT_DESCRIPTION_LENGTH = 2000
+export const MAX_EVENT_CAPACITY = 10000
 
 export const eventSchema = z.object({
   title: requiredText(200),
@@ -12,6 +13,7 @@ export const eventSchema = z.object({
   type: z.enum(EVENT_TYPES),
   date: z.string().trim().refine(isRealDate),
   time: optionalText(100),
+  capacity: optional(z.coerce.number().int().positive().max(MAX_EVENT_CAPACITY)),
 })
 
 export function parseEventForm(formData: FormData) {
@@ -22,5 +24,6 @@ export function parseEventForm(formData: FormData) {
     type: formData.get('type'),
     date: formData.get('date'),
     time: formData.get('time'),
+    capacity: formData.get('capacity'),
   })
 }

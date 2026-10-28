@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { type SQL, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import { type SQL, and, asc, desc, eq, exists, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { type Db, getDb } from '@/db'
-import { loginAttempts, memberTopicSubscriptions, members, requestThrottle } from '@/db/schema'
+import { loginAttempts, memberTopicSubscriptions, members, requestThrottle, sponsors } from '@/db/schema'
 import { qualified } from './qualified-column'
 
 export const MEMBERS_PAGE_SIZE = 50
@@ -39,9 +39,12 @@ export async function listMembers({ q, page }: MemberListParams) {
       role: members.role,
       emailConfirmedAt: members.emailConfirmedAt,
       createdAt: members.createdAt,
+      sponsorId: members.sponsorId,
+      sponsorName: sponsors.name,
       topicCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${qualified(memberTopicSubscriptions.memberId)} = ${qualified(members.id)})`,
     })
     .from(members)
+    .leftJoin(sponsors, eq(sponsors.id, members.sponsorId))
     .where(memberSearchCondition(q))
     .orderBy(desc(members.createdAt), desc(members.id))
     .limit(MEMBERS_PAGE_SIZE + 1)
@@ -61,4 +64,38 @@ export function memberDeletion(db: Db, id: number) {
     db.delete(loginAttempts).where(inArray(loginAttempts.email, email)),
     db.delete(members).where(eq(members.id, id)).returning({ id: members.id }),
   ] as const
+}
+
+export async function listSponsorOptions() {
+  return getDb()
+    .select({ id: sponsors.id, name: sponsors.name })
+    .from(sponsors)
+    .orderBy(asc(sponsors.name), asc(sponsors.id))
+}
+
+/**
+ * Promotes a member, or moves a sponsor to another listing. Unconfirmed members and
+ * missing listings match no row, so the caller sees an empty result instead of a
+ * foreign-key error.
+ */
+export function memberSponsorLink(db: Db, memberId: number, sponsorId: number) {
+  return db
+    .update(members)
+    .set({ role: 'sponsor', sponsorId })
+    .where(
+      and(
+        eq(members.id, memberId),
+        isNotNull(members.emailConfirmedAt),
+        exists(db.select({ id: sponsors.id }).from(sponsors).where(eq(sponsors.id, sponsorId))),
+      ),
+    )
+    .returning({ id: members.id })
+}
+
+export function memberSponsorRemoval(db: Db, memberId: number) {
+  return db
+    .update(members)
+    .set({ role: 'supporter', sponsorId: null })
+    .where(eq(members.id, memberId))
+    .returning({ id: members.id })
 }

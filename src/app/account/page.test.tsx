@@ -13,6 +13,9 @@ vi.mock('@/lib/member-account', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/member-account')>()),
   getMemberTopicIds: async () => mocks.subscribed,
 }))
+vi.mock('@/components/rsvp/my-rsvps', () => ({
+  default: ({ memberId }: { memberId: number }) => <p>My RSVPs for member {memberId}</p>,
+}))
 vi.mock('./actions', () => ({
   updateName: vi.fn(),
   changePassword: vi.fn(),
@@ -40,6 +43,22 @@ beforeEach(() => {
 })
 
 describe('AccountPage', () => {
+  it('links a sponsor to the sponsor portal', async () => {
+    mocks.requireMember.mockResolvedValue({
+      user: { id: '7', name: 'Mia', email: 'mia@example.com', kind: 'member', role: 'sponsor' },
+    })
+    await renderPage()
+    expect(screen.getByRole('link', { name: 'Sponsor portal' })).toHaveAttribute('href', '/sponsor')
+  })
+
+  it('shows no sponsor portal link to a supporter', async () => {
+    mocks.requireMember.mockResolvedValue({
+      user: { id: '7', name: 'Mia', email: 'mia@example.com', kind: 'member', role: 'supporter' },
+    })
+    await renderPage()
+    expect(screen.queryByRole('link', { name: 'Sponsor portal' })).toBeNull()
+  })
+
   it('requires a member before rendering anything', async () => {
     mocks.requireMember.mockRejectedValue(new Error('REDIRECT /login'))
     await expect(AccountPage({ searchParams: Promise.resolve({}) })).rejects.toThrow('REDIRECT /login')
@@ -55,6 +74,11 @@ describe('AccountPage', () => {
       'Delete my account',
     ])
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Mia')
+  })
+
+  it('shows the signed-in member’s RSVPs', async () => {
+    await renderPage()
+    expect(screen.getByText('My RSVPs for member 7')).toBeInTheDocument()
   })
 
   it('lists every topic as a labelled checkbox reflecting current choices', async () => {

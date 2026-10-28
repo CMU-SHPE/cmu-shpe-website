@@ -19,17 +19,21 @@ Chapter officers sign in and edit the whole site without touching code:
   navigation, buttons and form labels stay fixed.
 - **Officers and faculty advisor** — add, edit, reorder and remove people, with a
   square-cropped photo.
-- **Sponsors** — name, tier, website, logo (with cropping) and the logo tile's background
-  color; reorder within a tier.
-- **Events** — title, description, location, type, date and optional time. Events move
-  from Upcoming to Past on their own, using Denver time.
+- **Sponsors** — name, tier, website, description, logo (with cropping) and the logo
+  tile's background color; reorder within a tier. Each sponsor's **Details** page shows
+  the accounts linked to it, their edit history and its receipts (see
+  [Sponsor portal](#sponsor-portal)).
+- **Events** — title, description, location, type, date, optional time and optional
+  capacity. Events move from Upcoming to Past on their own, using Denver time. Each event
+  shows its RSVP count, the attendee list (name and email) and a CSV download of it.
 - **Page lists** — the home page stats and pillars, the SHPE National stats on the About
   page, and the sponsor benefits table.
 - **Site settings** — contact email, weekly meeting day, time and location, social links
   (a blank link hides its icon), the contact form's subject options and the chapter's
   mailing address for newsletters.
 - **Members** — search member accounts by name or email, see whether each confirmed their
-  email and how many newsletters they chose, and delete an account (see
+  email, how many newsletters they chose and which sponsor listing they are linked to,
+  give a confirmed member sponsor access or take it away, and delete an account (see
   [Member accounts](#member-accounts)).
 - **Newsletter topics** — add, edit, reorder and delete the topics members can choose.
   Deleting a topic removes every member's choice of it.
@@ -143,7 +147,8 @@ link. Officers without a photo show their initials.
 
 ## Member accounts
 
-Anyone 13 or older can create a member account to choose which newsletters they want.
+Anyone 13 or older can create a member account to choose which newsletters they want and
+to RSVP to events.
 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
@@ -153,15 +158,21 @@ Anyone 13 or older can create a member account to choose which newsletters they 
   a new link. Accounts never confirmed are deleted once they are 7 days old and have no
   unexpired link; there is no scheduled job, so this happens the next time anyone signs
   up or asks for a new link.
-- **Signing in:** members use the same **Sign in** page as admins and land on `/account`.
-- **`/account`:** change name and password, choose newsletter topics, and **Delete my
-  account** (asks for the password and the word DELETE; it removes the account, its
-  newsletter choices and its newsletter send and unsubscribe records right away).
+- **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
+  sponsors land on `/sponsor` instead.
+- **`/account`:** change name and password, choose newsletter topics, see and cancel
+  upcoming RSVPs, and **Delete my account** (asks for the password and the word DELETE;
+  it removes the account, its newsletter choices, its newsletter send and unsubscribe
+  records and its RSVPs right away). Sponsors also get a **Sponsor portal** link here.
+- **RSVPs:** any signed-in member with a confirmed email can RSVP to an upcoming event on
+  `/events` and cancel before it happens. See [Sponsor portal](#sponsor-portal) for
+  capacity and the attendee CSV.
 - **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour.
   Admins don't get one; the master resets admin passwords from **Admin accounts**.
 - **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
-  also removes their newsletter choices, newsletter send and unsubscribe records, and
-  pending email links.
+  also removes their newsletter choices, newsletter send and unsubscribe records, RSVPs and
+  pending email links. Any sponsor listing edits they made stay in that listing's history
+  under the name they had at the time, marked "(account deleted)".
 - **Privacy Policy and Terms of Use** (`/privacy`, `/terms`) are linked from the footer
   and edited in place like other page text. They are required disclosures for member
   accounts: keep them accurate and never blank a section. New sign-ups record the
@@ -204,6 +215,65 @@ Anyone 13 or older can create a member account to choose which newsletters they 
    unsubscribed or lost confirmation before their turn), and lists everyone it didn't
    reach for certain. A sent newsletter can't be edited or deleted.
 
+## Sponsor portal
+
+Sponsors are member accounts linked to a sponsor listing. A listing can have several
+linked accounts; an account can be linked to one listing.
+
+- **Giving access:** the sponsor's contact creates a normal member account at `/join` and
+  confirms their email. An admin then opens **Members**, picks the listing next to their
+  name and chooses **Make sponsor**. Unconfirmed accounts can't be linked. **Change
+  listing** moves a sponsor to another listing and **Remove sponsor access** makes them a
+  supporter again. Deleting a listing removes sponsor access from everyone linked to it
+  (the confirmation says so) and deletes its receipts and edit history.
+- **`/sponsor`:** sponsors edit their own listing's name, website, description, logo (by
+  uploading and cropping; they can't paste an image link) and logo background color.
+  Changes are live on `/sponsors` straight away. Tier and order stay with admins. The page
+  also lists upcoming events with RSVP buttons, the sponsor's RSVPs and their receipts.
+  The listing is always the one the signed-in account is linked to, decided on the server.
+  Admins who open `/sponsor` see a preview where they can edit the page's text. Search
+  engines are asked not to index it.
+- **Edit history:** every save that changes something records who made it (their name at
+  the time), when and which fields changed. Admins see it on the listing's **Details**
+  page, newest first. A deleted account's entries stay, marked "(account deleted)".
+- **Receipts:** admins upload PDF receipts (title, date, file up to 4 MB, checked to really
+  be a PDF) on the listing's **Details** page and can delete them. They are stored in the
+  database, not in Vercel Blob, so they are never at a public URL. Only admins and the
+  accounts linked to that listing can download them, and every download is sent as a
+  private, uncached attachment.
+- **RSVPs and capacity:** an event's optional capacity is enforced when the RSVP is saved,
+  so two people can't take the last place at once. Full events show **Full**; capped
+  events show how many spots are left. RSVPs are only possible for upcoming events.
+- **Attendee CSV:** **Events** → an event's attendees → download a CSV of name, email and
+  RSVP time (UTC). Cells that a spreadsheet would read as a formula are escaped. The file
+  holds members' personal information: keep it to the people running the event.
+
+### Production steps for stage 3
+
+Do these in order, all *before* merging to `main`, because the new code queries the new
+columns and shows the new policy as soon as it deploys.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** apply the new columns and tables (`members.sponsor_id`, `events.capacity`,
+   `sponsors.description`, `event_rsvps`, `sponsor_edits`, `sponsor_receipts`, reviewed in
+   `drizzle/0005_lovely_annihilus.sql`; it only adds) to production with `npm run db:push`,
+   as described under [Preview databases](#preview-databases).
+3. **Policy text (required):** run `scripts/sql/2026-10-27-privacy-sponsor-portal.sql` as
+   described under
+   [Releasing a change to the Privacy Policy or Terms](#releasing-a-change-to-the-privacy-policy-or-terms):
+   once without `-v commit=1`, check that every key shows `applied now` or `already new`,
+   then again with `-v commit=1`. It updates `privacy.collect.items`, `privacy.use.items`,
+   `privacy.retention.items`, `privacy.choices.items` and `terms.use.items`, then the two
+   "Last updated" dates. A page's date only moves once every section of that page holds
+   the new text. It expects the newsletter release's text: if any key shows `older`, commit
+   `2026-10-26-privacy-newsletters.sql` first and run this one again. A section shown as
+   `officer-edited` is left alone and holds back its page's date (`held: officer-edited
+   section`): after the COMMIT, rewrite that section by hand on `/privacy` or `/terms`,
+   then change that page's **Last updated** to October 27, 2026 by hand, last.
+
+The `sponsor.*` text keys are new, so the portal shows their defaults until an admin edits
+them; running `npm run db:seed` also stores them.
+
 ## Scripts
 
 | Command | Description |
@@ -214,6 +284,7 @@ Anyone 13 or older can create a member account to choose which newsletters they 
 | `npm start` | Serve the production build locally (`next start`) |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run the test suite ([Vitest](https://vitest.dev) + React Testing Library) |
+| `npm run test:db` | Run the database tests against a throwaway Postgres in Docker (see [Database tests](#database-tests)) |
 | `npm run test:e2e` | Run the [Playwright](https://playwright.dev) smoke tests against a preview deployment (see [Testing](#testing)) |
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
@@ -226,10 +297,13 @@ Anyone 13 or older can create a member account to choose which newsletters they 
 src/
   app/          Routes (App Router): the public pages, /login, the member pages
                 (/join, /account, /forgot-password, /reset-password, /privacy,
-                /terms), /unsubscribe and /unsubscribe/one-click, and the /admin
-                pages (including /admin/newsletters), each with their server actions
+                /terms), /unsubscribe and /unsubscribe/one-click, the sponsor portal
+                (/sponsor, with receipt downloads at /sponsor/receipts/[id]), and the
+                /admin pages (including /admin/newsletters), each with their server
+                actions
   components/   Shared UI: Navbar, Footer, ThemeProvider (dark mode), the inline
-                editor (editable.tsx), and admin form components
+                editor (editable.tsx), admin form components, and the RSVP (rsvp/)
+                and sponsor portal (sponsor/) components
   db/           Drizzle schema, the Neon client, and the seed script with its data
                 in seed-data/
   lib/          Queries, validation schemas, auth helpers and other shared logic,
@@ -247,21 +321,25 @@ npm test
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
 (lint, test, build).
 
-### Database integration tests
+### Database tests
 
 ```bash
-npm run test:db:docker
+npm run test:db
 ```
 
-`*.pg.test.ts(x)` files run every newsletter, topic and member query (and the admin page
-loaders) against a real Postgres 17, under both `VERCEL_ENV=production` and
-`VERCEL_ENV=preview`, through the real `@neondatabase/serverless` driver.
-`scripts/test-db.sh` needs Docker: it starts Postgres, reachable only from a
+Runs the `*.db.test.ts` and `*.pg.test.ts(x)` files against a real Postgres 17 so
+queries, `db.batch` transactions and locking behave as they do in production; the
+newsletter `*.pg.test` files run every query under both `VERCEL_ENV=production` and
+`VERCEL_ENV=preview`. It needs Docker and nothing else: no `.env.local`, no Neon account.
+`scripts/test-db.sh` starts a throwaway Postgres, reachable only from a
 [local Neon HTTP proxy](https://github.com/TimoWilhelm/local-neon-http-proxy) that listens
-on 127.0.0.1 on a free port Docker picks, applies `drizzle/0*.sql`, runs
-`npm run test:db` and removes the containers. `npm test` skips these files, and `npm run test:db` on its own skips them
-unless `TEST_DATABASE_URL` and `TEST_NEON_FETCH_ENDPOINT` are set. Never point those at a
-real database: the tests truncate every table.
+on 127.0.0.1 on a free port Docker picks (so the production `@neondatabase/serverless`
+driver runs unchanged and overlapping runs don't collide), applies the committed
+`drizzle/` migrations, adds a few rows, then brings the schema up to date with the same
+push a preview build runs. Both containers are removed afterwards, even if a test fails.
+The tests refuse to run against anything but that local database: they truncate every
+table. `npm test` skips these files and never needs Docker; pass a path to run one file,
+e.g. `npm run test:db -- src/db/harness.db.test.ts`.
 
 ### Preview smoke tests
 
@@ -339,7 +417,9 @@ the schema; an override would skip it.
 
 New default text in `src/db/seed-data/content.ts` never reaches production on its own:
 `db:seed` doesn't overwrite rows that already exist. Ship it with a SQL file in
-`scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`). Run it
+`scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`; for the
+sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
+committed first). Run it
 with the production connection string after the code deploys and before the first
 newsletter goes out. It backs the old rows up, only replaces text still matching the old
 default, and rolls back unless run with `-v commit=1`: run it once without, check the

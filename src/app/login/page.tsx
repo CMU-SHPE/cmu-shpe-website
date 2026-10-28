@@ -5,6 +5,7 @@ import { AuthError } from 'next-auth'
 import { signIn } from '@/auth'
 import { currentAdmin } from '@/lib/admin'
 import { currentMember } from '@/lib/member'
+import { currentSponsor } from '@/lib/sponsor-portal'
 import SubmitButton from '@/components/submit-button'
 import {
   cardClass,
@@ -35,6 +36,7 @@ export default async function LoginPage(props: {
   searchParams: Promise<{ error?: string; changed?: string; confirmed?: string; reset?: string }>
 }) {
   if (await currentAdmin()) redirect('/admin')
+  if (await currentSponsor()) redirect('/sponsor')
   if (await currentMember()) redirect('/account')
 
   const { error, ...statusParams } = await props.searchParams

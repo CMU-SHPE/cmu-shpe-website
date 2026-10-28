@@ -1,45 +1,52 @@
 #!/usr/bin/env bash
-# Runs the *.pg.test files against a throwaway Postgres 17 behind a local Neon HTTP proxy, so
-# queries go through the real @neondatabase/serverless driver. Postgres is reachable only from the
-# proxy, the proxy only on 127.0.0.1, and both are removed afterwards. Never point this at a real database.
+# Runs the *.db.test.ts files against a throwaway Postgres 17 behind a local Neon HTTP proxy, so the
+# production @neondatabase/serverless + drizzle-orm/neon-http code runs unchanged. Postgres is never
+# published to the host and the proxy only on a random loopback port, so parallel runs don't collide.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PREFIX="cmu-shpe-test-db-$$"
+PREFIX="cmu-shpe-db-test-$$"
 NETWORK="$PREFIX-net"
-PROXY_IMAGE="ghcr.io/timowilhelm/local-neon-http-proxy:main"
+PG="$PREFIX-pg"
+PROXY="$PREFIX-proxy"
 
 cleanup() {
-  docker rm -f "$PREFIX-proxy" "$PREFIX-pg" >/dev/null 2>&1 || true
+  docker rm -f "$PROXY" "$PG" >/dev/null 2>&1 || true
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+psql_in_pg() {
+  docker exec -i "$PG" psql -q -v ON_ERROR_STOP=1 -U postgres -d main "$@"
+}
 
 docker network create "$NETWORK" >/dev/null
-docker run -d --name "$PREFIX-pg" --network "$NETWORK" \
+docker run -d --name "$PG" --network "$NETWORK" \
   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=main \
-  postgres:17 >/dev/null
-until docker exec "$PREFIX-pg" pg_isready -U postgres -d main -q; do sleep 1; done
-# pg_isready can pass during the init restart; wait for a real query to succeed.
-until docker exec "$PREFIX-pg" psql -U postgres -d main -qtAc 'select 1' >/dev/null 2>&1; do sleep 1; done
+  postgres:17-alpine >/dev/null
 
-for migration in drizzle/0*.sql; do
-  sed 's/--> statement-breakpoint//' "$migration" |
-    docker exec -i "$PREFIX-pg" psql -q -v ON_ERROR_STOP=1 -U postgres -d main >/dev/null
-done
-
-docker run -d --name "$PREFIX-proxy" --network "$NETWORK" \
-  -e "PG_CONNECTION_STRING=postgres://postgres:postgres@$PREFIX-pg:5432/main" \
-  -p 127.0.0.1::4444 "$PROXY_IMAGE" >/dev/null
-# Docker picks a free host port, so overlapping runs don't collide.
-PROXY_PORT=$(docker port "$PREFIX-proxy" 4444/tcp | head -n 1 | sed 's/.*://')
-
-export TEST_DATABASE_URL="postgres://postgres:postgres@db.localtest.me:5432/main"
-export TEST_NEON_FETCH_ENDPOINT="http://127.0.0.1:$PROXY_PORT/sql"
-for _ in $(seq 1 30); do
-  if curl -s -o /dev/null "http://127.0.0.1:$PROXY_PORT/sql"; then break; fi
+# pg_isready can pass during the init restart, so wait for a real query instead.
+for attempt in $(seq 1 60); do
+  if psql_in_pg -tAc 'select 1' >/dev/null 2>&1; then break; fi
+  if [ "$attempt" -eq 60 ]; then echo "Postgres did not become ready" >&2; exit 1; fi
   sleep 1
 done
-sleep 2
 
+# The committed migrations are production's schema; pushPreviewSchema then brings it up to schema.ts
+# exactly as a preview build does.
+for migration in drizzle/[0-9]*.sql; do
+  sed 's/--> statement-breakpoint//' "$migration" | psql_in_pg >/dev/null
+done
+psql_in_pg <scripts/test-db-seed.sql >/dev/null
+
+docker run -d --name "$PROXY" --network "$NETWORK" \
+  -e "PG_CONNECTION_STRING=postgres://postgres:postgres@$PG:5432/main" \
+  -p 127.0.0.1::4444 ghcr.io/timowilhelm/local-neon-http-proxy:main >/dev/null
+PROXY_PORT="$(docker port "$PROXY" 4444/tcp | head -n 1 | sed 's/.*://')"
+
+export DATABASE_URL="postgres://postgres:postgres@db.localtest.me:5432/main"
+export TEST_DB_FETCH_ENDPOINT="http://127.0.0.1:$PROXY_PORT/sql"
+
+npx tsx scripts/test-db-prepare.ts
 npx vitest run -c vitest.db.config.ts "$@"

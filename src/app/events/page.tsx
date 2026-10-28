@@ -1,21 +1,35 @@
+import Link from 'next/link'
 import Editable from '@/components/editable'
 import { LocationIcon } from '@/components/icons'
+import { focusRingClass } from '@/components/admin/styles'
+import RsvpButton from '@/components/rsvp/rsvp-button'
 import type { ClubEvent } from '@/db/schema'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
 import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
+import { currentMember } from '@/lib/member'
 import { getEvents, getSiteContent, getSiteSettings } from '@/lib/queries'
+import { getRsvpStates, rsvpCounts, type RsvpState } from '@/lib/rsvp'
+
+type Viewer = 'member' | 'admin' | 'visitor'
 
 export default async function Events() {
-  const [content, admin, settings, events] = await Promise.all([
+  const [content, admin, member, settings, events] = await Promise.all([
     getSiteContent(contentKeysFor('events')),
     currentAdmin(),
+    currentMember(),
     getSiteSettings(),
     getEvents(),
   ])
   const editable = Boolean(admin)
   const { upcoming, past } = splitEvents(events, todayInDenver(new Date()))
+  const upcomingIds = upcoming.map((event) => event.id)
+  const [states, counts] = await Promise.all([
+    member ? getRsvpStates(Number(member.user.id), upcomingIds) : new Map<number, RsvpState>(),
+    rsvpCounts(upcoming.filter((event) => event.capacity !== null).map((event) => event.id)),
+  ])
+  const viewer: Viewer = member ? 'member' : admin ? 'admin' : 'visitor'
 
   return (
     <div>
@@ -74,7 +88,14 @@ export default async function Events() {
           ) : (
             <div className="grid md:grid-cols-2 gap-6">
               {upcoming.map((event) => (
-                <EventCard key={event.id} event={event} />
+                <EventCard key={event.id} event={event}>
+                  <EventRsvp
+                    event={event}
+                    viewer={viewer}
+                    state={states.get(event.id)}
+                    taken={counts.get(event.id) ?? 0}
+                  />
+                </EventCard>
               ))}
             </div>
           )}
@@ -132,7 +153,42 @@ export default async function Events() {
   )
 }
 
-function EventCard({ event }: { event: ClubEvent }) {
+function EventRsvp({
+  event,
+  viewer,
+  state,
+  taken,
+}: {
+  event: ClubEvent
+  viewer: Viewer
+  state?: RsvpState
+  taken: number
+}) {
+  const spotsLeft = event.capacity === null ? null : Math.max(event.capacity - taken, 0)
+  const showSpots = spotsLeft !== null && !(viewer === 'member' && state === 'full')
+  if (viewer === 'admin' && !showSpots) return null
+  return (
+    <div className="mt-4 space-y-2 border-t border-gray-200 dark:border-gray-700 pt-4">
+      {showSpots && (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {spotsLeft === 0 ? 'Full' : `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`}
+        </p>
+      )}
+      {viewer === 'member' && <RsvpButton eventId={event.id} state={state ?? 'open'} />}
+      {viewer === 'visitor' && spotsLeft !== 0 && (
+        <Link
+          href="/login"
+          className={`inline-block rounded text-sm font-medium text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`}
+        >
+          {'Sign in to RSVP '}
+          <span className="sr-only">to {event.title}</span>
+        </Link>
+      )}
+    </div>
+  )
+}
+
+function EventCard({ event, children }: { event: ClubEvent; children?: React.ReactNode }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200 flex">
       {/* Left accent bar */}
@@ -146,15 +202,16 @@ function EventCard({ event }: { event: ClubEvent }) {
           </span>
           <div className="text-right">
             <div className="text-gray-700 dark:text-gray-300 text-sm font-medium">{formatEventDate(event.date)}</div>
-            {event.time && <div className="text-gray-400 dark:text-gray-500 text-xs">{event.time}</div>}
+            {event.time && <div className="text-gray-500 dark:text-gray-400 text-xs">{event.time}</div>}
           </div>
         </div>
         <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
         <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-4">{event.description}</p>
-        <div className="flex items-center text-gray-400 dark:text-gray-500 text-xs">
+        <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs">
           <LocationIcon className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
           {event.location}
         </div>
+        {children}
       </div>
     </div>
   )

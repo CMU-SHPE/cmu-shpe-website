@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { checkTestDatabaseEnv } from './test-database-env'
+import { localTestDatabase } from '../../scripts/test-db-env'
 
-/** Only for *.pg.test files, which run against a throwaway database (scripts/test-db.sh). */
-export const hasTestDatabase = checkTestDatabaseEnv(process.env.TEST_DATABASE_URL, process.env.TEST_NEON_FETCH_ENDPOINT)
+/** Only for *.pg.test files, which run against a throwaway database (scripts/test-db.sh); throws anywhere else. */
+export const hasTestDatabase = Boolean(localTestDatabase(process.env))
 
 export async function query<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
   const chunks = text.split(/\$(\d+)/)

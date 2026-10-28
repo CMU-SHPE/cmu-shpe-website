@@ -62,6 +62,13 @@ export const CONTENT_KEYS = [
   { key: 'sponsors.cta.heading', label: 'Sponsors: closing heading', multiline: false },
   { key: 'sponsors.cta.paragraph', label: 'Sponsors: closing paragraph', multiline: false },
 
+  { key: 'sponsor.header.heading', label: 'Sponsor portal: page title', multiline: false },
+  { key: 'sponsor.header.intro', label: 'Sponsor portal: intro paragraph', multiline: false },
+  { key: 'sponsor.listing.heading', label: 'Sponsor portal: your listing heading', multiline: false },
+  { key: 'sponsor.listing.intro', label: 'Sponsor portal: your listing paragraph', multiline: false },
+  { key: 'sponsor.events.heading', label: 'Sponsor portal: upcoming events heading', multiline: false },
+  { key: 'sponsor.events.empty', label: 'Sponsor portal: message shown when there are no upcoming events', multiline: false },
+
   { key: 'officers.header.eyebrow', label: 'Officers: line above the title', multiline: false },
   { key: 'officers.header.heading', label: 'Officers: page title', multiline: false },
   { key: 'officers.header.intro', label: 'Officers: intro paragraph', multiline: false },

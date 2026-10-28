@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
     FakeAuthError,
     currentAdmin: vi.fn(),
     currentMember: vi.fn(),
+    currentSponsor: vi.fn(),
     signIn: vi.fn(),
     redirect: vi.fn((url: string) => {
       throw new Error(`REDIRECT ${url}`)
@@ -18,6 +19,7 @@ vi.mock('next-auth', () => ({ AuthError: mocks.FakeAuthError }))
 vi.mock('@/auth', () => ({ signIn: mocks.signIn }))
 vi.mock('@/lib/admin', () => ({ currentAdmin: mocks.currentAdmin }))
 vi.mock('@/lib/member', () => ({ currentMember: mocks.currentMember }))
+vi.mock('@/lib/sponsor-portal', () => ({ currentSponsor: mocks.currentSponsor }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
 import LoginPage, { metadata } from './page'
@@ -30,12 +32,20 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.currentAdmin.mockResolvedValue(null)
   mocks.currentMember.mockResolvedValue(null)
+  mocks.currentSponsor.mockResolvedValue(null)
 })
 
 describe('LoginPage routing', () => {
   it('sends a signed-in admin to /admin', async () => {
     mocks.currentAdmin.mockResolvedValue({ user: { id: '1', kind: 'admin' } })
     await expect(page()).rejects.toThrow('REDIRECT /admin')
+  })
+
+  it('sends a signed-in sponsor with a listing to /sponsor', async () => {
+    const member = { user: { id: '7', kind: 'member', role: 'sponsor' } }
+    mocks.currentMember.mockResolvedValue(member)
+    mocks.currentSponsor.mockResolvedValue({ member, listing: { id: 3, name: 'Acme' } })
+    await expect(page()).rejects.toThrow('REDIRECT /sponsor')
   })
 
   it('sends a signed-in member to /account', async () => {

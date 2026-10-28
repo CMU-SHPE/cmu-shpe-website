@@ -1,6 +1,9 @@
+import { sql } from 'drizzle-orm'
 import {
   type AnyPgColumn,
   boolean,
+  check,
+  customType,
   date,
   index,
   integer,
@@ -82,6 +85,7 @@ export const sponsors = pgTable('sponsors', {
   logoCrop: text('logo_crop'),
   bgColor: text('bg_color').notNull().default('#ffffff'),
   sortOrder: integer('sort_order').notNull().default(0),
+  description: text('description').notNull().default(''),
 })
 
 export const officers = pgTable('officers', {
@@ -123,9 +127,13 @@ export const events = pgTable(
     type: text('type').notNull(),
     date: date('date', { mode: 'string' }).notNull(),
     time: text('time'),
+    capacity: integer('capacity'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (table) => [index('events_date_idx').on(table.date)],
+  (table) => [
+    index('events_date_idx').on(table.date),
+    check('events_capacity_positive', sql`${table.capacity} > 0`),
+  ],
 )
 
 export const homeStats = pgTable('home_stats', {
@@ -161,19 +169,24 @@ export const sponsorBenefits = pgTable('sponsor_benefits', {
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
-export const members = pgTable('members', {
-  id: serial('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  name: text('name').notNull(),
-  passwordHash: text('password_hash').notNull(),
-  role: memberRole('role').notNull().default('supporter'),
-  emailConfirmedAt: timestamp('email_confirmed_at', { withTimezone: true, mode: 'date' }),
-  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true, mode: 'date' }),
-  ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true, mode: 'date' }).notNull(),
-  privacyPolicyVersion: text('privacy_policy_version').notNull(),
-  termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true, mode: 'date' }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-})
+export const members = pgTable(
+  'members',
+  {
+    id: serial('id').primaryKey(),
+    email: text('email').notNull().unique(),
+    name: text('name').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    role: memberRole('role').notNull().default('supporter'),
+    emailConfirmedAt: timestamp('email_confirmed_at', { withTimezone: true, mode: 'date' }),
+    passwordChangedAt: timestamp('password_changed_at', { withTimezone: true, mode: 'date' }),
+    ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true, mode: 'date' }).notNull(),
+    privacyPolicyVersion: text('privacy_policy_version').notNull(),
+    termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    sponsorId: integer('sponsor_id').references(() => sponsors.id, { onDelete: 'set null' }),
+  },
+  (table) => [index('members_sponsor_idx').on(table.sponsorId)],
+)
 
 export const memberTokens = pgTable(
   'member_tokens',
@@ -339,6 +352,74 @@ export type MemberToken = typeof memberTokens.$inferSelect
 export type NewsletterTopic = typeof newsletterTopics.$inferSelect
 export type MemberTopicSubscription = typeof memberTopicSubscriptions.$inferSelect
 export type RequestThrottle = typeof requestThrottle.$inferSelect
+
+// Writes are sent as base64 (4/3 of the file, vs 2x as hex) so a 4 MiB PDF fits the 10 MiB request
+// limit of Neon's SQL-over-HTTP proxy; Postgres sends bytea back as `\x` hex text, ~8 MiB at the max.
+const bytea = customType<{ data: Uint8Array; driverData: string | Uint8Array }>({
+  dataType: () => 'bytea',
+  toDriver: (value) => sql`decode(${Buffer.from(value).toString('base64')}, 'base64')`,
+  fromDriver: (value) => {
+    if (typeof value !== 'string') return Buffer.from(value)
+    if (!value.startsWith('\\x')) throw new Error('Expected bytea in hex output format')
+    return Buffer.from(value.slice(2), 'hex')
+  },
+})
+
+export const eventRsvps = pgTable(
+  'event_rsvps',
+  {
+    id: serial('id').primaryKey(),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('event_rsvps_event_member_idx').on(table.eventId, table.memberId),
+    index('event_rsvps_member_idx').on(table.memberId),
+  ],
+)
+
+export const sponsorEdits = pgTable(
+  'sponsor_edits',
+  {
+    id: serial('id').primaryKey(),
+    sponsorId: integer('sponsor_id')
+      .notNull()
+      .references(() => sponsors.id, { onDelete: 'cascade' }),
+    memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
+    memberName: text('member_name').notNull(),
+    fields: text('fields').array().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('sponsor_edits_sponsor_created_idx').on(table.sponsorId, table.createdAt)],
+)
+
+// List queries must never select `content`; only the download routes read it.
+export const sponsorReceipts = pgTable(
+  'sponsor_receipts',
+  {
+    id: serial('id').primaryKey(),
+    sponsorId: integer('sponsor_id')
+      .notNull()
+      .references(() => sponsors.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    receiptDate: date('receipt_date', { mode: 'string' }).notNull(),
+    fileName: text('file_name').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    content: bytea('content').notNull(),
+    uploadedBy: integer('uploaded_by').references(() => admins.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('sponsor_receipts_sponsor_idx').on(table.sponsorId)],
+)
+
+export type EventRsvp = typeof eventRsvps.$inferSelect
+export type SponsorEdit = typeof sponsorEdits.$inferSelect
+export type SponsorReceipt = typeof sponsorReceipts.$inferSelect
 export type Newsletter = typeof newsletters.$inferSelect
 export type NewsletterTopicSelection = typeof newsletterTopicSelections.$inferSelect
 export type NewsletterRecipient = typeof newsletterRecipients.$inferSelect

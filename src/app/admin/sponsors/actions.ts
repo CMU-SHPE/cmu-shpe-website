@@ -3,31 +3,19 @@
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { sponsors } from '@/db/schema'
+import { members, sponsors } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { cleanupBlobs } from '@/lib/blob-cleanup'
 import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
 import { NO_UPLOAD, UPLOAD_FAILED, UPLOAD_UNAVAILABLE, resolveCroppedUpload } from '@/lib/crop-upload'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
-import { LOGO_FIELD_NAMES, parseSponsorForm } from '@/lib/sponsor-schema'
+import { LOGO_FIELD_NAMES, logoColumns, logoImage, parseSponsorForm } from '@/lib/sponsor-schema'
 
-const logoColumns = {
+const logoFields = {
   logoUrl: sponsors.logoUrl,
   logoOriginalUrl: sponsors.logoOriginalUrl,
   logoCrop: sponsors.logoCrop,
-}
-
-function toImage(row: {
-  logoUrl: string | null
-  logoOriginalUrl: string | null
-  logoCrop: string | null
-}): CroppedImage {
-  return { imageUrl: row.logoUrl, originalUrl: row.logoOriginalUrl, crop: row.logoCrop }
-}
-
-function toColumns(image: CroppedImage) {
-  return { logoUrl: image.imageUrl, logoOriginalUrl: image.originalUrl, logoCrop: image.crop }
 }
 
 async function resolveLogo(
@@ -61,7 +49,7 @@ export async function createSponsor(formData: FormData) {
     .insert(sponsors)
     .values({
       ...fields,
-      ...toColumns(logo),
+      ...logoColumns(logo),
       sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)),
     })
 
@@ -77,13 +65,13 @@ export async function updateSponsor(id: number, formData: FormData) {
 
   const db = getDb()
   const [row] = await db
-    .select({ tier: sponsors.tier, ...logoColumns })
+    .select({ tier: sponsors.tier, ...logoFields })
     .from(sponsors)
     .where(eq(sponsors.id, sponsorId.data))
     .limit(1)
   if (!row) redirect('/admin/sponsors?error=missing')
 
-  const existing = toImage(row)
+  const existing = logoImage(row)
   const { logoUrl, ...fields } = parsed.data
   const logo = await resolveLogo(formData, logoUrl, existing)
   const tierChange =
@@ -93,7 +81,7 @@ export async function updateSponsor(id: number, formData: FormData) {
 
   await db
     .update(sponsors)
-    .set({ ...fields, ...toColumns(logo), ...tierChange })
+    .set({ ...fields, ...logoColumns(logo), ...tierChange })
     .where(eq(sponsors.id, sponsorId.data))
   await cleanupBlobs(...orphanedBlobs(existing, logo))
 
@@ -106,10 +94,15 @@ export async function deleteSponsor(id: number) {
   const sponsorId = recordId.safeParse(id)
   if (!sponsorId.success) redirect('/admin/sponsors?error=invalid')
 
-  const [row] = await getDb()
-    .delete(sponsors)
-    .where(eq(sponsors.id, sponsorId.data))
-    .returning(logoColumns)
+  // ON DELETE SET NULL alone would leave linked members with the sponsor role and no listing.
+  const db = getDb()
+  const [, [row]] = await db.batch([
+    db
+      .update(members)
+      .set({ role: 'supporter', sponsorId: null })
+      .where(eq(members.sponsorId, sponsorId.data)),
+    db.delete(sponsors).where(eq(sponsors.id, sponsorId.data)).returning(logoFields),
+  ])
   if (row) await cleanupBlobs(row.logoUrl, row.logoOriginalUrl)
 
   redirect('/admin/sponsors?saved=1')
