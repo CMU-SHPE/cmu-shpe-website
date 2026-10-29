@@ -139,6 +139,12 @@ export default async function Footer({ editable, signedIn }: { editable: boolean
               </>
             )}
             <Link
+              href="/help"
+              className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
+            >
+              Help
+            </Link>
+            <Link
               href="/privacy"
               className="text-gray-400 hover:text-shpe-gold text-sm transition-colors duration-200"
             >

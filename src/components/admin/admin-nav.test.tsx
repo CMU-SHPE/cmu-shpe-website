@@ -61,6 +61,16 @@ describe('AdminNav', () => {
     expect(screen.getByRole('link', { name: 'Newsletter topics' })).not.toHaveAttribute('aria-current')
   })
 
+  it('ends with Help for every admin', () => {
+    for (const canCreateAccounts of [false, true]) {
+      const { unmount } = render(<AdminNav canCreateAccounts={canCreateAccounts} />)
+      const links = screen.getAllByRole('link')
+      expect(links.at(-1)).toHaveTextContent('Help')
+      expect(links.at(-1)).toHaveAttribute('href', '/admin/help')
+      unmount()
+    }
+  })
+
   it('marks a section current on its nested routes', () => {
     navigation.pathname = '/admin/officers/12'
     render(<AdminNav canCreateAccounts={false} />)

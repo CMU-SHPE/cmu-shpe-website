@@ -45,9 +45,10 @@ describe('Footer', () => {
     [false, false],
     [false, true],
     [true, true],
-  ])('always links the privacy policy and terms (editable: %s, signed in: %s)', async (editable, signedIn) => {
+  ])('always links help, the privacy policy and terms (editable: %s, signed in: %s)', async (editable, signedIn) => {
     render(await Footer({ editable, signedIn }))
     expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
+    expect(screen.getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
   })
 })

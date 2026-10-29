@@ -20,6 +20,8 @@ const sections: AdminSection[] = [
 
 const accountSections: AdminSection[] = [{ href: '/admin/admins', label: 'Admin accounts' }]
 
+const helpSection: AdminSection = { href: '/admin/help', label: 'Help' }
+
 function isActive(pathname: string, href: string) {
   if (href === '/admin') return pathname === href
   return pathname === href || pathname.startsWith(`${href}/`)
@@ -27,7 +29,7 @@ function isActive(pathname: string, href: string) {
 
 export default function AdminNav({ canCreateAccounts }: { canCreateAccounts: boolean }) {
   const pathname = usePathname()
-  const links = canCreateAccounts ? [...sections, ...accountSections] : sections
+  const links = [...sections, ...(canCreateAccounts ? accountSections : []), helpSection]
 
   return (
     <nav aria-label="Admin" className="md:w-56 md:shrink-0">
