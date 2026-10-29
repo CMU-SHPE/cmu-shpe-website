@@ -10,6 +10,5 @@ export const settingsRow: typeof siteSettings.$inferInsert = {
   xUrl: null,
   youtubeUrl: null,
   tiktokUrl: 'https://www.tiktok.com/@shpecmu.mavs',
-  mavlifeUrl:
-    'https://coloradomesa.presence.io/organization/shpe-cmu-society-of-hispanic-professional-engineers',
+  mavlifeUrl: 'https://mavlife.coloradomesa.edu/feeds?type=club&type_id=35567&tab=about',
 }
