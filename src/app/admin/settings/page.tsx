@@ -25,7 +25,7 @@ const socialFields = [
   { name: 'xUrl', label: 'X (Twitter)' },
   { name: 'youtubeUrl', label: 'YouTube' },
   { name: 'tiktokUrl', label: 'TikTok' },
-  { name: 'presenceUrl', label: 'Presence' },
+  { name: 'mavlifeUrl', label: 'MavLife' },
 ] as const
 
 export default async function AdminSettingsPage(props: {

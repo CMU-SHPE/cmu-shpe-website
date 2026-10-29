@@ -13,7 +13,7 @@ function settingsForm(overrides: Record<string, string> = {}) {
     xUrl: '',
     youtubeUrl: '',
     tiktokUrl: '',
-    presenceUrl: '',
+    mavlifeUrl: '',
     subjects: 'General Inquiry\r\nMembership\r\n\r\nOther',
     ...overrides,
   }
