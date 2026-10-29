@@ -3,7 +3,7 @@ import Editable from '@/components/editable'
 import { contentKeysFor } from '@/lib/content-keys'
 import { navLinks } from '@/lib/nav'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
-import { InstagramIcon, LinkedInIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
+import { InstagramIcon, LinkedInIcon, MavLifeIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
 
 export default async function Footer({ editable, signedIn }: { editable: boolean; signedIn: boolean }) {
   const [content, settings] = await Promise.all([
@@ -104,9 +104,9 @@ export default async function Footer({ editable, signedIn }: { editable: boolean
                   <TikTokIcon />
                 </a>
               )}
-              {settings?.presenceUrl && (
-                <a href={settings.presenceUrl} aria-label="Presence" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <PresenceIcon />
+              {settings?.mavlifeUrl && (
+                <a href={settings.mavlifeUrl} aria-label="MavLife" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
+                  <MavLifeIcon />
                 </a>
               )}
             </div>

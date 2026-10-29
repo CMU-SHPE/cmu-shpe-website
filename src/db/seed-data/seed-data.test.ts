@@ -115,7 +115,7 @@ describe('site settings', () => {
       settingsRow.xUrl,
       settingsRow.youtubeUrl,
       settingsRow.tiktokUrl,
-      settingsRow.presenceUrl,
+      settingsRow.mavlifeUrl,
     ].filter((link): link is string => Boolean(link))
     expect(links).toHaveLength(4)
     for (const link of links) expect(httpUrl.safeParse(link).success, link).toBe(true)

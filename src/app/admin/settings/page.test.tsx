@@ -13,7 +13,7 @@ vi.mock('@/lib/queries', () => ({
     xUrl: null,
     youtubeUrl: null,
     tiktokUrl: null,
-    presenceUrl: null,
+    mavlifeUrl: null,
     mailingAddress: '1100 North Ave\nGrand Junction, CO 81501',
   }),
   getSiteContent: async () => ({ 'contact.subjects': 'General Inquiry' }),
