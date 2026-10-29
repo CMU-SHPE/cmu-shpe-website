@@ -104,9 +104,17 @@ async function signIn(page: Page) {
   if (new URL(page.url()).pathname !== '/admin') throw new Error('Admin sign-in failed')
 }
 
+/** Screenshots docs/guides/screenshots.json marks pending are left out of the print instead of failing it. */
+async function pendingImagePaths() {
+  const manifest = JSON.parse(await readFile(path.join(ROOT, 'docs/guides/screenshots.json'), 'utf8')) as {
+    shots: { guide: string; slug: string; pending?: string }[]
+  }
+  return manifest.shots.filter((shot) => shot.pending).map((shot) => `/help/img/${shot.guide}/${shot.slug}.png`)
+}
+
 /** The guide renderer marks images loading="lazy", which page.pdf would print as empty boxes. */
-async function loadAllImages(page: Page) {
-  const { total, loaded, broken } = await page.evaluate(async () => {
+async function loadAllImages(page: Page, pending: string[]) {
+  const { total, loaded, broken, skipped } = await page.evaluate(async (pending) => {
     const images = [...document.images]
     for (const image of images) image.loading = 'eager'
     await Promise.all(
@@ -121,8 +129,23 @@ async function loadAllImages(page: Page) {
     )
     await Promise.all(images.map((image) => image.decode().catch(() => undefined)))
     const ok = images.filter((image) => image.complete && image.naturalWidth > 0)
-    return { total: images.length, loaded: ok.length, broken: images.filter((image) => !ok.includes(image)).map((image) => image.getAttribute('src')) }
-  })
+    const failed = images.filter((image) => !ok.includes(image))
+    const skipped: string[] = []
+    for (const image of failed) {
+      const source = new URL(image.src).pathname
+      if (pending.includes(source)) {
+        skipped.push(source)
+        image.remove()
+      }
+    }
+    return {
+      total: images.length - skipped.length,
+      loaded: ok.length,
+      broken: failed.map((image) => image.getAttribute('src')).filter((source) => source && !skipped.includes(source)),
+      skipped,
+    }
+  }, pending)
+  for (const source of skipped) console.warn(`  left out ${source}: its screenshot is pending`)
   if (loaded !== total) throw new Error(`${total - loaded} of ${total} images did not load: ${broken.join(', ')}`)
   return total
 }
@@ -155,7 +178,7 @@ async function print(browser: Browser, name: DocumentName, localImages: boolean)
     await open(page, doc.url)
     await page.addStyleTag({ content: PRINT_CSS })
     await page.emulateMedia({ media: 'print', colorScheme: 'light' })
-    const images = await loadAllImages(page)
+    const images = await loadAllImages(page, await pendingImagePaths())
     await page.evaluate(() => document.fonts.ready)
 
     if (doc.signedIn) {

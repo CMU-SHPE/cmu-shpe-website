@@ -5,6 +5,8 @@
  * Read-only. The signed-in checks run only when E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD are set.
  * BASE_URL and the optional VERCEL_BYPASS are handled by playwright.config.ts and fixtures.ts.
  */
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import type { Page } from '@playwright/test'
 import { bypassHeaders, expect, expectNoAxeViolations, previewRequest, setThemeBeforeLoad, test } from './fixtures'
 
@@ -13,6 +15,15 @@ const PUBLIC_PDF = '/help/shpe-website-guide.pdf'
 const OFFICER_GUIDE = '/admin/help'
 const HANDBOOK_PDF = '/admin/help/handbook.pdf'
 const REFUSED_STATUSES = [401, 403, 404]
+
+/** Screenshots docs/guides/screenshots.json marks pending are not captured yet, so they are reported, not failed. */
+const PENDING_IMAGES = new Set(
+  (JSON.parse(readFileSync(path.join(__dirname, '..', 'docs', 'guides', 'screenshots.json'), 'utf8')) as {
+    shots: { guide: string; slug: string; pending?: string }[]
+  }).shots
+    .filter((shot) => shot.pending)
+    .map((shot) => `/help/img/${shot.guide}/${shot.slug}.png`),
+)
 
 const ADMIN_ENV = ['E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD'] as const
 const missingAdminEnv = ADMIN_ENV.filter((name) => !process.env[name]?.trim())
@@ -122,6 +133,10 @@ test.describe('help pages, signed in as an admin', () => {
     await open(page, OFFICER_GUIDE)
     await expect(page.locator('main h1')).toBeVisible()
     for (const source of await imageSources(page)) {
+      if (PENDING_IMAGES.has(source)) {
+        test.info().annotations.push({ type: 'pending screenshot', description: source })
+        continue
+      }
       const image = await page.context().request.get(source, { headers: bypassHeaders() })
       expect(image.status(), source).toBe(200)
     }
