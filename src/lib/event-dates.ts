@@ -7,6 +7,17 @@ const denverParts = new Intl.DateTimeFormat('en-US', {
   day: '2-digit',
 })
 
+const denverTimestampParts = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Denver',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'short',
+})
+
 const longDate = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
   year: 'numeric',
@@ -31,6 +42,12 @@ export function isRealDate(value: string): boolean {
 export function todayInDenver(now: Date): string {
   const parts = Object.fromEntries(denverParts.formatToParts(now).map((part) => [part.type, part.value]))
   return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+/** Sortable in a spreadsheet; the MST/MDT suffix tells apart the hour repeated when daylight saving ends. */
+export function formatDenverTimestamp(instant: Date): string {
+  const parts = Object.fromEntries(denverTimestampParts.formatToParts(instant).map((part) => [part.type, part.value]))
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${parts.timeZoneName}`
 }
 
 export function formatEventDate(date: string): string {

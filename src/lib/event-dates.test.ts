@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { formatEventDate, isRealDate, splitEvents, todayInDenver } from './event-dates'
+import { csvField } from './csv'
+import { formatDenverTimestamp, formatEventDate, isRealDate, splitEvents, todayInDenver } from './event-dates'
 
 describe('todayInDenver', () => {
   it('returns the Denver calendar date, not the UTC one, on a UTC evening', () => {
@@ -70,5 +71,25 @@ describe('splitEvents', () => {
 
   it('handles no events', () => {
     expect(splitEvents([], '2026-04-15')).toEqual({ upcoming: [], past: [] })
+  })
+})
+
+describe('formatDenverTimestamp', () => {
+  it.each([
+    ['2026-01-15T07:00:00Z', '2026-01-15 00:00 MST'],
+    ['2026-07-04T23:45:00Z', '2026-07-04 17:45 MDT'],
+    ['2027-01-01T06:59:00Z', '2026-12-31 23:59 MST'],
+  ])('formats %s in Mountain time as %s', (instant, expected) => {
+    expect(formatDenverTimestamp(new Date(instant))).toBe(expected)
+  })
+
+  it('tells the repeated hour apart when daylight saving ends', () => {
+    expect(formatDenverTimestamp(new Date('2026-11-01T07:30:00Z'))).toBe('2026-11-01 01:30 MDT')
+    expect(formatDenverTimestamp(new Date('2026-11-01T08:30:00Z'))).toBe('2026-11-01 01:30 MST')
+  })
+
+  it('passes through CSV escaping unchanged', () => {
+    const value = formatDenverTimestamp(new Date('2026-10-01T12:00:00Z'))
+    expect(csvField(value)).toBe(value)
   })
 })

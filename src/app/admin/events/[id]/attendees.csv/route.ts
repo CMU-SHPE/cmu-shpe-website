@@ -1,5 +1,6 @@
 import { currentAdmin } from '@/lib/admin'
 import { toCsv } from '@/lib/csv'
+import { formatDenverTimestamp } from '@/lib/event-dates'
 import { recordId } from '@/lib/form-fields'
 import { findEvent, listAttendees } from '@/lib/rsvp'
 
@@ -17,8 +18,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   if (!event) return new Response('Not found', { status: 404, headers: PRIVATE_HEADERS })
 
   const csv = toCsv([
-    ['Name', 'Email', 'RSVP time (UTC)'],
-    ...attendees.map((attendee) => [attendee.name, attendee.email, attendee.rsvpAt.toISOString()]),
+    ['Name', 'Email', 'RSVP time (Mountain)'],
+    ...attendees.map((attendee) => [attendee.name, attendee.email, formatDenverTimestamp(attendee.rsvpAt)]),
   ])
   return new Response(csv, {
     headers: {

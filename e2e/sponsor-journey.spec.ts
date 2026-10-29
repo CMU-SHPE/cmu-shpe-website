@@ -466,8 +466,9 @@ test.describe('sponsor journey', () => {
         expect(download.suggestedFilename()).toMatch(/^event-\d+-attendees\.csv$/)
         const csv = await readFile(await download.path(), 'utf8')
         const lines = csv.trim().split(/\r?\n/)
-        expect(lines[0]).toBe('Name,Email,RSVP time (UTC)')
+        expect(lines[0]).toBe('Name,Email,RSVP time (Mountain)')
         expect(lines.slice(1)).toEqual([expect.stringContaining(SUPPORTER_MEMBER.email)])
+        expect(lines[1]).toMatch(/,\d{4}-\d{2}-\d{2} \d{2}:\d{2} M[SD]T$/)
       })
     } finally {
       for (const context of contexts) await context.close()

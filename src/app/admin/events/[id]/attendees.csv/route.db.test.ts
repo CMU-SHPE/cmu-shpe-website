@@ -48,9 +48,9 @@ describe('GET /admin/events/[id]/attendees.csv', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(await response.text()).toBe(
-      'Name,Email,RSVP time (UTC)\r\n' +
-        `"Ana, Jr.",${ana.email},2026-10-01T12:00:00.000Z\r\n` +
-        `"' =HYPERLINK(""https://evil.example"")",${hostile.email},2026-10-02T12:00:00.000Z\r\n`,
+      'Name,Email,RSVP time (Mountain)\r\n' +
+        `"Ana, Jr.",${ana.email},2026-10-01 06:00 MDT\r\n` +
+        `"' =HYPERLINK(""https://evil.example"")",${hostile.email},2026-10-02 06:00 MDT\r\n`,
     )
   })
 
