@@ -1,6 +1,6 @@
 import ContactForm from '@/components/ContactForm'
 import Editable from '@/components/editable'
-import { InstagramIcon, LinkedInIcon, LocationIcon, PresenceIcon, TikTokIcon, XIcon, YouTubeIcon } from '@/components/icons'
+import { InstagramIcon, LinkedInIcon, LocationIcon, MavLifeIcon, TikTokIcon, XIcon, YouTubeIcon } from '@/components/icons'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
 import { toLines } from '@/lib/lines'
@@ -145,8 +145,8 @@ export default async function Contact() {
                   {settings?.tiktokUrl && (
                     <SocialLink href={settings.tiktokUrl} label="TikTok" icon={<TikTokIcon />} />
                   )}
-                  {settings?.presenceUrl && (
-                    <SocialLink href={settings.presenceUrl} label="Presence" icon={<PresenceIcon />} />
+                  {settings?.mavlifeUrl && (
+                    <SocialLink href={settings.mavlifeUrl} label="MavLife" icon={<MavLifeIcon />} />
                   )}
                 </div>
               </div>

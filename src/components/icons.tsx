@@ -42,7 +42,7 @@ export function TikTokIcon({ className = 'w-5 h-5' }: IconProps) {
   )
 }
 
-export function PresenceIcon({ className = 'w-5 h-5' }: IconProps) {
+export function MavLifeIcon({ className = 'w-5 h-5' }: IconProps) {
   return (
     <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
       <path
