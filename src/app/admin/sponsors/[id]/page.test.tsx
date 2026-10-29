@@ -5,7 +5,15 @@ const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   listing: null as unknown,
   linked: [] as { id: number; name: string; email: string }[],
-  edits: [] as { id: number; memberId: number | null; memberName: string; fields: string[]; createdAt: Date }[],
+  edits: [] as {
+    id: number
+    editorKind: 'sponsor' | 'officer'
+    memberId: number | null
+    adminId: number | null
+    editorName: string
+    fields: string[]
+    createdAt: Date
+  }[],
 }))
 
 vi.mock('@/lib/admin', () => ({
@@ -59,8 +67,42 @@ beforeEach(() => {
   }
   mocks.linked = [{ id: 7, name: 'Sam', email: 'sam@acme.example' }]
   mocks.edits = [
-    { id: 2, memberId: null, memberName: 'Gone Person', fields: ['logo', 'bgColor'], createdAt: new Date('2026-10-02T03:30:00Z') },
-    { id: 1, memberId: 7, memberName: 'Sam', fields: ['name'], createdAt: new Date('2026-07-01T18:05:00Z') },
+    {
+      id: 4,
+      editorKind: 'officer',
+      memberId: null,
+      adminId: 2,
+      editorName: 'Jayden',
+      fields: ['tier', 'description'],
+      createdAt: new Date('2026-10-03T16:00:00Z'),
+    },
+    {
+      id: 3,
+      editorKind: 'officer',
+      memberId: null,
+      adminId: null,
+      editorName: 'Former Officer',
+      fields: ['website'],
+      createdAt: new Date('2026-10-02T16:00:00Z'),
+    },
+    {
+      id: 2,
+      editorKind: 'sponsor',
+      memberId: null,
+      adminId: null,
+      editorName: 'Gone Person',
+      fields: ['logo', 'bgColor'],
+      createdAt: new Date('2026-10-02T03:30:00Z'),
+    },
+    {
+      id: 1,
+      editorKind: 'sponsor',
+      memberId: 7,
+      adminId: null,
+      editorName: 'Sam',
+      fields: ['name'],
+      createdAt: new Date('2026-07-01T18:05:00Z'),
+    },
   ]
 })
 
@@ -96,20 +138,19 @@ describe('AdminSponsorDetailPage', () => {
     expect(within(accounts).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['Sam', 'sam@acme.example'])
   })
 
-  it('lists edits newest first in Denver time, marking deleted accounts', async () => {
+  it('lists sponsor and officer edits newest first in Denver time, naming the kind of editor', async () => {
     render(await page('3'))
     const history = screen.getByRole('table', { name: 'Edits to Acme, newest first' })
-    const [, newest, oldest] = within(history).getAllByRole('row')
-    expect(within(newest).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
-      'Oct 1, 2026, 9:30 PM MDT',
-      'Gone Person (account deleted)',
-      'Logo, Logo background color',
+    const [, ...rows] = within(history).getAllByRole('row')
+    expect(rows.map((row) => within(row).getAllByRole('cell').map((cell) => cell.textContent))).toEqual([
+      ['Oct 3, 2026, 10:00 AM MDT', 'Jayden (officer)', 'Tier, Description'],
+      ['Oct 2, 2026, 10:00 AM MDT', 'Former Officer (officer, account deleted)', 'Website'],
+      ['Oct 1, 2026, 9:30 PM MDT', 'Gone Person (sponsor, account deleted)', 'Logo, Logo background color'],
+      ['Jul 1, 2026, 12:05 PM MDT', 'Sam (sponsor)', 'Name'],
     ])
-    expect(within(oldest).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
-      'Jul 1, 2026, 12:05 PM MDT',
-      'Sam',
-      'Name',
-    ])
+    expect(screen.getByRole('region', { name: 'Edit history' })).toHaveTextContent(
+      'Changes made by sponsors from the sponsor portal and by officers on the Sponsors page',
+    )
   })
 
   it('explains empty sections', async () => {
@@ -117,6 +158,6 @@ describe('AdminSponsorDetailPage', () => {
     mocks.edits = []
     render(await page('3'))
     expect(screen.getByText('No one is linked to this listing yet.')).toBeInTheDocument()
-    expect(screen.getByText('No sponsor has edited this listing yet.')).toBeInTheDocument()
+    expect(screen.getByText('No one has edited this listing yet.')).toBeInTheDocument()
   })
 })

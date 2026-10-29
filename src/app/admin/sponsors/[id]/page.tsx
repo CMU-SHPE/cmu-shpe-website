@@ -12,16 +12,23 @@ import {
   tableHeadRowClass,
   tableRowClass,
 } from '@/components/admin/styles'
+import type { SponsorEditorKind } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { recordId } from '@/lib/form-fields'
 import { SPONSOR_EDITS_SHOWN, getLinkedMembers, getSponsorEdits, getSponsorListing } from '@/lib/sponsor-portal-admin'
 
 const fieldLabels: Record<string, string> = {
   name: 'Name',
+  tier: 'Tier',
   website: 'Website',
   description: 'Description',
   logo: 'Logo',
   bgColor: 'Logo background color',
+}
+
+function editorLabel(edit: { editorKind: SponsorEditorKind; memberId: number | null; adminId: number | null }) {
+  const accountId = edit.editorKind === 'officer' ? edit.adminId : edit.memberId
+  return accountId === null ? `${edit.editorKind}, account deleted` : edit.editorKind
 }
 
 const editedAt = new Intl.DateTimeFormat('en-US', {
@@ -122,10 +129,11 @@ export default async function AdminSponsorDetailPage(props: { params: Promise<{ 
           Edit history
         </h2>
         <p className={`mt-1 ${mutedTextClass}`}>
-          Changes sponsors made from the sponsor portal, newest first (up to {SPONSOR_EDITS_SHOWN}).
+          Changes made by sponsors from the sponsor portal and by officers on the Sponsors page, newest first (up
+          to {SPONSOR_EDITS_SHOWN}).
         </p>
         {edits.length === 0 ? (
-          <p className={`mt-4 ${mutedTextClass}`}>No sponsor has edited this listing yet.</p>
+          <p className={`mt-4 ${mutedTextClass}`}>No one has edited this listing yet.</p>
         ) : (
           <table className={`mt-4 ${tableClass}`}>
             <caption className="sr-only">Edits to {listing.name}, newest first</caption>
@@ -143,8 +151,7 @@ export default async function AdminSponsorDetailPage(props: { params: Promise<{ 
                     <time dateTime={edit.createdAt.toISOString()}>{editedAt.format(edit.createdAt)}</time>
                   </td>
                   <td className="py-3 pr-4">
-                    {edit.memberName}
-                    {edit.memberId === null && <span className={mutedTextClass}> (account deleted)</span>}
+                    {edit.editorName} <span className={mutedTextClass}>({editorLabel(edit)})</span>
                   </td>
                   <td className="py-3 pr-4">{edit.fields.map((field) => fieldLabels[field] ?? field).join(', ')}</td>
                 </tr>

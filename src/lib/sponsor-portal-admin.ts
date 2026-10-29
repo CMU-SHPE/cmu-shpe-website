@@ -21,8 +21,10 @@ export async function getSponsorEdits(sponsorId: number) {
   return getDb()
     .select({
       id: sponsorEdits.id,
+      editorKind: sponsorEdits.editorKind,
       memberId: sponsorEdits.memberId,
-      memberName: sponsorEdits.memberName,
+      adminId: sponsorEdits.adminId,
+      editorName: sponsorEdits.editorName,
       fields: sponsorEdits.fields,
       createdAt: sponsorEdits.createdAt,
     })

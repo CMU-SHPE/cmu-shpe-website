@@ -28,6 +28,7 @@ export const newsletterRecipientStatus = pgEnum('newsletter_recipient_status', [
   'skipped',
 ])
 export const unsubscribeSource = pgEnum('unsubscribe_source', ['one_click', 'page'])
+export const sponsorEditorKind = pgEnum('sponsor_editor_kind', ['sponsor', 'officer'])
 
 export const admins = pgTable('admins', {
   id: serial('id').primaryKey(),
@@ -334,6 +335,7 @@ export type MemberTokenPurpose = (typeof memberTokenPurpose.enumValues)[number]
 export type NewsletterStatus = (typeof newsletterStatus.enumValues)[number]
 export type NewsletterRecipientStatus = (typeof newsletterRecipientStatus.enumValues)[number]
 export type UnsubscribeSource = (typeof unsubscribeSource.enumValues)[number]
+export type SponsorEditorKind = (typeof sponsorEditorKind.enumValues)[number]
 
 export type Admin = typeof admins.$inferSelect
 export type LoginAttempt = typeof loginAttempts.$inferSelect
@@ -390,12 +392,20 @@ export const sponsorEdits = pgTable(
     sponsorId: integer('sponsor_id')
       .notNull()
       .references(() => sponsors.id, { onDelete: 'cascade' }),
+    editorKind: sponsorEditorKind('editor_kind').notNull().default('sponsor'),
     memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
-    memberName: text('member_name').notNull(),
+    adminId: integer('admin_id').references(() => admins.id, { onDelete: 'set null' }),
+    editorName: text('member_name').notNull(),
     fields: text('fields').array().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [index('sponsor_edits_sponsor_created_idx').on(table.sponsorId, table.createdAt)],
+  (table) => [
+    index('sponsor_edits_sponsor_created_idx').on(table.sponsorId, table.createdAt),
+    check(
+      'sponsor_edits_one_editor',
+      sql`(${table.editorKind} = 'sponsor' and ${table.adminId} is null) or (${table.editorKind} = 'officer' and ${table.memberId} is null)`,
+    ),
+  ],
 )
 
 // List queries must never select `content`; only the download routes read it.

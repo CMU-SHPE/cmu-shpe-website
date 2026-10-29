@@ -2,10 +2,11 @@ import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { and, eq, sql } from 'drizzle-orm'
 import type { Db } from '@/db'
-import { type Sponsor, members, sponsorEdits, sponsors } from '@/db/schema'
+import { type Sponsor, type SponsorTier, admins, members, sponsorEdits, sponsors } from '@/db/schema'
 import { type MemberSession, currentMember } from '@/lib/member'
 import { findOwnListing } from '@/lib/sponsor-portal-listing'
 import type { LogoColumns, SponsorListingFields } from '@/lib/sponsor-schema'
+import { qualified } from '@/lib/qualified-column'
 
 export type SponsorAccess = { member: MemberSession; listing: Sponsor }
 
@@ -52,6 +53,29 @@ export function changedListingFields(current: ListingValues, next: ListingValues
  * the caller read and diffed against; if the member has since been moved to another
  * listing, nothing is written rather than applying that diff to the wrong row.
  */
+export type OfficerListingValues = ListingValues & { tier: SponsorTier }
+
+export type OfficerListingField = ListingField | 'tier'
+
+export function changedOfficerFields(current: OfficerListingValues, next: OfficerListingValues): OfficerListingField[] {
+  const fields: OfficerListingField[] = changedListingFields(current, next)
+  return current.tier === next.tier ? fields : [...fields, 'tier']
+}
+
+function textArray(fields: readonly string[]) {
+  return sql`array[${sql.join(
+    fields.map((field) => sql`${field}`),
+    sql`, `,
+  )}]::text[]`
+}
+
+function columnList(columns: { name: string }[]) {
+  return sql.join(
+    columns.map((column) => sql.identifier(column.name)),
+    sql`, `,
+  )
+}
+
 export function listingEdit(
   db: Db,
   memberId: number,
@@ -61,16 +85,8 @@ export function listingEdit(
 ) {
   const isSponsor = and(eq(members.id, memberId), eq(members.role, 'sponsor'))
   const ownListing = db.select({ id: members.sponsorId }).from(members).where(isSponsor)
-  const changedFields = sql`array[${sql.join(
-    fields.map((field) => sql`${field}`),
-    sql`, `,
-  )}]::text[]`
-  const auditColumns = sql.join(
-    [sponsorEdits.sponsorId, sponsorEdits.memberId, sponsorEdits.memberName, sponsorEdits.fields].map((column) =>
-      sql.identifier(column.name),
-    ),
-    sql`, `,
-  )
+  const changedFields = textArray(fields)
+  const auditColumns = columnList([sponsorEdits.sponsorId, sponsorEdits.memberId, sponsorEdits.editorName, sponsorEdits.fields])
 
   return [
     db.select({ id: members.id }).from(members).where(isSponsor).for('update'),
@@ -83,5 +99,35 @@ export function listingEdit(
       select ${members.sponsorId}, ${members.id}, ${members.name}, ${changedFields}
       from ${members}
       where ${and(isSponsor, eq(members.sponsorId, listingId))}`),
+  ] as const
+}
+
+/**
+ * The officer's name is read from the admins row inside the batch, not from the session. A listing
+ * deleted since the caller read it matches no row, so the update and the log both write nothing.
+ */
+export function officerListingEdit(
+  db: Db,
+  adminId: number,
+  listingId: number,
+  values: Partial<typeof sponsors.$inferInsert>,
+  fields: readonly OfficerListingField[],
+) {
+  const update = db.update(sponsors).set(values).where(eq(sponsors.id, listingId)).returning({ id: sponsors.id })
+  if (fields.length === 0) return [update] as const
+
+  const auditColumns = columnList([
+    sponsorEdits.sponsorId,
+    sponsorEdits.editorKind,
+    sponsorEdits.adminId,
+    sponsorEdits.editorName,
+    sponsorEdits.fields,
+  ])
+  return [
+    update,
+    db.execute(sql`insert into ${sponsorEdits} (${auditColumns})
+      select ${qualified(sponsors.id)}, 'officer', ${qualified(admins.id)}, ${qualified(admins.name)}, ${textArray(fields)}
+      from ${sponsors}, ${admins}
+      where ${qualified(sponsors.id)} = ${listingId} and ${qualified(admins.id)} = ${adminId}`),
   ] as const
 }
