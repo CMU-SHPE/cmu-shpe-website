@@ -15,10 +15,17 @@ describe('ForgotPasswordPage', () => {
     expect(document.getElementById('request-sent')).toBeNull()
   })
 
+  it('serves admins and members alike, without telling admins to ask the master', async () => {
+    render(await ForgotPasswordPage({ searchParams: Promise.resolve({}) }))
+    expect(document.body).not.toHaveTextContent(/master admin/i)
+    expect(document.body).not.toHaveTextContent(/site admins/i)
+  })
+
   it('confirms a request only conditionally, never claiming an email was sent', async () => {
     render(await ForgotPasswordPage({ searchParams: Promise.resolve({ sent: '1' }) }))
     const notice = document.getElementById('request-sent')
-    expect(notice).toHaveTextContent("If an account exists for that email, we've sent a reset link.")
+    expect(notice).toHaveTextContent("If an account exists for that email, we've sent a reset link. The email says how long it works.")
+    expect(notice).not.toHaveTextContent(/hour|minute/)
     expect(notice).toHaveFocus()
     expect(screen.queryByRole('status')).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()

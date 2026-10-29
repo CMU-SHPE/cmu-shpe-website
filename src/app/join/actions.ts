@@ -62,7 +62,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
   ])
   if (admin) {
     await matchWriteRoundTrip(db)
-    return adminAccountExists(admin.name, `${base}/login`)
+    return adminAccountExists(admin.name, `${base}/login`, `${base}/forgot-password`)
   }
   if (member?.emailConfirmedAt) {
     await matchWriteRoundTrip(db)

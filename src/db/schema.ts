@@ -203,6 +203,37 @@ export const memberTokens = pgTable(
   (table) => [index('member_tokens_member_purpose_idx').on(table.memberId, table.purpose)],
 )
 
+// Only one pending change per member: a newer request replaces the row, so older links stop working.
+export const memberEmailChanges = pgTable(
+  'member_email_changes',
+  {
+    id: serial('id').primaryKey(),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    newEmail: text('new_email').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('member_email_changes_member_idx').on(table.memberId)],
+)
+
+// Separate from member_tokens so a token can only ever be looked up for the kind of account it was issued to.
+export const adminTokens = pgTable(
+  'admin_tokens',
+  {
+    id: serial('id').primaryKey(),
+    adminId: integer('admin_id')
+      .notNull()
+      .references(() => admins.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('admin_tokens_admin_idx').on(table.adminId)],
+)
+
 export const newsletterTopics = pgTable('newsletter_topics', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
@@ -349,6 +380,8 @@ export type NationalStat = typeof nationalStats.$inferSelect
 export type SponsorBenefit = typeof sponsorBenefits.$inferSelect
 export type Member = typeof members.$inferSelect
 export type MemberToken = typeof memberTokens.$inferSelect
+export type MemberEmailChange = typeof memberEmailChanges.$inferSelect
+export type AdminToken = typeof adminTokens.$inferSelect
 export type NewsletterTopic = typeof newsletterTopics.$inferSelect
 export type MemberTopicSubscription = typeof memberTopicSubscriptions.$inferSelect
 export type RequestThrottle = typeof requestThrottle.$inferSelect

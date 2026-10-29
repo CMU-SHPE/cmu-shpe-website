@@ -97,6 +97,7 @@ describe('LoginPage messages and links', () => {
     ['confirmed', 'Your email is confirmed'],
     ['reset', 'Your password was reset'],
     ['changed', 'Your password was changed'],
+    ['emailChanged', 'Your email address was changed — sign in with your new email address.'],
   ])('announces ?%s=1 as a status message', async (param, text) => {
     render(await page({ [param]: '1' }))
     expect(screen.getByRole('status')).toHaveTextContent(text)

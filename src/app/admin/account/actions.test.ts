@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
     requireAdmin: vi.fn(async () => ({ user: { id: '2', email: 'ana@example.com', role: 'admin' } })),
     recordLoginAttempt: vi.fn(async () => ({ throttled: false })),
     clearLoginAttempts: vi.fn(async () => {}),
+    deleteAdminTokens: vi.fn(async () => {}),
     compare: vi.fn<(password: string, hash: string) => Promise<boolean>>(),
     hash: vi.fn(async (_password: string, cost: number) => `$2b$${cost}$new-hash`),
     signIn: vi.fn<(provider: string, options: Record<string, unknown>) => Promise<void>>(),
@@ -43,6 +44,7 @@ vi.mock('next/navigation', () => ({
 }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.9, 10.0.0.1' }) }))
 vi.mock('@/db', () => ({ getDb: () => mocks.db }))
+vi.mock('@/lib/admin-tokens', () => ({ deleteAdminTokens: mocks.deleteAdminTokens }))
 vi.mock('@/lib/admin', () => ({ requireAdmin: mocks.requireAdmin }))
 vi.mock('@/lib/authorize', () => ({
   recordLoginAttempt: mocks.recordLoginAttempt,
@@ -123,6 +125,7 @@ describe('changePassword', () => {
   })
 
   it('stores a cost-12 hash, stamps the change from the app clock and clears attempts', async () => {
+    mocks.deleteAdminTokens.mockClear()
     const before = Date.now()
     expect(await redirectOf(changePassword(form()))).toBe('/admin/account?saved=1')
     expect(mocks.hash).toHaveBeenCalledWith(NEW, 12)
@@ -132,6 +135,7 @@ describe('changePassword', () => {
     expect(update.passwordChangedAt).toBeInstanceOf(Date)
     expect((update.passwordChangedAt as Date).getTime()).toBeGreaterThanOrEqual(before)
     expect(mocks.clearLoginAttempts).toHaveBeenCalledWith('ana@example.com')
+    expect(mocks.deleteAdminTokens).toHaveBeenCalledWith(mocks.db, 2)
   })
 
   it('re-issues the session with the new password so this device stays signed in', async () => {

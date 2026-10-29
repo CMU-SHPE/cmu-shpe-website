@@ -19,11 +19,14 @@ vi.mock('@/components/rsvp/my-rsvps', () => ({
 vi.mock('./actions', () => ({
   updateName: vi.fn(),
   changePassword: vi.fn(),
+  requestEmailChange: vi.fn(),
   saveTopics: vi.fn(),
   deleteAccount: vi.fn(),
 }))
 
 import AccountPage from './page'
+
+const emailForm = () => within(screen.getByRole('button', { name: 'Send confirmation link' }).closest('form')!)
 
 type Params = { saved?: string; error?: string; n?: string }
 
@@ -69,6 +72,7 @@ describe('AccountPage', () => {
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Your account'])
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Your name',
+      'Change email',
       'Newsletters',
       'Change password',
       'Delete my account',
@@ -129,11 +133,51 @@ describe('AccountPage', () => {
     await renderPage({ error: 'password-current' })
     expect(document.getElementById('account-status')).toHaveTextContent('Your current password is incorrect.')
     expect(screen.queryByRole('alert')).toBeNull()
-    const current = screen.getByLabelText('Current password')
+    const passwordForm = screen.getByRole('button', { name: 'Change password' }).closest('form')!
+    const current = within(passwordForm).getByLabelText('Current password')
     expect(current).toHaveAttribute('aria-invalid', 'true')
     expect(current).toHaveAccessibleDescription('Your current password is incorrect.')
     expect(screen.getByLabelText('Your password')).not.toHaveAttribute('aria-invalid')
+    expect(emailForm().getByLabelText('Current password')).not.toHaveAttribute('aria-invalid')
     expect(document.activeElement).toBe(document.getElementById('account-status'))
+  })
+
+  it('asks for the new email and the current password to change the email', async () => {
+    await renderPage()
+    const form = emailForm()
+    expect(form.getByRole('textbox', { name: 'New email' })).toHaveAttribute('type', 'email')
+    expect(form.getByRole('textbox', { name: 'New email' })).toHaveAttribute('autocomplete', 'email')
+    expect(form.getByRole('textbox', { name: 'New email' })).toBeRequired()
+    expect(form.getByLabelText('Current password')).toHaveAttribute('autocomplete', 'current-password')
+    expect(form.getByLabelText('Current password')).toBeRequired()
+    expect(screen.getByText(/Your email won't change until you open that link/)).toBeInTheDocument()
+  })
+
+  it('says the same thing after every accepted email change, without naming the new address', async () => {
+    await renderPage({ saved: 'email' })
+    expect(document.getElementById('account-status')).toHaveTextContent(
+      'Check the inbox of your new email address for a confirmation link. Your email won’t change until you open it. The link works for 24 hours.',
+    )
+  })
+
+  it.each([
+    ['email-invalid', 'New email', 'Enter a valid new email address.'],
+    ['email-same', 'New email', 'That is already your email address.'],
+    ['email-current', 'Current password', 'Your current password is incorrect.'],
+    ['email-password', 'Current password', 'Please enter your current password.'],
+  ])('marks the email change field for %s', async (error, label, message) => {
+    await renderPage({ error })
+    const field = emailForm().getByLabelText(label)
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAccessibleDescription(message)
+  })
+
+  it.each([
+    ['email-throttled', 'Too many attempts. Wait 15 minutes and try again.'],
+    ['email-send', "We couldn't send the email right now, try again later."],
+  ])('explains %s', async (error, message) => {
+    await renderPage({ error })
+    expect(document.getElementById('account-status')).toHaveTextContent(message)
   })
 
   it('states the shared password rule without a character cap, since the limit is in bytes', async () => {

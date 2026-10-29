@@ -6,11 +6,12 @@ type Write = { kind: string; table: string; values?: Record<string, unknown>; wh
 
 const mocks = vi.hoisted(() => {
   const state = {
-    admin: null as { id: number } | null,
+    admin: null as { id: number; name: string } | null,
     confirmedMember: null as { id: number; name: string } | null,
     memberWhere: null as SQL | null,
     batches: [] as Write[][],
     throttled: false,
+    adminThrottled: false,
   }
   const tableName = (table: unknown) => (table as Record<symbol, string>)[Symbol.for('drizzle:Name')]
   return {
@@ -41,7 +42,9 @@ const mocks = vi.hoisted(() => {
       },
     },
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string }) => Promise<void>>(async () => {}),
-    recordRequest: vi.fn(async () => ({ throttled: mocks.state.throttled })),
+    recordRequest: vi.fn(async (action: string) => ({
+      throttled: action === 'admin_password_reset' ? mocks.state.adminThrottled : mocks.state.throttled,
+    })),
     redirect: vi.fn((url: string) => {
       throw new Error(`REDIRECT ${url}`)
     }),
@@ -76,7 +79,14 @@ function form(email = 'Mia@Example.com') {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.afterCallbacks.length = 0
-  Object.assign(mocks.state, { admin: null, confirmedMember: null, memberWhere: null, batches: [], throttled: false })
+  Object.assign(mocks.state, {
+    admin: null,
+    confirmedMember: null,
+    memberWhere: null,
+    batches: [],
+    throttled: false,
+    adminThrottled: false,
+  })
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -130,15 +140,55 @@ describe('requestPasswordReset', () => {
   })
 
   it.each([
+    ['an admin email', () => {}],
+    ['an admin email that a member row also has', () => (mocks.state.confirmedMember = { id: 7, name: 'Mia' })],
+  ])('sends %s a 30-minute admin link in admin_tokens, never a member token', async (_case, arrange) => {
+    mocks.state.admin = { id: 1, name: 'Ada' }
+    arrange()
+    const before = Date.now()
+    await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    await runAfterResponse()
+    expect(mocks.recordRequest).toHaveBeenCalledWith('admin_password_reset', 'mia@example.com', null)
+    const [[revoke, insert]] = mocks.state.batches
+    expect(revoke.table).toBe('admin_tokens')
+    expect(new PgDialect().sqlToQuery(revoke.where!).params).toEqual([1])
+    expect(insert.table).toBe('admin_tokens')
+    expect(insert.values).toMatchObject({ adminId: 1, tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    const expiresAt = (insert.values!.expiresAt as Date).getTime()
+    expect(expiresAt - before).toBeGreaterThanOrEqual(30 * 60 * 1000)
+    expect(expiresAt - before).toBeLessThan(31 * 60 * 1000)
+    expect(mocks.state.batches.flat().some((write) => write.table === 'member_tokens')).toBe(false)
+    const message = mocks.sendEmail.mock.calls[0][0]
+    expect(message).toMatchObject({ to: 'mia@example.com', subject: 'Reset your SHPE @ CMU admin password' })
+    expect(message.text).toMatch(/https:\/\/shpe\.test\/reset-password\/admin\?token=[A-Za-z0-9_-]{43}\n/)
+    expect(message.text).not.toContain(insert.values!.tokenHash as string)
+  })
+
+  it('sends an admin nothing once their own admin limit is reached, with the same response', async () => {
+    mocks.state.admin = { id: 1, name: 'Ada' }
+    mocks.state.adminThrottled = true
+    await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT /forgot-password?sent=1')
+    await runAfterResponse()
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(mocks.state.batches).toEqual([])
+  })
+
+  it('never checks the admin limit for a member', async () => {
+    mocks.state.confirmedMember = { id: 7, name: 'Mia' }
+    await expect(requestPasswordReset({}, form())).rejects.toThrow('REDIRECT')
+    await runAfterResponse()
+    expect(mocks.recordRequest).not.toHaveBeenCalledWith('admin_password_reset', expect.anything(), expect.anything())
+  })
+
+  it.each([
     ['an unknown or unconfirmed email', () => {}],
-    ['an admin email', () => (mocks.state.admin = { id: 1 })],
-    ['an admin email that a member row also has', () => {
-      mocks.state.admin = { id: 1 }
-      mocks.state.confirmedMember = { id: 7, name: 'Mia' }
-    }],
     ['a throttled request', () => {
       mocks.state.throttled = true
       mocks.state.confirmedMember = { id: 7, name: 'Mia' }
+    }],
+    ['a throttled request for an admin', () => {
+      mocks.state.throttled = true
+      mocks.state.admin = { id: 1, name: 'Ada' }
     }],
   ])('sends nothing for %s, with the same response', async (_case, arrange) => {
     arrange()

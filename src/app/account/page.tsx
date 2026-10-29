@@ -18,9 +18,9 @@ import { MIN_PASSWORD_LENGTH } from '@/lib/admin-account'
 import { WINDOW_MINUTES } from '@/lib/login-throttle'
 import { requireMember } from '@/lib/member'
 import { DELETE_CONFIRMATION_WORD, MAX_MEMBER_NAME_LENGTH, NAME_ERROR, getMemberTopicIds } from '@/lib/member-account'
-import { PASSWORD_ERROR, PASSWORD_REQUIREMENTS } from '@/lib/member-accounts'
+import { PASSWORD_ERROR, PASSWORD_REQUIREMENTS, SEND_FAILED_MESSAGE } from '@/lib/member-accounts'
 import { getNewsletterTopics } from '@/lib/newsletter-topics'
-import { changePassword, deleteAccount, saveTopics, updateName } from './actions'
+import { changePassword, deleteAccount, requestEmailChange, saveTopics, updateName } from './actions'
 
 export const metadata: Metadata = { title: 'Your account | SHPE @ Colorado Mesa University' }
 
@@ -30,6 +30,12 @@ const throttled = `Too many attempts. Wait ${WINDOW_MINUTES} minutes and try aga
 
 const errorMessages: Record<string, string> = {
   name: NAME_ERROR,
+  'email-invalid': 'Enter a valid new email address.',
+  'email-password': 'Please enter your current password.',
+  'email-same': 'That is already your email address.',
+  'email-current': 'Your current password is incorrect.',
+  'email-throttled': throttled,
+  'email-send': SEND_FAILED_MESSAGE,
   'password-invalid': 'Please enter your current password.',
   'password-password': PASSWORD_ERROR,
   'password-mismatch': 'The new password and its confirmation do not match.',
@@ -45,6 +51,8 @@ const errorMessages: Record<string, string> = {
 
 const savedMessages: Record<string, string> = {
   name: 'Your name was saved.',
+  email:
+    'Check the inbox of your new email address for a confirmation link. Your email won’t change until you open it. The link works for 24 hours.',
   password: 'Password changed. Any other devices signed in to this account have been signed out.',
   topics: 'Your newsletter choices were saved.',
 }
@@ -52,6 +60,10 @@ const savedMessages: Record<string, string> = {
 /** Which inputs an error points at, so they can be marked invalid and described by the message. */
 const invalidFields: Record<string, string[]> = {
   name: ['name'],
+  'email-invalid': ['newEmail'],
+  'email-same': ['newEmail'],
+  'email-password': ['emailPassword'],
+  'email-current': ['emailPassword'],
   'password-invalid': ['currentPassword'],
   'password-password': ['newPassword'],
   'password-mismatch': ['confirmPassword'],
@@ -127,6 +139,46 @@ export default async function AccountPage(props: {
             </label>
             <SubmitButton pendingLabel="Saving…" className={primaryButtonClass}>
               Save name
+            </SubmitButton>
+          </form>
+        </section>
+
+        <section className={cardClass} aria-labelledby="email-heading">
+          <h2 id="email-heading" className={sectionHeadingClass}>
+            Change email
+          </h2>
+          <p id="email-explanation" className={`mt-1 ${mutedTextClass}`}>
+            We&apos;ll email a confirmation link to the new address. Your email won&apos;t change until you open that
+            link, and we&apos;ll let your current address know when it does.
+          </p>
+          <form action={requestEmailChange} className="mt-4 max-w-md space-y-4" aria-describedby="email-explanation">
+            <input type="email" name="username" value={member.user.email ?? ''} autoComplete="username" readOnly hidden />
+            <label className={labelClass}>
+              New email
+              <input
+                name="newEmail"
+                type="email"
+                required
+                maxLength={320}
+                autoComplete="email"
+                className={inputClass}
+                {...fieldState('newEmail')}
+              />
+            </label>
+            <label className={labelClass}>
+              Current password
+              <input
+                name="currentPassword"
+                type="password"
+                required
+                maxLength={200}
+                autoComplete="current-password"
+                className={inputClass}
+                {...fieldState('emailPassword')}
+              />
+            </label>
+            <SubmitButton pendingLabel="Sending…" className={primaryButtonClass}>
+              Send confirmation link
             </SubmitButton>
           </form>
         </section>

@@ -9,6 +9,7 @@ import { getDb } from '@/db'
 import { admins } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { parsePasswordChange } from '@/lib/admin-account'
+import { deleteAdminTokens } from '@/lib/admin-tokens'
 import { clearLoginAttempts, recordLoginAttempt } from '@/lib/authorize'
 import { clientIp } from '@/lib/login-throttle'
 
@@ -41,6 +42,8 @@ export async function changePassword(formData: FormData) {
     .update(admins)
     .set({ passwordHash: await bcrypt.hash(parsed.data.newPassword, 12), passwordChangedAt: new Date() })
     .where(eq(admins.id, admin.id))
+  // An emailed reset link from before this change would otherwise still set a password for 30 minutes.
+  await deleteAdminTokens(db, admin.id)
   await clearLoginAttempts(admin.email)
 
   try {

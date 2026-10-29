@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { accountExists, adminAccountExists, confirmEmail, escapeHtml, passwordChanged, resetPassword } from './email-templates'
+import {
+  accountExists,
+  adminAccountExists,
+  confirmEmail,
+  confirmNewEmail,
+  emailChanged,
+  escapeHtml,
+  maskEmail,
+  passwordChanged,
+  adminPasswordReset,
+  resetPassword,
+} from './email-templates'
 
 const HOSTILE = '<script>alert("x")</script> & \'Ana\''
 const LINK = 'https://shpecmu.com/join/confirm?token=abc&x=1'
@@ -13,7 +24,9 @@ describe('escapeHtml', () => {
 describe('email templates', () => {
   const rendered = {
     accountExists: accountExists(HOSTILE, 'https://shpecmu.com/login', LINK),
-    adminAccountExists: adminAccountExists(HOSTILE, 'https://shpecmu.com/login'),
+    adminAccountExists: adminAccountExists(HOSTILE, 'https://shpecmu.com/login', 'https://shpecmu.com/forgot-password'),
+    adminPasswordReset: adminPasswordReset(HOSTILE, LINK),
+    emailChanged: emailChanged(HOSTILE, 'new@example.com', 'shpe@example.org'),
     resetPassword: resetPassword(HOSTILE, LINK),
     passwordChanged: passwordChanged(HOSTILE, 'https://shpecmu.com/contact'),
   }
@@ -47,12 +60,44 @@ describe('email templates', () => {
     expect(rendered.accountExists.text).toContain(LINK)
   })
 
-  it('sends admins to the master admin instead of a reset link', () => {
+  it('sends admins to the shared forgot-password page, never with a token', () => {
     const email = rendered.adminAccountExists
     expect(email.text).toContain('https://shpecmu.com/login')
-    expect(email.text).toContain('reset by the master admin')
-    expect(email.text).not.toMatch(/reset-password|forgot-password|token=/)
-    expect(email.html).not.toContain('Reset my password')
+    expect(email.text).toContain('Reset my password:\nhttps://shpecmu.com/forgot-password')
+    expect(email.text).not.toContain('master admin')
+    expect(email.text).not.toContain('token=')
+  })
+
+  it('tells an admin their reset link lasts 30 minutes and works once', () => {
+    const email = rendered.adminPasswordReset
+    expect(email.subject).toBe('Reset your SHPE @ CMU admin password')
+    expect(email.text).toContain(`Choose a new password:\n${LINK}`)
+    expect(email.text).toContain('expires in 30 minutes and can be used once')
+  })
+
+  it('confirms an email change without a name, since the new address is not verified yet', () => {
+    const email = confirmNewEmail(LINK)
+    expect(email.subject).toBe('Confirm your new email for SHPE @ CMU')
+    expect(email.text.startsWith('Hi,\n')).toBe(true)
+    expect(email.text).toContain(`Confirm my new email:\n${LINK}`)
+    expect(email.text).toContain('expires in 24 hours')
+  })
+
+  it('tells the old address only a masked new address and who to contact', () => {
+    const email = rendered.emailChanged
+    expect(email.subject).toBe('Your SHPE @ CMU email address was changed')
+    expect(email.text).toContain('changed to n***@example.com.')
+    expect(email.text).not.toContain('new@example.com')
+    expect(email.text).toContain('If this wasn’t you, contact shpe@example.org right away')
+  })
+
+  it.each([
+    ['nina@example.com', 'n***@example.com'],
+    ['a@b.co', 'a***@b.co'],
+    ['émile@exämple.org', 'é***@exämple.org'],
+    ['"x@y"@example.com', '"***@example.com'],
+  ])('masks %s as %s', (email, masked) => {
+    expect(maskEmail(email)).toBe(masked)
   })
 
   it('collapses line breaks, control and format characters in names and caps their length', () => {

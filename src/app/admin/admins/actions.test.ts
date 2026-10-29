@@ -71,6 +71,7 @@ const mocks = vi.hoisted(() => {
     requireMaster: vi.fn(),
     requireAccountCreator: vi.fn(),
     clearLoginAttempts: vi.fn(async () => {}),
+    deleteAdminTokens: vi.fn(async () => {}),
     hash: vi.fn(async (_password: string, cost: number) => `$2b$${cost}$hash`),
   }
 })
@@ -81,6 +82,7 @@ vi.mock('next/navigation', () => ({
   },
 }))
 vi.mock('@/db', () => ({ getDb: () => mocks.db }))
+vi.mock('@/lib/admin-tokens', () => ({ deleteAdminTokens: mocks.deleteAdminTokens }))
 vi.mock('@/lib/authorize', () => ({ clearLoginAttempts: mocks.clearLoginAttempts }))
 vi.mock('bcryptjs', () => ({ default: { hash: mocks.hash } }))
 vi.mock('@/lib/admin', async () => {
@@ -303,7 +305,8 @@ describe('resetAdminPassword', () => {
     expectNoWrites()
   })
 
-  it('stores a cost-12 hash, ends their sessions and clears their attempts', async () => {
+  it('stores a cost-12 hash, ends their sessions, revokes emailed reset links and clears their attempts', async () => {
+    mocks.deleteAdminTokens.mockClear()
     const before = Date.now()
     const url = await redirectOf(resetAdminPassword(4, resetForm()))
     expect(url).toBe('/admin/admins?saved=reset')
@@ -313,6 +316,7 @@ describe('resetAdminPassword', () => {
     expect(update.passwordHash).toBe('$2b$12$hash')
     expect((update.passwordChangedAt as Date).getTime()).toBeGreaterThanOrEqual(before)
     expect(mocks.clearLoginAttempts).toHaveBeenCalledWith('ana@example.com')
+    expect(mocks.deleteAdminTokens).toHaveBeenCalledWith(mocks.db, 4)
   })
 })
 
