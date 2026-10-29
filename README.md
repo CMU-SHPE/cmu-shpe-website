@@ -90,7 +90,8 @@ the schema change, then apply it with `npm run db:push`.
 
 ### Recovering the master account
 
-If the master admin forgets their password or loses access to their email, someone with
+If the master admin forgets their password, they reset it by email like any admin: **Forgot
+password?** on the sign-in page. If they have also lost access to that email, someone with
 the database connection string puts the new values in `.env.local`, with the password in
 single quotes so characters such as `#` are kept (the password itself can't contain `'`):
 
@@ -133,9 +134,12 @@ connection string, edits made locally change the live site.
    accounts: edit them to keep them accurate, but never blank a section.
 3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
    lists, site settings, members, newsletter topics and newsletters.
-4. Choose **Change password** in the admin sidebar to change your own password. The master
-   admin can reset another admin's password from **Admin accounts** and share it with them
-   directly. Either change signs that account out on every other device.
+4. Choose **Change password** in the admin sidebar to change your own password. Forgot it?
+   Choose **Forgot password?** on the sign-in page and enter your admin email: the link it
+   sends works for 30 minutes, once. This works for every admin, the master included. The
+   master admin can also reset another admin's password from **Admin accounts** and share it
+   with them directly. Every change signs that account out on every other device, and a reset
+   by email also clears any sign-in lockout on it.
 5. **Admin accounts** appears in the sidebar for the master and for any admin the master has
    allowed to create accounts. The master turns that on or off per admin with the **Can
    create accounts** button next to their name; the change applies on that admin's next
@@ -160,15 +164,27 @@ to RSVP to events.
   up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
   sponsors land on `/sponsor` instead.
-- **`/account`:** change name and password, choose newsletter topics, see and cancel
+- **`/account`:** change name, email and password, choose newsletter topics, see and cancel
   upcoming RSVPs, and **Delete my account** (asks for the password and the word DELETE;
   it removes the account, its newsletter choices, its newsletter send and unsubscribe
   records and its RSVPs right away). Sponsors also get a **Sponsor portal** link here.
 - **RSVPs:** any signed-in member with a confirmed email can RSVP to an upcoming event on
   `/events` and cancel before it happens. See [Sponsor portal](#sponsor-portal) for
   capacity and the attendee CSV.
-- **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour.
-  Admins don't get one; the master resets admin passwords from **Admin accounts**.
+- **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour, once.
+  The same page serves admins: an admin's email gets a link to `/reset-password/admin` that
+  works for 30 minutes. The page answers the same way whether or not the address has an
+  account. Member and admin links are stored separately, so neither can reset the other kind
+  of account.
+- **Changing email:** **Change email** on `/account` asks for the new address and the current
+  password, then emails a confirmation link to the new address that works for 24 hours, once.
+  Nothing changes until it is used, and a newer request cancels the older link. Confirming
+  re-checks that no admin or other member has the address (an unconfirmed sign-up holding it
+  is deleted), changes the email, signs the member out everywhere and tells the old address
+  (showing the new one as `n***@domain`, with the club's contact email). The account keeps
+  its id, so RSVPs, newsletter choices, the sponsor link and old unsubscribe links all keep
+  working. The form says the same thing whether or not the new address is taken; a taken
+  address only shows up when the link is used.
 - **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
   also removes their newsletter choices, newsletter send and unsubscribe records, RSVPs and
   pending email links. Any sponsor listing edits they made stay in that listing's history
@@ -373,7 +389,10 @@ Preview and local databases are copies of production, so anywhere except product
 to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes), even
 when it continues a send that production started and the database copy still holds;
 everyone else is skipped. The composer and the send confirmation say so, and their
-recipient counts leave everyone else out. Test sends to yourself are not restricted. To get a token:
+recipient counts leave everyone else out. Test sends to yourself are not restricted. Every
+other email (confirmation, password reset, email change and security notices) follows the
+same rule: outside production `sendEmail` skips any address not ending in `@resend.dev`,
+logging `EMAIL SKIPPED` without the address, and the flow carries on as if it had sent. To get a token:
 
 1. On the preview, create an account with an address like
    `delivered+unsubscribe-e2e@resend.dev`, open its confirmation email in the Resend
