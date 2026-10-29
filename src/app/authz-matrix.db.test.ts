@@ -382,7 +382,7 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action createEvent',
-    run: () => adminCreateEvent(eventForm('Matrix event')),
+    run: () => adminCreateEvent({}, eventForm('Matrix event')),
     expect: adminOnly({
       outcome: '→ /admin/events?saved=1',
       effect: (_w, before, after) => {
@@ -393,7 +393,7 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action updateEvent(open)',
-    run: (w) => updateEvent(w.openEvent.id, eventForm('Renamed event')),
+    run: (w) => updateEvent(w.openEvent.id, {}, eventForm('Renamed event')),
     expect: adminOnly({
       outcome: '→ /admin/events?saved=1',
       effect: (w, _before, after) => expect(row(after.events, w.openEvent.id)?.title).toBe('Renamed event'),

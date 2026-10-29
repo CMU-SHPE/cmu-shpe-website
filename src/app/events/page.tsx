@@ -3,13 +3,12 @@ import Editable from '@/components/editable'
 import { LocationIcon } from '@/components/icons'
 import { focusRingClass } from '@/components/admin/styles'
 import RsvpButton from '@/components/rsvp/rsvp-button'
-import type { ClubEvent } from '@/db/schema'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { eventSchedule, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
 import { currentMember } from '@/lib/member'
-import { getEvents, getSiteContent, getSiteSettings } from '@/lib/queries'
+import { type EventWithSlots, getEvents, getSiteContent, getSiteSettings } from '@/lib/queries'
 import { getRsvpStates, rsvpCounts, type RsvpState } from '@/lib/rsvp'
 
 type Viewer = 'member' | 'admin' | 'visitor'
@@ -159,7 +158,7 @@ function EventRsvp({
   state,
   taken,
 }: {
-  event: ClubEvent
+  event: EventWithSlots
   viewer: Viewer
   state?: RsvpState
   taken: number
@@ -188,7 +187,8 @@ function EventRsvp({
   )
 }
 
-function EventCard({ event, children }: { event: ClubEvent; children?: React.ReactNode }) {
+function EventCard({ event, children }: { event: EventWithSlots; children?: React.ReactNode }) {
+  const schedule = eventSchedule(event)
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200 flex">
       {/* Left accent bar */}
@@ -201,8 +201,12 @@ function EventCard({ event, children }: { event: ClubEvent; children?: React.Rea
             {event.type}
           </span>
           <div className="text-right">
-            <div className="text-gray-700 dark:text-gray-300 text-sm font-medium">{formatEventDate(event.date)}</div>
-            {event.time && <div className="text-gray-500 dark:text-gray-400 text-xs">{event.time}</div>}
+            <div className="text-gray-700 dark:text-gray-300 text-sm font-medium">{schedule.dates}</div>
+            {schedule.times.map((line) => (
+              <div key={line} className="text-gray-500 dark:text-gray-400 text-xs">
+                {line}
+              </div>
+            ))}
           </div>
         </div>
         <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>

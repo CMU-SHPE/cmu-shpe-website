@@ -54,6 +54,24 @@ describe('rsvp and cancelRsvp', () => {
     expect(await rsvp(member.id, event.id, new Date('2026-10-28T03:00:00Z'))).toBe('going')
   })
 
+  it('keeps a multi-day event open through its last day in Denver and closes it the day after', async () => {
+    const member = await createMember()
+    const event = await createEvent({ date: '2026-10-26', endDate: '2026-10-28' })
+
+    expect(await rsvp(member.id, event.id, NOW)).toBe('going')
+    expect(await cancelRsvp(member.id, event.id, new Date('2026-10-29T05:59:00Z'))).toBe(true)
+    // Late on the 28th in Denver is already the 29th in UTC.
+    expect(await rsvp(member.id, event.id, new Date('2026-10-29T05:59:00Z'))).toBe('going')
+    expect((await listMyRsvps(member.id, new Date('2026-10-29T05:59:00Z'))).map((row) => row.eventId)).toEqual([event.id])
+
+    const other = await createMember()
+    const dayAfter = new Date('2026-10-29T06:00:00Z')
+    expect(await rsvp(other.id, event.id, dayAfter)).toBe('closed')
+    expect(await cancelRsvp(member.id, event.id, dayAfter)).toBe(false)
+    expect(await listMyRsvps(member.id, dayAfter)).toEqual([])
+    expect((await rsvpRows(event.id)).map((row) => row.memberId)).toEqual([member.id])
+  })
+
   it('reports a missing event', async () => {
     const member = await createMember()
     expect(await rsvp(member.id, 999, NOW)).toBe('missing')
