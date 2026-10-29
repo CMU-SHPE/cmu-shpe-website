@@ -107,16 +107,9 @@ export function confirmNewEmail(link: string): EmailContent {
   ])
 }
 
-/** Enough for the owner to recognise the address without handing it to whoever reads the old inbox. */
-export function maskEmail(email: string): string {
-  const at = email.lastIndexOf('@')
-  const first = Array.from(email.slice(0, at))[0] ?? ''
-  return `${first}***@${email.slice(at + 1)}`
-}
-
-export function emailChanged(name: string, newEmail: string, contactEmail: string): EmailContent {
+export function emailChanged(name: string, maskedNewEmail: string, contactEmail: string): EmailContent {
   return render('Your SHPE @ CMU email address was changed', name, [
-    `The email address for your SHPE @ CMU account was changed to ${maskEmail(newEmail)}. Account emails and newsletters will go there from now on, and this address can no longer sign in.`,
+    `The email address for your SHPE @ CMU account was changed to ${maskedNewEmail}. Account emails and newsletters will go there from now on, and this address can no longer sign in.`,
     `If this wasn’t you, contact ${contactEmail} right away so we can help.`,
   ])
 }

@@ -5,6 +5,7 @@ import { sendEmail } from '@/lib/email'
 import { emailChanged } from '@/lib/email-templates'
 import type { FormState } from '@/lib/member-accounts'
 import { confirmEmailChange } from '@/lib/member-email-change'
+import { maskEmail } from '@/lib/newsletter-unsubscribe'
 import { getSiteSettings } from '@/lib/queries'
 import { siteUrl } from '@/lib/site-url'
 
@@ -16,7 +17,7 @@ async function notifyOldAddress(change: { oldEmail: string; newEmail: string; na
   try {
     const settings = await getSiteSettings()
     const contact = settings?.contactEmail || `${siteUrl()}/contact`
-    await sendEmail({ to: change.oldEmail, ...emailChanged(change.name, change.newEmail, contact) })
+    await sendEmail({ to: change.oldEmail, ...emailChanged(change.name, maskEmail(change.newEmail), contact) })
   } catch {
     console.error('EMAIL SEND FAILED: email_changed')
   }
