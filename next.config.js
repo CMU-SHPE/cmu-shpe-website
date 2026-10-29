@@ -14,7 +14,7 @@ const nextConfig = {
     '/help/print/public': GUIDE_SOURCES,
     '/admin/help': GUIDE_SOURCES,
     '/admin/help/print': GUIDE_SOURCES,
-    '/admin/help/handbook.pdf': ['./docs/guides/pdf/officer-handbook.pdf'],
+    '/admin/help/handbook.pdf': ['./docs/guides/pdf/*.pdf'],
   },
 }
 
