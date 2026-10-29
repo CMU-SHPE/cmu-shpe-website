@@ -1,9 +1,29 @@
 import { and, count, eq, gte, lt } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { requestThrottle } from '@/db/schema'
-import { WINDOW_MINUTES, isThrottled } from '@/lib/login-throttle'
+import { MAX_FAILURES_PER_EMAIL, MAX_FAILURES_PER_IP, WINDOW_MINUTES } from '@/lib/login-throttle'
 
-export type ThrottledAction = 'signup' | 'resend_confirmation' | 'forgot_password' | 'confirm_email'
+export type ThrottledAction =
+  | 'signup'
+  | 'resend_confirmation'
+  | 'forgot_password'
+  | 'confirm_email'
+  | 'admin_password_reset'
+  | 'change_email'
+
+type RequestLimit = { perEmail: number; perIp: number }
+
+const LOGIN_LIMITS: RequestLimit = { perEmail: MAX_FAILURES_PER_EMAIL, perIp: MAX_FAILURES_PER_IP }
+
+/** Allowed requests per window; the newer actions have their own so changing the login lockout leaves them alone. */
+export const REQUEST_LIMITS: Record<ThrottledAction, RequestLimit> = {
+  signup: LOGIN_LIMITS,
+  resend_confirmation: LOGIN_LIMITS,
+  forgot_password: LOGIN_LIMITS,
+  confirm_email: LOGIN_LIMITS,
+  admin_password_reset: { perEmail: 3, perIp: 10 },
+  change_email: { perEmail: 5, perIp: 10 },
+}
 
 /**
  * Like recordLoginAttempt, but per action and in its own table, so emailing an admin's
@@ -44,5 +64,6 @@ export async function recordRequest(
           )
       : Promise.resolve([{ ipRequests: 0 }]),
   ])
-  return { throttled: isThrottled(emailRequests, ipRequests) }
+  const limit = REQUEST_LIMITS[action]
+  return { throttled: emailRequests > limit.perEmail || ipRequests > limit.perIp }
 }

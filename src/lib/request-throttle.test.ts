@@ -41,7 +41,7 @@ const fake = vi.hoisted(() => {
 
 vi.mock('@/db', () => ({ getDb: () => fake.db }))
 
-import { recordRequest } from './request-throttle'
+import { REQUEST_LIMITS, recordRequest } from './request-throttle'
 
 const render = (condition: SQL) => new PgDialect().sqlToQuery(condition)
 
@@ -81,5 +81,18 @@ describe('recordRequest', () => {
   it('skips the ip count when the ip is unknown', async () => {
     await recordRequest('resend_confirmation', 'mia@example.com', null)
     expect(fake.state.ops).not.toContain('count ipRequests')
+  })
+
+  it.each([
+    ['admin_password_reset', 3, 10],
+    ['change_email', 5, 10],
+  ] as const)('gives %s its own limits of %i per email and %i per ip', async (action, perEmail, perIp) => {
+    expect(REQUEST_LIMITS[action]).toEqual({ perEmail, perIp })
+    fake.state.counts = { emailRequests: perEmail, ipRequests: perIp }
+    await expect(recordRequest(action, 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: false })
+    fake.state.counts = { emailRequests: perEmail + 1, ipRequests: 1 }
+    await expect(recordRequest(action, 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: true })
+    fake.state.counts = { emailRequests: 1, ipRequests: perIp + 1 }
+    await expect(recordRequest(action, 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: true })
   })
 })
