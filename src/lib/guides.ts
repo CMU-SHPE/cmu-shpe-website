@@ -14,6 +14,7 @@ export const GUIDES_DIR = path.join(process.cwd(), 'docs', 'guides')
 
 export const PUBLIC_GUIDE_PDF = '/help/shpe-website-guide.pdf'
 export const OFFICER_HANDBOOK_PDF = '/admin/help/handbook.pdf'
+export const OFFICER_HANDBOOK_FILE = path.join(GUIDES_DIR, 'pdf', 'officer-handbook.pdf')
 
 export type TocEntry = { id: string; text: string; depth: 2 | 3 }
 
@@ -47,8 +48,11 @@ function safeImageSrc(src: string): string | null {
   return /^\/(?!\/)/.test(value) ? value : null
 }
 
+const HTML_COMMENT = /<!--[\s\S]*?-->/g
+
 /**
- * Raw HTML in the source is shown as text, never rendered, and heading ids come from the
+ * Raw HTML in the source is shown as text, never rendered, while HTML comments (notes for
+ * whoever edits the guides) are dropped before parsing. Heading ids come from the
  * heading text so links like #sending-a-newsletter keep working. `idPrefix` keeps ids unique
  * when several guides share one page, and in-page links are prefixed to match.
  */
@@ -66,8 +70,8 @@ export function renderGuide(markdown: string, { idPrefix = '' }: { idPrefix?: st
 
   marked.use({
     renderer: {
-      html({ text }: Tokens.HTML | Tokens.Tag) {
-        return escapeHtml(text)
+      html({ text, block }: Tokens.HTML | Tokens.Tag) {
+        return block ? `<p>${escapeHtml(text.trim())}</p>\n` : escapeHtml(text)
       },
       heading({ tokens, depth }: Tokens.Heading) {
         const text = this.parser.parseInline(tokens, this.parser.textRenderer)
@@ -91,7 +95,7 @@ export function renderGuide(markdown: string, { idPrefix = '' }: { idPrefix?: st
     },
   })
 
-  const tokens = marked.lexer(markdown)
+  const tokens = marked.lexer(markdown.replace(HTML_COMMENT, ''))
   const titleIndex = tokens.findIndex((token): token is Tokens.Heading => token.type === 'heading' && token.depth === 1)
   const titleToken = titleIndex === -1 ? null : (tokens[titleIndex] as Tokens.Heading)
   const body: Token[] = titleIndex === -1 ? tokens : tokens.filter((_, index) => index !== titleIndex)
