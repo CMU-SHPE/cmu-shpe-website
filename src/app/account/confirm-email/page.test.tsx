@@ -29,7 +29,7 @@ describe('ConfirmEmailChangePage', () => {
     expect(mocks.confirmEmailChangeFromLink).not.toHaveBeenCalled()
   })
 
-  it.each([{ token: 'nope' }, { token: TOKEN, invalid: '1' }, {}])('explains a link that does not work (%o)', async (params) => {
+  it.each<Record<string, string>>([{ token: 'nope' }, { token: TOKEN, invalid: '1' }, {}])('explains a link that does not work (%o)', async (params) => {
     render(await page(params))
     expect(screen.getByRole('heading', { level: 1, name: "This link doesn't work" })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent("Your email address hasn't changed.")
