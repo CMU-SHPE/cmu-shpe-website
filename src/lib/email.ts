@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { TEST_EMAIL_SUFFIX, testAudienceOnly } from '@/lib/newsletter-audience'
 import { getSiteSettings } from '@/lib/queries'
 
 export type EmailMessage = {
@@ -47,7 +48,19 @@ async function replyTo(): Promise<string | undefined> {
   }
 }
 
+/**
+ * Previews and local development run against copies of production's members and admins, so outside
+ * production only Resend's test inboxes are emailed. Skipping resolves like a send, so every flow
+ * still answers the same way, and the log never names the address.
+ */
+function skippedOutsideProduction(to: string): boolean {
+  if (!testAudienceOnly() || to.trim().toLowerCase().endsWith(TEST_EMAIL_SUFFIX)) return false
+  console.warn('EMAIL SKIPPED: only @resend.dev addresses are emailed outside production')
+  return true
+}
+
 export async function sendEmail({ to, subject, text, html }: EmailMessage): Promise<void> {
+  if (skippedOutsideProduction(to)) return
   const mailer = getMailer()
   if (!mailer) fail('missing_config', 'RESEND_API_KEY or RESEND_EMAIL_DOMAIN is not set')
 
