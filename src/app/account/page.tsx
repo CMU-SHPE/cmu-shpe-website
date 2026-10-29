@@ -245,7 +245,10 @@ export default async function AccountPage(props: {
             Delete my account
           </h2>
           <p id="delete-explanation" className={`mt-1 ${mutedTextClass}`}>
-            This permanently deletes your account and newsletter choices and signs you out. It can’t be undone.
+            This permanently deletes your account, your newsletter choices, our records of the newsletters we sent
+            you and of your unsubscribes, your event RSVPs (you come off those attendee lists), and any sponsor portal
+            access, and signs you out. If you edited a sponsor listing, its edit history keeps your name. It can’t be
+            undone.
           </p>
           <form action={deleteAccount} className="mt-4 max-w-md space-y-4" aria-describedby="delete-explanation">
             <input type="email" name="username" value={member.user.email ?? ''} autoComplete="username" readOnly hidden />

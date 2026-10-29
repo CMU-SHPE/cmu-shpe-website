@@ -351,7 +351,7 @@ test.describe('sponsor journey', () => {
       await test.step('the admin sees the edit in the listing audit log', async () => {
         await open(admin, `/admin/sponsors/${created.listing!.id}`)
         const audit = admin.getByRole('region', { name: UI.auditRegion })
-        await expect(audit).toContainText(SPONSOR_MEMBER.name)
+        await expect(audit).toContainText(`${SPONSOR_MEMBER.name} (sponsor)`)
         for (const field of [/name/i, /description/i, /colou?r/i]) await expect(audit).toContainText(field)
         await expect(audit).not.toContainText(SPONSOR_MEMBER.email)
       })

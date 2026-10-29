@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   listMembers: vi.fn(),
   listSponsorOptions: vi.fn(),
+  deleteMember: vi.fn(),
+  linkMemberToSponsor: vi.fn(),
 }))
 
 vi.mock('@/lib/admin', () => ({
@@ -18,7 +21,11 @@ vi.mock('@/lib/member-admin', async (importOriginal) => ({
   listMembers: mocks.listMembers,
   listSponsorOptions: mocks.listSponsorOptions,
 }))
-vi.mock('./actions', () => ({ deleteMember: vi.fn(), linkMemberToSponsor: vi.fn(), removeSponsorAccess: vi.fn() }))
+vi.mock('./actions', () => ({
+  deleteMember: mocks.deleteMember,
+  linkMemberToSponsor: mocks.linkMemberToSponsor,
+  removeSponsorAccess: vi.fn(),
+}))
 
 import AdminMembersPage from './page'
 
@@ -50,6 +57,8 @@ async function renderPage(searchParams: Record<string, string | string[]> = {}) 
 
 beforeEach(() => {
   mocks.calls.length = 0
+  mocks.deleteMember.mockReset()
+  mocks.linkMemberToSponsor.mockReset()
   mocks.listMembers.mockReset().mockImplementation(async () => {
     mocks.calls.push('listMembers')
     return { rows: [ana, ben], hasNext: false }
@@ -58,6 +67,10 @@ beforeEach(() => {
     { id: 10, name: 'Acme' },
     { id: 20, name: 'Globex' },
   ])
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('AdminMembersPage', () => {
@@ -98,11 +111,29 @@ describe('AdminMembersPage', () => {
     expect(screen.queryByRole('button', { name: /Remove sponsor access for Ana/ })).toBeNull()
   })
 
-  it('gives an unconfirmed member no sponsor controls', async () => {
+  it('shows an unconfirmed member a focusable, unavailable sponsor control that says why', async () => {
+    mocks.listMembers.mockResolvedValue({ rows: [{ ...ben, role: 'supporter' }], hasNext: false })
     await renderPage()
     expect(screen.queryByRole('combobox', { name: 'Sponsor listing for Ben' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Make sponsor for Ben' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Change listing for Ben' })).toBeNull()
+    const button = screen.getByRole('button', { name: 'Make sponsor for Ben' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).not.toBeDisabled()
+    expect(button).toHaveAttribute('type', 'button')
+    expect(button.closest('form')).toBeNull()
+    expect(button).toHaveAccessibleDescription('Available once this member confirms their email.')
+    expect(screen.getByText('Available once this member confirms their email.')).toBeVisible()
+
+    await userEvent.tab()
+    while (document.activeElement !== button && document.activeElement !== document.body) await userEvent.tab()
+    expect(button).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    expect(mocks.linkMemberToSponsor).not.toHaveBeenCalled()
+  })
+
+  it('labels the unavailable control Change listing for an unconfirmed sponsor', async () => {
+    mocks.listMembers.mockResolvedValue({ rows: [ben], hasNext: false })
+    await renderPage()
+    expect(screen.getByRole('button', { name: 'Change listing for Ben' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('lets an admin change or remove a sponsor’s listing', async () => {
@@ -113,10 +144,35 @@ describe('AdminMembersPage', () => {
     expect(screen.getByRole('button', { name: 'Remove sponsor access for Cleo' })).toBeInTheDocument()
   })
 
-  it('hides the listing choice when there are no listings yet', async () => {
+  it('points to the Sponsors page when there are no listings yet', async () => {
     mocks.listSponsorOptions.mockResolvedValue([])
+    mocks.listMembers.mockResolvedValue({ rows: [ana], hasNext: false })
     await renderPage()
     expect(screen.queryByRole('combobox')).toBeNull()
+    const button = screen.getByRole('button', { name: 'Make sponsor for Ana <b>Lopez</b>' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).toHaveAccessibleDescription('Add a sponsor listing on the Sponsors page first.')
+    expect(screen.getByRole('link', { name: 'Sponsors page' })).toHaveAttribute('href', '/admin/sponsors')
+  })
+
+  it('gives both reasons when the member is unconfirmed and there are no listings', async () => {
+    mocks.listSponsorOptions.mockResolvedValue([])
+    mocks.listMembers.mockResolvedValue({ rows: [{ ...ben, role: 'supporter' }], hasNext: false })
+    await renderPage()
+    expect(screen.getByRole('button', { name: 'Make sponsor for Ben' })).toHaveAccessibleDescription(
+      'Available once this member confirms their email. Add a sponsor listing on the Sponsors page first.',
+    )
+  })
+
+  it('warns exactly what deleting a member removes and what stays', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    mocks.listMembers.mockResolvedValue({ rows: [ana], hasNext: false })
+    await renderPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Ana <b>Lopez</b>' }))
+    expect(confirm).toHaveBeenCalledWith(
+      'Delete Ana <b>Lopez</b>? This removes their account, sign-in and password reset links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name. This can\'t be undone.',
+    )
+    expect(mocks.deleteMember).not.toHaveBeenCalled()
   })
 
   it('has a labelled search box that keeps the current search', async () => {

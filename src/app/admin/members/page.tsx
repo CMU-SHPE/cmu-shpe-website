@@ -147,8 +147,14 @@ export default async function AdminMembersPage(props: {
                   <td className="py-3 pr-4">{member.topicCount}</td>
                   <td className="py-3 text-right align-top">
                     <div className="flex flex-col items-end gap-2">
-                      {member.emailConfirmedAt && sponsorOptions.length > 0 && (
+                      {member.emailConfirmedAt && sponsorOptions.length > 0 ? (
                         <SponsorAccessForm member={member} sponsorOptions={sponsorOptions} />
+                      ) : (
+                        <SponsorAccessUnavailable
+                          member={member}
+                          unconfirmed={!member.emailConfirmedAt}
+                          noListings={sponsorOptions.length === 0}
+                        />
                       )}
                       {member.role === 'sponsor' && (
                         <form action={removeSponsorAccess.bind(null, member.id)}>
@@ -161,7 +167,7 @@ export default async function AdminMembersPage(props: {
                       <form action={deleteMember.bind(null, member.id)}>
                         <DeleteButton
                           name={member.name}
-                          warning="Their account, sign-in links and newsletter choices are removed."
+                          warning="This removes their account, sign-in and password reset links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name."
                         />
                       </form>
                     </div>
@@ -228,5 +234,43 @@ function SponsorAccessForm({
         <span className="sr-only">for {member.name}</span>
       </SubmitButton>
     </form>
+  )
+}
+
+function SponsorAccessUnavailable({
+  member,
+  unconfirmed,
+  noListings,
+}: {
+  member: { id: number; name: string; role: MemberRole }
+  unconfirmed: boolean
+  noListings: boolean
+}) {
+  const reasonId = `member-${member.id}-sponsor-unavailable`
+  return (
+    <div className="flex max-w-xs flex-col items-end gap-1 text-right">
+      <button
+        type="button"
+        aria-disabled="true"
+        aria-describedby={reasonId}
+        className={`${secondaryButtonClass} cursor-not-allowed opacity-60 hover:bg-white dark:hover:bg-gray-800`}
+      >
+        {member.role === 'sponsor' ? 'Change listing ' : 'Make sponsor '}
+        <span className="sr-only">for {member.name}</span>
+      </button>
+      <p id={reasonId} className="text-xs text-gray-600 dark:text-gray-400">
+        {unconfirmed && 'Available once this member confirms their email.'}
+        {unconfirmed && noListings && ' '}
+        {noListings && (
+          <>
+            {'Add a sponsor listing on the '}
+            <Link href="/admin/sponsors" className={`rounded font-medium text-shpe-red dark:text-shpe-gold ${focusRingClass}`}>
+              Sponsors page
+            </Link>
+            {' first.'}
+          </>
+        )}
+      </p>
+    </div>
   )
 }
