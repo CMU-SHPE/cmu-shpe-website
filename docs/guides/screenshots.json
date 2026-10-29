@@ -1,0 +1,224 @@
+{
+  "about": "Captured by scripts/help-screenshots.ts (npm run help:screenshots) from a Vercel preview only. The chapter mailing address in newsletter previews is masked (frameMask). Every person shown is a fake @resend.dev account the script creates and deletes: Jordan Example (admin), Alex Example (member), Sam Example (sponsor for Example Corp). Rows that are not fake are hidden (hideUnlessFake) or masked (mask). Selectors are Playwright selectors. Shots with 'pending' are skipped.",
+  "shots": [
+    {
+      "guide": "officers", "slug": "sign-in", "url": "/login", "role": "signed-out", "stage": "start",
+      "setup": "Signed out.",
+      "highlight": ["form:has(input[type=password])", "text=Forgot password?"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "dashboard", "url": "/admin", "role": "admin", "stage": "start",
+      "setup": "Signed in as the example admin Jordan Example.",
+      "highlight": ["main nav, aside nav"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "edit-page-text", "url": "/", "role": "admin", "stage": "start",
+      "setup": "Home page as the example admin; one paragraph is typed into (never saved) so the Save changes / Discard bar shows.",
+      "prepare": "edit-paragraph",
+      "highlight": ["xpath=//button[normalize-space()='Save changes']/.."],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "change-password", "url": "/admin/account", "role": "admin", "stage": "start",
+      "setup": "Signed in as the example admin.",
+      "highlight": ["section[aria-labelledby=change-password-heading] form"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "add-event", "url": "/admin/events", "role": "admin", "stage": "start",
+      "setup": "Add event card with Start date, End date (optional), + Time slot and Capacity (optional).",
+      "pending": "waits for feat/event-date-range to land",
+      "element": ["section[aria-labelledby=add-event-heading]"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "event-list", "url": "/admin/events", "role": "admin", "stage": "linked",
+      "setup": "Example Mixer exists with Alex Example's RSVP; other upcoming events are hidden.",
+      "hideUnlessFake": ["section[aria-labelledby=upcoming-events-heading] li"],
+      "element": ["section[aria-labelledby=upcoming-events-heading]"],
+      "highlight": ["section[aria-labelledby=upcoming-events-heading] li:has-text('Example Mixer') >> text=/RSVPs?/", "role=link[name='Attendees for Example Mixer']"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "event-attendees", "url": "/admin/events/{eventId}/attendees", "role": "admin", "stage": "linked",
+      "setup": "Attendees of Example Mixer: only Alex Example.",
+      "hideUnlessFake": ["main tbody tr"],
+      "highlight": ["role=link[name=/^Download CSV/]"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "officers", "url": "/admin/officers", "role": "admin", "stage": "start",
+      "setup": "Officer list cropped to the second person (the first has no up arrow); every officer's photo, name and role is masked.",
+      "element": ["section[aria-labelledby=officers-heading] > h2", "section[aria-labelledby=officers-heading] li >> nth=1"],
+      "highlight": ["section[aria-labelledby=officers-heading] li >> nth=1 >> role=button[name=/^Move .* up$/]", "section[aria-labelledby=officers-heading] li >> nth=1 >> role=button[name=/^Move .* down$/]", "section[aria-labelledby=officers-heading] li >> nth=1 >> role=button[name=/^Delete/]", "section[aria-labelledby=officers-heading] li >> nth=1 >> summary"],
+      "mask": ["section[aria-labelledby=officers-heading] li img", "section[aria-labelledby=officers-heading] li p"]
+    },
+    {
+      "guide": "officers", "slug": "sponsors", "url": "/admin/sponsors", "role": "admin", "stage": "confirmed",
+      "setup": "Current sponsors with Example Corp; sponsor companies are not people, so other listings stay.",
+      "element": ["section[aria-labelledby=current-sponsors-heading]"],
+      "highlight": ["section[aria-labelledby=current-sponsors-heading] li:has-text('Example Corp') >> text=/^Details/"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "sponsor-details", "url": "/admin/sponsors/{listingId}", "role": "admin", "stage": "linked",
+      "setup": "Example Corp with Sam Example linked, Sam's listing edit in the history and the sample receipt uploaded.",
+      "highlight": ["section[aria-labelledby=members-heading]", "section[aria-labelledby=history-heading]", "xpath=//main//*[normalize-space()='Upload a receipt']/.."],
+      "element": ["main"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "members", "url": "/admin/members?q={runId}%40resend.dev", "role": "admin", "stage": "linked",
+      "setup": "Search filtered to this run's fake accounts: Alex Example (confirmed supporter) and Sam Example (sponsor). Any other row is hidden.",
+      "hideUnlessFake": ["main tbody tr"],
+      "highlight": ["main thead >> text=Email confirmed", "main tbody tr:has-text('Alex Example') >> form:has(select)", "main tbody tr:has-text('Sam Example') >> role=button[name=/^Remove sponsor access/]"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "page-lists", "url": "/admin/lists", "role": "admin", "stage": "start",
+      "setup": "The Home page stats card.",
+      "element": ["section[aria-labelledby=homeStats-heading]"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "site-settings", "url": "/admin/settings", "role": "admin", "stage": "start",
+      "setup": "Contact settings card only, filled with example values (not saved). Cropped so the Presence/MavLife field is not shown.",
+      "prepare": "fake-settings",
+      "element": ["section[aria-labelledby=contact-settings-heading]"],
+      "highlight": ["textarea[name=mailingAddress]"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "topics", "url": "/admin/topics", "role": "admin", "stage": "linked",
+      "setup": "Only the Example Updates topic (1 subscriber: Alex Example); real topics and their subscriber counts are hidden.",
+      "hideUnlessFake": ["section[aria-labelledby=topics-heading] > ul > li"],
+      "element": ["section[aria-labelledby=topics-heading]"],
+      "highlight": ["section[aria-labelledby=topics-heading] li >> text=/subscribers?$/", "role=button[name='Add topic']"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "compose-newsletter", "url": "/admin/newsletters/new", "role": "admin", "stage": "linked",
+      "setup": "Subject, body and the Example Updates topic filled in, not saved. Other topics (with their subscriber counts) are hidden.",
+      "prepare": "compose",
+      "hideUnlessFake": ["main li:has(input[name=topicIds])"],
+      "element": ["main"],
+      "highlight": ["role=button[name='Save draft']", "role=button[name=/^Send test to me/]", "role=button[name='Review and send…']", "xpath=//main//*[self::h2 or self::h3][normalize-space()='Preview']/.."],
+      "frameMask": ["p:has-text('SHPE @ CMU')"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "send-newsletter", "url": "/admin/newsletters/{newsletterId}/send", "role": "admin", "stage": "review",
+      "setup": "The saved Example newsletter draft; the audience is only Alex Example (preview counts @resend.dev only).",
+      "highlight": ["#confirm-heading", "role=button[name=/^Send to /]"],
+      "frameMask": ["p:has-text('SHPE @ CMU')"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "newsletter-results", "url": "/admin/newsletters/{newsletterId}", "role": "admin", "stage": "sent",
+      "setup": "The Example newsletter after it was sent to Alex Example's @resend.dev inbox only.",
+      "highlight": ["section[aria-labelledby=summary-heading]"],
+      "frameMask": ["p:has-text('SHPE @ CMU')"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "admin-accounts", "url": "/admin/admins", "role": "admin", "account": "master", "stage": "start",
+      "setup": "As the master, with Jordan Example as the other admin. Every real admin row (including the master's) is hidden and the master's name in the navbar is masked.",
+      "hideUnlessFake": ["main tbody tr"],
+      "highlight": ["main tbody tr:has-text('Jordan Example') >> text=/Can create accounts/", "main tbody tr:has-text('Jordan Example') >> text=Reset password", "section[aria-labelledby=create-admin-heading]"],
+      "element": ["main"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "privacy-last-updated", "url": "/privacy", "role": "admin", "stage": "start",
+      "setup": "Top of the privacy page as the example admin.",
+      "highlight": ["main >> text=/^Last updated:/ >> xpath=.."],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "join", "url": "/join", "role": "signed-out", "stage": "start",
+      "setup": "Signed out.",
+      "element": ["main form"],
+      "highlight": ["label:has-text('I am 13 or older')", "label:has-text('I agree to the Terms of Use')", "role=button[name='Create account']"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "check-email", "url": "/join/check-email", "role": "signed-out", "stage": "start",
+      "setup": "Signed out; the page shown after Create account.",
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "confirm-email", "url": "{confirmPath}", "role": "signed-out", "stage": "signed-up",
+      "setup": "The link from Alex Example's confirmation email, opened but not submitted.",
+      "highlight": ["main input[type=password]", "role=button[name='Confirm my email']"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "forgot-password", "url": "/forgot-password", "role": "signed-out", "stage": "start",
+      "setup": "Signed out.",
+      "highlight": ["role=button[name='Send reset link']"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "account", "url": "/account", "role": "member", "stage": "confirmed",
+      "setup": "Alex Example, confirmed; the Example Updates topic exists.",
+      "highlight": ["section[aria-labelledby=topics-heading] fieldset, section[aria-labelledby=topics-heading] ul", "role=button[name='Save newsletter choices']"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "events-rsvp", "url": "/events", "role": "member", "stage": "confirmed",
+      "setup": "Alex Example on /events before RSVPing; the Example Mixer card (capacity 30) is cropped.",
+      "element": ["xpath=//main//h3[normalize-space()='Example Mixer']/ancestor::div[contains(@class,'rounded-xl')][1]"],
+      "highlight": ["xpath=//main//h3[normalize-space()='Example Mixer']/ancestor::div[contains(@class,'rounded-xl')][1] >> text=/spots? left/", "xpath=//main//h3[normalize-space()='Example Mixer']/ancestor::div[contains(@class,'rounded-xl')][1] >> role=button[name=/^RSVP/]"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "my-rsvps", "url": "/account", "role": "member", "stage": "linked",
+      "setup": "Alex Example after RSVPing to Example Mixer.",
+      "element": ["section[aria-labelledby=my-rsvps-heading]"],
+      "highlight": ["section[aria-labelledby=my-rsvps-heading] >> role=button[name=/^Cancel RSVP/]"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "unsubscribe", "url": "{unsubscribePath}", "role": "signed-out", "stage": "sent",
+      "setup": "The unsubscribe link from the Example newsletter in Alex Example's @resend.dev inbox, opened but not submitted.",
+      "highlight": ["role=button[name='Unsubscribe from Example Updates']", "role=button[name='Unsubscribe from all newsletters']"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "delete-account", "url": "/account", "role": "member", "stage": "confirmed",
+      "setup": "Alex Example's Delete my account section, not submitted.",
+      "element": ["section[aria-labelledby=delete-heading]"],
+      "mask": []
+    },
+    {
+      "guide": "sponsors", "slug": "portal", "url": "/sponsor", "role": "sponsor", "stage": "linked",
+      "setup": "Sam Example, linked to Example Corp.",
+      "highlight": ["main h1", "main >> text=/^Signed in as/"],
+      "mask": []
+    },
+    {
+      "guide": "sponsors", "slug": "edit-listing", "url": "/sponsor", "role": "sponsor", "stage": "linked",
+      "setup": "Sam Example's Example Corp listing form.",
+      "element": ["section[aria-labelledby=listing-heading]"],
+      "highlight": ["role=button[name='Save listing']"],
+      "mask": []
+    },
+    {
+      "guide": "sponsors", "slug": "events", "url": "/sponsor", "role": "sponsor", "stage": "linked",
+      "setup": "Upcoming events on /sponsor before Sam RSVPs; other events are hidden.",
+      "hideUnlessFake": ["section[aria-labelledby=events-heading] li"],
+      "element": ["section[aria-labelledby=events-heading]"],
+      "highlight": ["section[aria-labelledby=events-heading] >> role=button[name=/^RSVP/]"],
+      "mask": []
+    },
+    {
+      "guide": "sponsors", "slug": "receipts", "url": "/sponsor", "role": "sponsor", "stage": "linked",
+      "setup": "Receipts on /sponsor with the sample Example Corp receipt.",
+      "element": ["role=region[name='Receipts']"],
+      "highlight": ["role=region[name='Receipts'] >> role=link[name=/Example Corp sponsorship receipt/]"],
+      "mask": []
+    }
+  ]
+}

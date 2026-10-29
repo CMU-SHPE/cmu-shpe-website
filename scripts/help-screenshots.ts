@@ -22,22 +22,29 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page } 
 
 const STAGES = ['start', 'signed-up', 'confirmed', 'linked', 'sponsor-rsvp', 'review', 'sent'] as const
 type Stage = (typeof STAGES)[number]
-type Role = 'signed-out' | 'member' | 'sponsor' | 'admin' | 'master'
-type Prepare = 'edit-heading' | 'fake-settings' | 'compose' | 'choose-listing' | 'choose-logo'
+type Role = 'signed-out' | 'member' | 'sponsor' | 'admin'
+/** Admin shots run as the fake "Jordan Example" admin unless they need the master, e.g. /admin/admins. */
+type Account = 'admin' | 'master'
+type PageKey = Exclude<Role, 'signed-out'> | 'master'
+type Prepare = 'edit-paragraph' | 'fake-settings' | 'compose' | 'choose-listing' | 'choose-logo'
 
 type Shot = {
   guide: 'officers' | 'members' | 'sponsors'
   slug: string
   url: string
   role: Role
+  account?: Account
   stage: Stage
+  pending?: string
   setup: string
   viewport?: 'desktop' | 'mobile'
   prepare?: Prepare
   element?: string[]
   highlight?: string[]
   hideUnlessFake?: string[]
-  mask?: string[]
+  mask: string[]
+  /** Masked inside the page's `main iframe`, e.g. the newsletter preview's mailing address. */
+  frameMask?: string[]
 }
 
 const ROOT = process.cwd()
@@ -55,10 +62,10 @@ const HIGHLIGHT_COLOR = '#ea580c'
 const RUN_ID = Date.now()
 const password = () => `guides ${randomBytes(12).toString('base64url')}`
 
-type Account = { name: string; email: string; password: string }
-const FAKE_ADMIN: Account = { name: 'Jordan Example', email: `delivered+guides-admin-${RUN_ID}@resend.dev`, password: password() }
-const FAKE_MEMBER: Account = { name: 'Alex Example', email: `delivered+guides-alex-${RUN_ID}@resend.dev`, password: password() }
-const FAKE_SPONSOR: Account = { name: 'Sam Example', email: `delivered+guides-sam-${RUN_ID}@resend.dev`, password: password() }
+type Credentials = { name: string; email: string; password: string }
+const FAKE_ADMIN: Credentials = { name: 'Jordan Example', email: `delivered+guides-admin-${RUN_ID}@resend.dev`, password: password() }
+const FAKE_MEMBER: Credentials = { name: 'Alex Example', email: `delivered+guides-alex-${RUN_ID}@resend.dev`, password: password() }
+const FAKE_SPONSOR: Credentials = { name: 'Sam Example', email: `delivered+guides-sam-${RUN_ID}@resend.dev`, password: password() }
 const LISTING = {
   name: 'Example Corp',
   website: 'https://example.com',
@@ -66,6 +73,8 @@ const LISTING = {
 }
 const EVENT = { title: 'Example Mixer', description: 'Meet officers and sponsors over snacks.', location: 'Example Hall 101', capacity: '30' }
 const TOPIC = 'Example Updates'
+/** The composer appends "(N subscribers)" to each topic's label. */
+const TOPIC_CHECKBOX = new RegExp(`^${TOPIC}\\b`)
 const RECEIPT = { title: 'Example Corp sponsorship receipt', date: '2026-09-15', file: 'example-receipt.pdf' }
 const NEWSLETTER = {
   subject: 'Example newsletter',
@@ -82,6 +91,7 @@ const FAKE_SETTINGS: Record<string, string> = {
 const STABLE_CSS = `
 *, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }
 html { scroll-behavior: auto !important; }
+nav.sticky { position: relative !important; }
 #vercel-live-feedback, vercel-live-feedback, [data-vercel-toolbar] { display: none !important; }
 `
 
@@ -144,7 +154,7 @@ async function open(page: Page, url: string) {
   await page.waitForLoadState('networkidle')
 }
 
-async function signIn(page: Page, account: Pick<Account, 'email' | 'password'>, who: string, landing: string) {
+async function signIn(page: Page, account: Pick<Credentials, 'email' | 'password'>, who: string, landing: string) {
   await open(page, '/login')
   await page.getByLabel('Email', { exact: true }).fill(account.email)
   await page.getByLabel('Password', { exact: true }).fill(account.password)
@@ -208,7 +218,7 @@ async function waitForEmail(address: string, matches: (email: ResendListItem) =>
 /** What cleanup has to remove; each entry is recorded just before its submit. */
 const created = {
   admin: false,
-  members: [] as Account[],
+  members: [] as Credentials[],
   listingId: null as string | null,
   listing: false,
   event: false,
@@ -224,7 +234,7 @@ const state = {
   unsubscribePath: '',
 }
 
-type Pages = Record<Exclude<Role, 'signed-out'>, Page>
+type Pages = Record<PageKey, Page>
 
 async function makeSampleFiles(browser: Browser) {
   const context = await browser.newContext({ viewport: { width: 600, height: 300 }, deviceScaleFactor: 1 })
@@ -250,7 +260,7 @@ async function assertPreviewDatabase(admin: Page) {
   }
 }
 
-async function signUp(page: Page, account: Account) {
+async function signUp(page: Page, account: Credentials) {
   assertPreviewHost(`sign up ${account.name}`)
   await open(page, '/join')
   await page.getByLabel('Name', { exact: true }).fill(account.name)
@@ -268,7 +278,7 @@ async function signUp(page: Page, account: Account) {
   return previewPath(link)
 }
 
-async function confirm(page: Page, account: Account, confirmPath: string) {
+async function confirm(page: Page, account: Credentials, confirmPath: string) {
   assertPreviewHost(`confirm ${account.name}`)
   await open(page, confirmPath)
   await page.getByLabel('Password', { exact: true }).fill(account.password)
@@ -370,7 +380,7 @@ const stageSetup: Record<Stage, (pages: Pages, files: { logo: Buffer; receipt: B
 
     assertPreviewHost('subscribe Alex to the example topic')
     await open(member, '/account')
-    await member.getByRole('checkbox', { name: TOPIC, exact: true }).check()
+    await member.getByRole('checkbox', { name: TOPIC_CHECKBOX }).check()
     await member.getByRole('button', { name: 'Save newsletter choices', exact: true }).click()
     await member.waitForURL((url) => url.pathname === '/account' && url.searchParams.get('saved') === 'topics')
 
@@ -395,7 +405,7 @@ const stageSetup: Record<Stage, (pages: Pages, files: { logo: Buffer; receipt: B
     assertPreviewHost('save the example newsletter')
     await admin.getByLabel('Subject', { exact: true }).fill(NEWSLETTER.subject)
     await admin.getByLabel('Body', { exact: true }).fill(NEWSLETTER.body)
-    await admin.getByRole('checkbox', { name: TOPIC, exact: true }).check()
+    await admin.getByRole('checkbox', { name: TOPIC_CHECKBOX }).check()
     created.draftSubject = NEWSLETTER.subject
     await admin.getByRole('button', { name: 'Review and send…', exact: true }).click()
     await admin.waitForURL(/\/admin\/newsletters\/\d+\/send$/)
@@ -423,7 +433,7 @@ const stageSetup: Record<Stage, (pages: Pages, files: { logo: Buffer; receipt: B
 }
 
 function resolveUrl(url: string) {
-  const values: Record<string, string> = { ...state, memberName: FAKE_MEMBER.name, sponsorName: FAKE_SPONSOR.name }
+  const values: Record<string, string> = { ...state, runId: String(RUN_ID), memberName: FAKE_MEMBER.name, sponsorName: FAKE_SPONSOR.name }
   return url.replace(/\{(\w+)\}/g, (_, key: string) => {
     const value = values[key]
     if (!value) throw new Error(`No value yet for {${key}} in ${url}`)
@@ -432,10 +442,13 @@ function resolveUrl(url: string) {
 }
 
 const prepares: Record<Prepare, (page: Page, files: { logo: Buffer }) => Promise<void>> = {
-  async 'edit-heading'(page) {
-    const textbox = page.locator('main [role="heading"] [role="textbox"]').first()
+  /** Typed into but never saved: only the Save changes / Discard bar is wanted. */
+  async 'edit-paragraph'(page) {
+    const textboxes = page.locator('main [role="textbox"]:not([role="heading"] [role="textbox"])')
+    const lengths = await textboxes.evaluateAll((elements) => elements.map((element) => (element.textContent ?? '').trim().length))
+    const textbox = textboxes.nth(lengths.findIndex((length) => length >= 60))
     await textbox.click()
-    await page.keyboard.press('End')
+    await page.keyboard.press('Control+End')
     await page.keyboard.type(' today')
     await page.getByRole('button', { name: 'Discard', exact: true }).waitFor()
     await textbox.blur()
@@ -450,7 +463,7 @@ const prepares: Record<Prepare, (page: Page, files: { logo: Buffer }) => Promise
   async compose(page) {
     await page.getByLabel('Subject', { exact: true }).fill(NEWSLETTER.subject)
     await page.getByLabel('Body', { exact: true }).fill(NEWSLETTER.body)
-    await page.getByRole('checkbox', { name: TOPIC, exact: true }).check()
+    await page.getByRole('checkbox', { name: TOPIC_CHECKBOX }).check()
     await page.locator(':focus').blur()
   },
   async 'choose-listing'(page) {
@@ -467,16 +480,51 @@ const prepares: Record<Prepare, (page: Page, files: { logo: Buffer }) => Promise
   },
 }
 
+type Region = { x: number; y: number; width: number; height: number }
+
+/**
+ * Counts addresses that are not example ones and are drawn inside the captured region (in page
+ * coordinates). Masked elements still count, so a warning means "confirm the mask covers it".
+ */
+async function visibleRealEmails(page: Page, region: Region) {
+  return page.evaluate(
+    ({ source, region }) => {
+      const fake = new RegExp(source, 'i')
+      const emailPattern = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      let count = 0
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (const match of node.textContent?.matchAll(emailPattern) ?? []) {
+          if (fake.test(match[0]) || /@example\.(org|com)$/i.test(match[0])) continue
+          const range = document.createRange()
+          range.setStart(node, match.index)
+          range.setEnd(node, match.index + match[0].length)
+          const inside = [...range.getClientRects()].some((rect) => {
+            const left = rect.left + window.scrollX
+            const top = rect.top + window.scrollY
+            return rect.width > 0 && left < region.x + region.width && left + rect.width > region.x && top < region.y + region.height && top + rect.height > region.y
+          })
+          if (inside) count += 1
+        }
+      }
+      return count
+    },
+    { source: FAKE.source, region },
+  )
+}
+
 async function requireOne(page: Page, selector: string, shot: Shot): Promise<Locator> {
-  const locator = page.locator(selector)
+  const locator = page.locator(selector).filter({ visible: true })
   if ((await locator.count()) === 0) throw new Error(`${shot.guide}/${shot.slug}: nothing matches ${selector}`)
   return locator
 }
 
 async function capture(pages: Pages, browser: Browser, shot: Shot, files: { logo: Buffer }) {
   const own = shot.role === 'signed-out' ? await newContext(browser, shot.viewport) : null
-  const page = own ? await own.newPage() : pages[shot.role as Exclude<Role, 'signed-out'>]
-  if (!own && shot.viewport === 'mobile') await page.setViewportSize(VIEWPORTS.mobile)
+  const key: PageKey = shot.role === 'admin' && shot.account === 'master' ? 'master' : (shot.role as PageKey)
+  const page = own ? await own.newPage() : pages[key]
+  const resize = !own && shot.viewport === 'mobile'
+  if (resize) await page.setViewportSize(VIEWPORTS.mobile)
   try {
     await open(page, resolveUrl(shot.url))
     await page.addStyleTag({ content: STABLE_CSS })
@@ -486,7 +534,11 @@ async function capture(pages: Pages, browser: Browser, shot: Shot, files: { logo
       await page.locator(selector).evaluateAll(
         (elements, source) => {
           const fake = new RegExp(source, 'i')
-          for (const element of elements) if (!fake.test(element.textContent ?? '')) (element as HTMLElement).style.display = 'none'
+          for (const element of elements) {
+            const values = [...element.querySelectorAll('input, textarea, select')].map((field) => (field as HTMLInputElement).value)
+            // innerText keeps table cells apart; textContent would run "Alex Example" into the next cell.
+            if (!fake.test([(element as HTMLElement).innerText, ...values].join(' '))) (element as HTMLElement).style.display = 'none'
+          }
         },
         FAKE.source,
       )
@@ -502,11 +554,15 @@ async function capture(pages: Pages, browser: Browser, shot: Shot, files: { logo
     }
     await page.evaluate(() => document.fonts.ready)
 
-    const mask = (shot.mask ?? []).map((selector) => page.locator(selector))
-    if (shot.role === 'master') mask.push(page.locator('nav span').filter({ hasText: /^Signed in as/ }))
+    const mask = [
+      ...shot.mask.map((selector) => page.locator(selector)),
+      ...(shot.frameMask ?? []).map((selector) => page.frameLocator('main iframe').locator(selector)),
+    ]
+    if (key === 'master') mask.push(page.locator('nav span').filter({ hasText: /^Signed in as/ }))
 
     const file = path.join(OUTPUT, shot.guide, `${shot.slug}.png`)
     await mkdir(path.dirname(file), { recursive: true })
+    let region: Region
     const common = { path: file, mask, maskColor: '#9ca3af', animations: 'disabled', caret: 'hide', scale: 'css' } as const
 
     if (shot.element?.length) {
@@ -525,16 +581,14 @@ async function capture(pages: Pages, browser: Browser, shot: Shot, files: { logo
       const y = Math.max(0, Math.min(...boxes.map((box) => box.y)) - pad)
       const width = Math.max(...boxes.map((box) => box.right)) + pad - x
       const height = Math.max(...boxes.map((box) => box.bottom)) + pad - y
-      await page.screenshot({ ...common, fullPage: true, clip: { x, y, width, height } })
+      region = { x, y, width, height }
+      await page.screenshot({ ...common, fullPage: true, clip: region })
     } else {
+      region = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY, width: window.innerWidth, height: window.innerHeight }))
       await page.screenshot({ ...common, fullPage: false })
     }
 
-    const unexpectedEmails = await page.evaluate((source) => {
-      const fake = new RegExp(source, 'i')
-      const text = document.body.innerText
-      return (text.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? []).filter((email) => !fake.test(email) && !/@example\.(org|com)$/i.test(email)).length
-    }, FAKE.source)
+    const unexpectedEmails = await visibleRealEmails(page, region)
 
     const { size } = await stat(file)
     const note = [
@@ -544,6 +598,7 @@ async function capture(pages: Pages, browser: Browser, shot: Shot, files: { logo
     console.log(`  ${shot.guide}/${shot.slug}.png ${(size / 1024).toFixed(0)} KB${note.length ? `  WARNING: ${note.join('; ')}` : ''}`)
   } finally {
     await own?.close()
+    if (resize) await page.setViewportSize(VIEWPORTS.desktop)
   }
 }
 
@@ -605,22 +660,23 @@ function markEverythingForCleanup() {
   created.event = true
   created.topic = true
   created.draftSubject = NEWSLETTER.subject
-  created.members.push(
-    { ...FAKE_MEMBER, email: 'Alex Example' },
-    { ...FAKE_SPONSOR, email: 'Sam Example' },
-  )
+  // The search term is the fake address prefix, so only @resend.dev accounts can ever match.
+  created.members.push({ ...FAKE_MEMBER, email: 'delivered+guides-alex-' }, { ...FAKE_SPONSOR, email: 'delivered+guides-sam-' })
 }
 
 async function main() {
   const args = process.argv.slice(2)
-  const onlyArg = args.find((arg) => arg.startsWith('--only='))?.slice('--only='.length) ?? args[args.indexOf('--only') + 1]
-  const only = args.includes('--only') || onlyArg ? new Set((onlyArg ?? '').split(',').filter(Boolean)) : null
+  const onlyIndex = args.indexOf('--only')
+  const onlyArg = args.find((arg) => arg.startsWith('--only='))?.slice('--only='.length) ?? (onlyIndex === -1 ? undefined : args[onlyIndex + 1])
+  const only = onlyArg === undefined ? null : new Set(onlyArg.split(',').filter(Boolean))
   assertPreviewHost('take screenshots')
   env('RESEND_API_KEY')
 
   const manifest = JSON.parse(await readFile(MANIFEST, 'utf8')) as { shots: Shot[] }
-  const shots = manifest.shots.filter((shot) => !only || only.has(`${shot.guide}/${shot.slug}`))
-  if (only && shots.length !== only.size) throw new Error(`Unknown shot in --only: ${[...only].join(', ')}`)
+  const selected = manifest.shots.filter((shot) => !only || only.has(`${shot.guide}/${shot.slug}`))
+  if (only && selected.length !== only.size) throw new Error(`Unknown shot in --only: ${[...only].join(', ')}`)
+  for (const shot of selected.filter((candidate) => candidate.pending)) console.log(`  pending ${shot.guide}/${shot.slug}: ${shot.pending}`)
+  const shots = selected.filter((shot) => !shot.pending)
 
   const browser = await chromium.launch()
   const failures: string[] = []
@@ -633,7 +689,7 @@ async function main() {
     const files = await makeSampleFiles(browser)
     const lastStage = Math.max(...shots.map((shot) => STAGES.indexOf(shot.stage)))
     const pages = {} as Pages
-    for (const role of ['master', 'admin', 'member', 'sponsor'] as const) pages[role] = await (await newContext(browser)).newPage()
+    for (const role of ['master', 'admin', 'member', 'sponsor'] as const satisfies readonly PageKey[]) pages[role] = await (await newContext(browser)).newPage()
     adminPage = pages.admin
 
     for (const stage of STAGES.slice(0, lastStage + 1)) {
