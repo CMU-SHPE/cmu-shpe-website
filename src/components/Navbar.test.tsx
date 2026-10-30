@@ -13,6 +13,15 @@ describe('Navbar', () => {
     expect(wordmark).not.toHaveClass('text-shpe-red')
   })
 
+  it('sends Join Us to member sign-up on desktop and in the mobile menu', () => {
+    render(<Navbar user={null} signOutAction={signOutAction} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle menu' }))
+
+    const joinLinks = screen.getAllByRole('link', { name: 'Join Us' })
+    expect(joinLinks).toHaveLength(2)
+    for (const link of joinLinks) expect(link).toHaveAttribute('href', '/join')
+  })
+
   it('shows no admin controls when signed out', () => {
     render(<Navbar user={null} signOutAction={signOutAction} />)
     fireEvent.click(screen.getByRole('button', { name: 'Toggle menu' }))
