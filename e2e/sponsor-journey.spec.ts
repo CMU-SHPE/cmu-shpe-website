@@ -96,7 +96,7 @@ const UI = {
     title: 'Title',
     description: 'Description',
     location: 'Location',
-    date: 'Date',
+    date: 'Start date',
     capacity: 'Capacity (optional)',
     add: 'Add event',
   },
@@ -459,7 +459,7 @@ test.describe('sponsor journey', () => {
         expect(download.suggestedFilename()).toMatch(/^event-\d+-attendees\.csv$/)
         const csv = await readFile(await download.path(), 'utf8')
         const lines = csv.trim().split(/\r?\n/)
-        expect(lines[0]).toBe('Name,Email,RSVP time (UTC)')
+        expect(lines[0]).toBe('Name,Email,RSVP time (UTC),Event start date,Event end date,Event times')
         expect(lines.slice(1)).toEqual([expect.stringContaining(SUPPORTER_MEMBER.email)])
       })
     } finally {
