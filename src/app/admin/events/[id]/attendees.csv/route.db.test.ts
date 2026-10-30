@@ -71,7 +71,7 @@ describe('GET /admin/events/[id]/attendees.csv', () => {
 
     const lines = (await (await download(event.id)).text()).split('\r\n')
     expect(lines[1]).toBe(
-      `${member.name},${member.email},2026-10-01T12:00:00.000Z,2099-10-10,2099-10-12,Oct 10–11 · 6 PM – 8 PM; Oct 12 · 7 PM – 8 PM`,
+      `${member.name},${member.email},2026-10-01 06:00 MDT,2099-10-10,2099-10-12,Oct 10–11 · 6 PM – 8 PM; Oct 12 · 7 PM – 8 PM`,
     )
   })
 
