@@ -46,13 +46,6 @@ export function changedListingFields(current: ListingValues, next: ListingValues
   return LISTING_FIELDS.filter((field) => changed[field])
 }
 
-/**
- * The listing is never taken from the request: both writes find it through the
- * member's own row, which the first statement locks so an admin can't relink or
- * demote them between the update and the audit insert. `listingId` is the listing
- * the caller read and diffed against; if the member has since been moved to another
- * listing, nothing is written rather than applying that diff to the wrong row.
- */
 export type OfficerListingValues = ListingValues & { tier: SponsorTier }
 
 export type OfficerListingField = ListingField | 'tier'
@@ -76,6 +69,13 @@ function columnList(columns: { name: string }[]) {
   )
 }
 
+/**
+ * The listing is never taken from the request: both writes find it through the
+ * member's own row, which the first statement locks so an admin can't relink or
+ * demote them between the update and the audit insert. `listingId` is the listing
+ * the caller read and diffed against; if the member has since been moved to another
+ * listing, nothing is written rather than applying that diff to the wrong row.
+ */
 export function listingEdit(
   db: Db,
   memberId: number,
