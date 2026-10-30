@@ -9,12 +9,14 @@
  *   E2E_ADMIN_PASSWORD
  * BASE_URL and the optional VERCEL_BYPASS are handled by playwright.config.ts and fixtures.ts.
  *
- * Every write is refused unless BASE_URL is a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.
+ * Every write is re-checked with assertPreviewTarget from preview-guard.ts first, so a reordered step can't
+ * slip ahead of the guard.
  * If the preview has no mailing address, the spec sets MAILING_ADDRESS_IF_EMPTY through Site
  * settings and leaves it there; an existing address is kept.
  */
 import type { Browser, BrowserContext, Page, PlaywrightWorkerArgs } from '@playwright/test'
 import { expect, installBypass, test } from './fixtures'
+import { assertPreviewTarget } from './preview-guard'
 
 const REQUIRED_ENV = ['RESEND_API_KEY', 'E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD'] as const
 const missingEnv = REQUIRED_ENV.filter((name) => !process.env[name]?.trim())
@@ -33,7 +35,6 @@ const MAILING_ADDRESS_IF_EMPTY = [
   'Grand Junction, CO 81501',
 ].join('\n')
 
-const PREVIEW_HOST = /^cmu-shpe-website-[a-z0-9]+-shpecmu\.vercel\.app$/
 const RESEND_API = 'https://api.resend.com'
 const EMAIL_WAIT_MS = 120_000
 
@@ -73,16 +74,6 @@ const UI = {
     done: (topic: string) => `You’re unsubscribed from ${topic}.`,
   },
 } as const
-
-/** Checked before each write rather than once, so a reordered step can't slip ahead of it. */
-function assertPreviewHost(baseURL: string | undefined, action: string) {
-  const host = baseURL ? new URL(baseURL).hostname : '(no BASE_URL)'
-  if (!PREVIEW_HOST.test(host)) {
-    throw new Error(
-      `Refusing to ${action} on ${host}: the newsletter journey only runs against a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.`,
-    )
-  }
-}
 
 function env(name: (typeof REQUIRED_ENV)[number]): string {
   return process.env[name]!.trim()
@@ -183,7 +174,7 @@ async function ensureMailingAddress(page: Page, baseURL: string | undefined): Pr
   const existing = linesOf(await field.inputValue())
   if (existing.length > 0) return existing
 
-  assertPreviewHost(baseURL, 'set the mailing address')
+  assertPreviewTarget(baseURL, 'set the mailing address')
   const before = withoutMailingAddress(await settingsFormValues(page))
   const form = page.locator('form').filter({ has: field })
   await field.fill(MAILING_ADDRESS_IF_EMPTY)
@@ -222,7 +213,7 @@ test.describe('newsletter journey', () => {
 
   test('sign up, confirm, subscribe, receive, unsubscribe and clean up', async ({ browser, baseURL, playwright }) => {
     test.setTimeout(8 * 60_000)
-    assertPreviewHost(baseURL, 'sign in as the admin')
+    assertPreviewTarget(baseURL, 'sign in as the admin')
     const contexts: BrowserContext[] = []
     const admin = await newContext(browser, baseURL).then((context) => (contexts.push(context), context.newPage()))
     const member = await newContext(browser, baseURL).then((context) => (contexts.push(context), context.newPage()))
@@ -236,7 +227,7 @@ test.describe('newsletter journey', () => {
         await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', '/admin')
         mailingAddressLines = await ensureMailingAddress(admin, baseURL)
 
-        assertPreviewHost(baseURL, 'create a topic')
+        assertPreviewTarget(baseURL, 'create a topic')
         await open(admin, '/admin/topics')
         const addForm = admin.locator('form').filter({ has: admin.getByRole('button', { name: UI.topics.add, exact: true }) })
         await addForm.getByLabel(UI.topics.name, { exact: true }).fill(TOPIC_NAME)
@@ -246,7 +237,7 @@ test.describe('newsletter journey', () => {
       })
 
       await test.step('member signs up without opting into anything', async () => {
-        assertPreviewHost(baseURL, 'sign up a member')
+        assertPreviewTarget(baseURL, 'sign up a member')
         await open(member, '/join')
         await member.getByLabel(UI.join.name, { exact: true }).fill('E2E Journey Tester')
         await member.getByLabel(UI.join.email, { exact: true }).fill(MEMBER_EMAIL)
@@ -262,7 +253,7 @@ test.describe('newsletter journey', () => {
         const email = await waitForEmail('confirmation email', () => true)
         const link = `${email.text ?? ''}\n${email.html ?? ''}`.match(/https?:\/\/[^\s"<>]+\/join\/confirm\?token=[\w-]+/)?.[0]
         expect(link, 'the confirmation email should carry a /join/confirm link').toBeTruthy()
-        assertPreviewHost(baseURL, 'confirm the member')
+        assertPreviewTarget(baseURL, 'confirm the member')
         await open(member, previewPath(link!))
         await member.getByLabel(UI.confirm.password, { exact: true }).fill(MEMBER_PASSWORD)
         await member.getByRole('button', { name: UI.confirm.submit }).click()
@@ -272,7 +263,7 @@ test.describe('newsletter journey', () => {
       await test.step('member signs in and opts into the journey topic', async () => {
         await signIn(member, MEMBER_EMAIL, MEMBER_PASSWORD, 'Member', '/account')
         memberSignedIn = true
-        assertPreviewHost(baseURL, 'change the member’s topics')
+        assertPreviewTarget(baseURL, 'change the member’s topics')
         const box = await accountTopicBox(member)
         await expect(box).not.toBeChecked()
         await box.check()
@@ -287,7 +278,7 @@ test.describe('newsletter journey', () => {
           throw new Error('The composer says the mailing address is missing. Set Site settings → Mailing address on the preview.')
         }
         await expect(admin.getByRole('note').filter({ hasText: UI.testAudienceNotice })).toHaveText(UI.testAudienceNotice)
-        assertPreviewHost(baseURL, 'compose a newsletter')
+        assertPreviewTarget(baseURL, 'compose a newsletter')
         await admin.getByLabel(UI.composer.subject, { exact: true }).fill(NEWSLETTER_SUBJECT)
         await admin.getByLabel(UI.composer.body, { exact: true }).fill(NEWSLETTER_BODY)
         await admin.getByRole('checkbox', { name: TOPIC_NAME }).check()
@@ -296,7 +287,7 @@ test.describe('newsletter journey', () => {
 
         await expect(admin.getByRole('note').filter({ hasText: UI.testAudienceNotice })).toHaveText(UI.testAudienceNotice)
         await expect(admin.getByRole('heading', { level: 2, name: UI.confirmSend.heading })).toBeVisible()
-        assertPreviewHost(baseURL, 'send a newsletter')
+        assertPreviewTarget(baseURL, 'send a newsletter')
         await admin.getByRole('button', { name: UI.confirmSend.send, exact: true }).click()
         await admin.waitForURL((url) => /^\/admin\/newsletters\/\d+$/.test(url.pathname) && url.searchParams.get('sent') === '1', {
           timeout: 120_000,
@@ -352,14 +343,14 @@ test.describe('newsletter journey', () => {
         await expect(await accountTopicBox(member)).toBeChecked()
 
         await open(member, previewPath(unsubscribeLink))
-        assertPreviewHost(baseURL, 'unsubscribe the member')
+        assertPreviewTarget(baseURL, 'unsubscribe the member')
         await unsubscribeButton.click()
         await expect(member.getByText(UI.unsubscribe.done(TOPIC_NAME), { exact: true })).toBeVisible()
         await expect(await accountTopicBox(member)).not.toBeChecked()
       })
 
       await test.step('one-click POST answers 200, and 200 again on a repeat', async () => {
-        assertPreviewHost(baseURL, 'send a one-click unsubscribe')
+        assertPreviewTarget(baseURL, 'send a one-click unsubscribe')
         const request = await previewRequest(playwright, baseURL)
         try {
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -380,7 +371,7 @@ test.describe('newsletter journey', () => {
       await test.step('clean up the journey topic and member', async () => {
         if (topicCreated) {
           try {
-            assertPreviewHost(baseURL, 'delete the journey topic')
+            assertPreviewTarget(baseURL, 'delete the journey topic')
             await open(admin, '/admin/topics')
             admin.once('dialog', (dialog) => dialog.accept())
             await admin.getByRole('button', { name: UI.topics.delete(TOPIC_NAME), exact: true }).click()
@@ -392,7 +383,7 @@ test.describe('newsletter journey', () => {
         }
 
         try {
-          assertPreviewHost(baseURL, 'delete the journey member')
+          assertPreviewTarget(baseURL, 'delete the journey member')
           if (!memberSignedIn) await signIn(member, MEMBER_EMAIL, MEMBER_PASSWORD, 'Member', '/account')
           await open(member, '/account')
           await member.getByLabel(UI.account.deletePassword, { exact: true }).fill(MEMBER_PASSWORD)

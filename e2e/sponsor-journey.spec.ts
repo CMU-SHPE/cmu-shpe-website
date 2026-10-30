@@ -13,7 +13,8 @@
  *   E2E_ADMIN_PASSWORD
  * BASE_URL and the optional VERCEL_BYPASS are handled by playwright.config.ts and fixtures.ts.
  *
- * Every write is refused unless BASE_URL is a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.
+ * Every write is re-checked with assertPreviewTarget from preview-guard.ts first, so a reordered step can't
+ * slip ahead of the guard.
  * Only delivered+…@resend.dev test inboxes are ever signed up.
  *
  * Receipt uploads and RSVPs report back in place rather than redirecting, so those steps wait for the
@@ -23,12 +24,12 @@
 import { readFile } from 'node:fs/promises'
 import type { Browser, BrowserContext, Page } from '@playwright/test'
 import { bypassHeaders, expect, expectNoAxeViolations, installBypass, test, type Theme } from './fixtures'
+import { assertPreviewTarget } from './preview-guard'
 
 const REQUIRED_ENV = ['RESEND_API_KEY', 'E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD'] as const
 const missingEnv = REQUIRED_ENV.filter((name) => !process.env[name]?.trim())
 
 const RUN_ID = Date.now()
-const PREVIEW_HOST = /^cmu-shpe-website-[a-z0-9]+-shpecmu\.vercel\.app$/
 const RESEND_API = 'https://api.resend.com'
 const EMAIL_WAIT_MS = 120_000
 
@@ -111,16 +112,6 @@ const ROUTES = {
   receiptDownload: /^\/sponsor\/receipts\/\d+$/,
 } as const
 
-/** Checked before each write rather than once, so a reordered step can't slip ahead of it. */
-function assertPreviewHost(baseURL: string | undefined, action: string) {
-  const host = baseURL ? new URL(baseURL).hostname : '(no BASE_URL)'
-  if (!PREVIEW_HOST.test(host)) {
-    throw new Error(
-      `Refusing to ${action} on ${host}: the sponsor journey only runs against a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.`,
-    )
-  }
-}
-
 function env(name: (typeof REQUIRED_ENV)[number]): string {
   return process.env[name]!.trim()
 }
@@ -190,7 +181,7 @@ function previewPath(link: string) {
 }
 
 async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: string | undefined) {
-  assertPreviewHost(baseURL, `sign up ${member.label}`)
+  assertPreviewTarget(baseURL, `sign up ${member.label}`)
   await open(page, '/join')
   await page.getByLabel(UI.join.name, { exact: true }).fill(member.name)
   await page.getByLabel(UI.join.email, { exact: true }).fill(member.email)
@@ -205,7 +196,7 @@ async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: stri
   const email = await waitForConfirmationEmail(member.email)
   const link = `${email.text ?? ''}\n${email.html ?? ''}`.match(/https?:\/\/[^\s"<>]+\/join\/confirm\?token=[\w-]+/)?.[0]
   expect(link, `${member.label}'s confirmation email should carry a /join/confirm link`).toBeTruthy()
-  assertPreviewHost(baseURL, `confirm ${member.label}`)
+  assertPreviewTarget(baseURL, `confirm ${member.label}`)
   await open(page, previewPath(link!))
   await page.getByLabel(UI.confirm.password, { exact: true }).fill(member.password)
   await page.getByRole('button', { name: UI.confirm.submit }).click()
@@ -270,7 +261,7 @@ test.describe('sponsor journey', () => {
     browser,
     baseURL,
   }) => {
-    assertPreviewHost(baseURL, 'sign in as the admin')
+    assertPreviewTarget(baseURL, 'sign in as the admin')
     created.baseURL = baseURL
     test.setTimeout(10 * 60_000)
     const contexts: BrowserContext[] = []
@@ -282,7 +273,7 @@ test.describe('sponsor journey', () => {
     try {
       await test.step('admin signs in and creates the journey listing', async () => {
         await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
-        assertPreviewHost(baseURL, 'create a sponsor listing')
+        assertPreviewTarget(baseURL, 'create a sponsor listing')
         await open(admin, '/admin/sponsors')
         const addForm = formWithButton(admin, UI.adminSponsors.add)
         await addForm.getByLabel(UI.adminSponsors.name, { exact: true }).fill(LISTING_NAME)
@@ -306,7 +297,7 @@ test.describe('sponsor journey', () => {
       })
 
       await test.step('admin promotes member A and links the listing', async () => {
-        assertPreviewHost(baseURL, 'promote member A')
+        assertPreviewTarget(baseURL, 'promote member A')
         await open(admin, `/admin/members?q=${encodeURIComponent(SPONSOR_MEMBER.email)}`)
         const row = admin.getByRole('row').filter({ hasText: SPONSOR_MEMBER.email })
         await row.getByLabel(UI.adminMembers.listing).selectOption({ label: LISTING_NAME })
@@ -327,7 +318,7 @@ test.describe('sponsor journey', () => {
       })
 
       await test.step('member A edits the listing and the change is live', async () => {
-        assertPreviewHost(baseURL, 'edit the listing as member A')
+        assertPreviewTarget(baseURL, 'edit the listing as member A')
         await open(sponsor, ROUTES.sponsorHome)
         const form = formWithButton(sponsor, UI.listingForm.save)
         await form.getByLabel(UI.listingForm.name, { exact: true }).fill(EDITED_LISTING.name)
@@ -359,7 +350,7 @@ test.describe('sponsor journey', () => {
       const pdf = generatedPdf()
 
       await test.step('admin uploads a 3.9 MB PDF receipt to the listing', async () => {
-        assertPreviewHost(baseURL, 'upload a receipt')
+        assertPreviewTarget(baseURL, 'upload a receipt')
         const detailPath = `/admin/sponsors/${created.listing!.id}`
         await open(admin, detailPath)
         const receipts = admin.getByRole('region', { name: UI.receipts.region })
@@ -408,7 +399,7 @@ test.describe('sponsor journey', () => {
       })
 
       await test.step('admin creates an upcoming event with room for one', async () => {
-        assertPreviewHost(baseURL, 'create an event')
+        assertPreviewTarget(baseURL, 'create an event')
         await open(admin, '/admin/events')
         const addForm = formWithButton(admin, UI.adminEvents.add)
         await addForm.getByLabel(UI.adminEvents.title, { exact: true }).fill(EVENT_TITLE)
@@ -430,7 +421,7 @@ test.describe('sponsor journey', () => {
       })
 
       await test.step('member A takes the only place and member B sees the event as full', async () => {
-        assertPreviewHost(baseURL, 'RSVP as member A')
+        assertPreviewTarget(baseURL, 'RSVP as member A')
         await open(sponsor, '/events')
         await eventCard(sponsor).getByRole('button', { name: UI.rsvp.join }).click()
         await expect(eventCard(sponsor).getByRole('button', { name: UI.rsvp.cancel })).toBeVisible()
@@ -442,7 +433,7 @@ test.describe('sponsor journey', () => {
       })
 
       await test.step('member A cancels and the place opens up again', async () => {
-        assertPreviewHost(baseURL, 'cancel member A’s RSVP')
+        assertPreviewTarget(baseURL, 'cancel member A’s RSVP')
         await open(sponsor, '/events')
         await eventCard(sponsor).getByRole('button', { name: UI.rsvp.cancel }).click()
         await expect(eventCard(sponsor).getByRole('button', { name: UI.rsvp.join })).toBeVisible()
@@ -452,7 +443,7 @@ test.describe('sponsor journey', () => {
       })
 
       await test.step('member B RSVPs and the admin exports the attendee CSV', async () => {
-        assertPreviewHost(baseURL, 'RSVP as member B')
+        assertPreviewTarget(baseURL, 'RSVP as member B')
         await eventCard(supporter).getByRole('button', { name: UI.rsvp.join }).click()
         await expect(eventCard(supporter).getByRole('button', { name: UI.rsvp.cancel })).toBeVisible()
 
@@ -487,7 +478,7 @@ test.describe('sponsor journey', () => {
 
     async function attempt(description: string, run: () => Promise<void>) {
       try {
-        assertPreviewHost(baseURL, description)
+        assertPreviewTarget(baseURL, description)
         await run()
       } catch (error) {
         problems.push(`${description}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
