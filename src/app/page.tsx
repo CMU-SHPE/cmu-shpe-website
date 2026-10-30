@@ -4,7 +4,7 @@ import SponsorLogo from '@/components/SponsorLogo'
 import { LocationIcon } from '@/components/icons'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { formatEventDateRange, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
 import { getEvents, getHomePillars, getHomeStats, getSiteContent, getSponsors } from '@/lib/queries'
 
@@ -202,7 +202,7 @@ export default async function Home() {
                       >
                         {event.type}
                       </span>
-                      <span className="text-gray-400 dark:text-gray-500 text-xs">{formatEventDate(event.date)}</span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">{formatEventDateRange(event.date, event.endDate)}</span>
                     </div>
                     <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
                     <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-5">{event.description}</p>

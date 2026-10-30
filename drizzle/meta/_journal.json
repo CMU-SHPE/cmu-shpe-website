@@ -43,6 +43,13 @@
       "when": 1793144184440,
       "tag": "0005_lovely_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793241644271,
+      "tag": "0006_green_gunslinger",
+      "breakpoints": true
     }
   ]
 }

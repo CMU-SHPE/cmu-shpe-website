@@ -11,6 +11,7 @@ import {
   pgTable,
   serial,
   text,
+  time,
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
@@ -126,6 +127,8 @@ export const events = pgTable(
     location: text('location').notNull(),
     type: text('type').notNull(),
     date: date('date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    // Free text from before time slots existed; shown only for events that have no slots.
     time: text('time'),
     capacity: integer('capacity'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -133,6 +136,27 @@ export const events = pgTable(
   (table) => [
     index('events_date_idx').on(table.date),
     check('events_capacity_positive', sql`${table.capacity} > 0`),
+    check('events_end_date_after_start', sql`${table.endDate} >= ${table.date}`),
+  ],
+)
+
+export const eventTimeSlots = pgTable(
+  'event_time_slots',
+  {
+    id: serial('id').primaryKey(),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }).notNull(),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => [
+    index('event_time_slots_event_idx').on(table.eventId),
+    check('event_time_slots_end_date_after_start', sql`${table.endDate} >= ${table.startDate}`),
+    check('event_time_slots_end_time_after_start', sql`${table.endTime} > ${table.startTime}`),
   ],
 )
 
@@ -374,6 +398,7 @@ export type Sponsor = typeof sponsors.$inferSelect
 export type Officer = typeof officers.$inferSelect
 export type Advisor = typeof advisors.$inferSelect
 export type ClubEvent = typeof events.$inferSelect
+export type EventTimeSlot = typeof eventTimeSlots.$inferSelect
 export type HomeStat = typeof homeStats.$inferSelect
 export type HomePillar = typeof homePillars.$inferSelect
 export type NationalStat = typeof nationalStats.$inferSelect
