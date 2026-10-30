@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page, PlaywrightWorkerArgs } from '@playwright/test'
 import { WELL_FORMED_UNKNOWN_TOKEN, expect, expectNoAxeViolations, setThemeBeforeLoad, test } from './fixtures'
+import { localWriteRefusal } from './preview-guard'
 
 const MALFORMED_TOKEN = 'bogus'
 /** A real unsubscribe token for a member still subscribed to that newsletter's topics; see the README. */
@@ -78,6 +79,7 @@ test.describe('unsubscribe links that do not work', () => {
 // Uses up the token's subscriptions, so it runs only when a fresh token is provided.
 test.describe.serial('a working unsubscribe link', () => {
   test.skip(!VALID_TOKEN, 'Set E2E_UNSUBSCRIBE_TOKEN to run the unsubscribe happy path')
+  test.skip(localWriteRefusal(process.env.BASE_URL) !== null, localWriteRefusal(process.env.BASE_URL) ?? '')
   const path = `/unsubscribe?token=${encodeURIComponent(VALID_TOKEN ?? '')}`
 
   test('opening it twice shows the unsubscribe form both times', async ({ page }) => {
