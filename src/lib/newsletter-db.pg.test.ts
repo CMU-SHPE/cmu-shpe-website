@@ -156,12 +156,13 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     const updatedAt = (await getNewsletter(id))!.updatedAt
     expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT, new Date(updatedAt.getTime() - 1))).toEqual({
       started: false,
+      reason: 'changed',
     })
     expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT, updatedAt)).toEqual({
       started: true,
       recipients: audience.length,
     })
-    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)).toEqual({ started: false })
+    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)).toEqual({ started: false, reason: 'not_draft' })
 
     mail.send.mockImplementationOnce(async (emails) => ({
       ok: true,
