@@ -3,7 +3,7 @@ import Editable from '@/components/editable'
 import { contentKeysFor } from '@/lib/content-keys'
 import { navLinks } from '@/lib/nav'
 import { getSiteContent, getSiteSettings } from '@/lib/queries'
-import { InstagramIcon, LinkedInIcon, MavLifeIcon, TikTokIcon, XIcon, YouTubeIcon } from './icons'
+import SocialLinks from './social-links'
 
 export default async function Footer({ editable, signedIn }: { editable: boolean; signedIn: boolean }) {
   const [content, settings] = await Promise.all([
@@ -78,38 +78,11 @@ export default async function Footer({ editable, signedIn }: { editable: boolean
                 </p>
               </>
             )}
-            <div className="flex space-x-4">
-              {settings?.instagramUrl && (
-                <a href={settings.instagramUrl} aria-label="Instagram" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <InstagramIcon />
-                </a>
-              )}
-              {settings?.linkedinUrl && (
-                <a href={settings.linkedinUrl} aria-label="LinkedIn" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <LinkedInIcon />
-                </a>
-              )}
-              {settings?.xUrl && (
-                <a href={settings.xUrl} aria-label="X (Twitter)" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <XIcon />
-                </a>
-              )}
-              {settings?.youtubeUrl && (
-                <a href={settings.youtubeUrl} aria-label="YouTube" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <YouTubeIcon />
-                </a>
-              )}
-              {settings?.tiktokUrl && (
-                <a href={settings.tiktokUrl} aria-label="TikTok" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <TikTokIcon />
-                </a>
-              )}
-              {settings?.mavlifeUrl && (
-                <a href={settings.mavlifeUrl} aria-label="MavLife" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-shpe-gold transition-colors duration-200">
-                  <MavLifeIcon />
-                </a>
-              )}
-            </div>
+            <SocialLinks
+              settings={settings}
+              className="flex space-x-4"
+              linkClassName="text-gray-300 hover:text-shpe-gold transition-colors duration-200"
+            />
           </div>
         </div>
 
