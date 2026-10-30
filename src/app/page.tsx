@@ -60,7 +60,7 @@ export default async function Home() {
             />
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href="/contact"
+                href="/join"
                 className="inline-flex items-center justify-center bg-shpe-red hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold text-base transition-all duration-200 shadow-lg hover:-translate-y-0.5"
               >
                 Join SHPE
@@ -301,7 +301,7 @@ export default async function Home() {
           />
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/contact"
+              href="/join"
               className="inline-flex items-center justify-center bg-shpe-red hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold text-base transition-all duration-200 shadow-lg"
             >
               Get Involved
