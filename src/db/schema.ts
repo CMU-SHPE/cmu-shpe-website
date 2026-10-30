@@ -72,7 +72,7 @@ export const siteSettings = pgTable('site_settings', {
   xUrl: text('x_url'),
   youtubeUrl: text('youtube_url'),
   tiktokUrl: text('tiktok_url'),
-  presenceUrl: text('presence_url'),
+  mavlifeUrl: text('presence_url'),
   mailingAddress: text('mailing_address').notNull().default(''),
 })
 

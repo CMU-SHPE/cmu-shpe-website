@@ -16,7 +16,7 @@ export const settingsSchema = z.object({
   xUrl: optionalHttpUrl,
   youtubeUrl: optionalHttpUrl,
   tiktokUrl: optionalHttpUrl,
-  presenceUrl: optionalHttpUrl,
+  mavlifeUrl: optionalHttpUrl,
   mailingAddress: z.string().trim().max(MAX_MAILING_ADDRESS_LENGTH).optional(),
   subjects: z
     .string()
@@ -44,7 +44,7 @@ export function parseSettingsForm(formData: FormData) {
     xUrl: formData.get('xUrl'),
     youtubeUrl: formData.get('youtubeUrl'),
     tiktokUrl: formData.get('tiktokUrl'),
-    presenceUrl: formData.get('presenceUrl'),
+    mavlifeUrl: formData.get('mavlifeUrl'),
     subjects: formData.get('subjects'),
     // A form without the field must not wipe the stored address; only a submitted blank clears it.
     ...(mailingAddress === null ? {} : { mailingAddress }),
