@@ -288,6 +288,7 @@ them; running `npm run db:seed` also stores them.
 | `npm run test:e2e` | Run the [Playwright](https://playwright.dev) smoke tests against a preview deployment (see [Testing](#testing)) |
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
+| `npm run db:check` | Fail if `src/db/schema.ts` has changes with no migration in `drizzle/` |
 | `npm run db:seed` | Seed the database with the site's content and the master admin |
 | `npm run db:reset-master` | Move the master account to `MASTER_EMAIL` and reset its password |
 
@@ -319,7 +320,15 @@ npm test
 ```
 
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
-(lint, test, build).
+(lint, test, build), alongside two more jobs that use no secrets: `db-tests` runs
+`npm run test:db`, and `migrations` runs `npm run db:check`, which fails if
+`src/db/schema.ts` has changes that no migration in `drizzle/` covers.
+
+`npm test` also compares the Privacy Policy and Terms of Use defaults in
+`src/db/seed-data/content.ts` with what production should hold: the sections in
+`scripts/sql/policy-text-baseline.json` (never changed by a script) plus each
+`scripts/sql/<date>-*.sql` script's new text, in date order. Changing that text therefore
+needs a new script that updates production, which is run by hand.
 
 ### Database tests
 
@@ -395,7 +404,7 @@ E2E_UNSUBSCRIBE_TOKEN=<token> BASE_URL=https://<preview>.vercel.app npm run test
 The site is deployed on Vercel, connected to this GitHub repository: every push to
 `main` deploys to production, and every pull request gets its own preview URL. The
 custom domain `shpecmu.com` is configured in the Vercel project settings rather than a
-`CNAME` file. `.github/workflows/ci.yml` only runs checks (lint/test/build) — it does
+`CNAME` file. `.github/workflows/ci.yml` only runs checks (lint, tests, database tests, migrations) — it does
 not deploy anything.
 
 The Vercel project needs `DATABASE_URL`, `AUTH_SECRET`, `BLOB_READ_WRITE_TOKEN`,
