@@ -276,8 +276,8 @@ describe('RSVP reads', () => {
     await rsvp(other.id, notMine.id, NOW)
 
     expect(await listMyRsvps(member.id, NOW)).toEqual([
-      { eventId: sooner.id, title: 'Sooner', date: '2099-01-01', time: null, location: sooner.location },
-      { eventId: later.id, title: 'Later', date: '2099-02-01', time: '6 PM', location: later.location },
+      { eventId: sooner.id, title: 'Sooner', date: '2099-01-01', endDate: null, time: null, location: sooner.location, slots: [] },
+      { eventId: later.id, title: 'Later', date: '2099-02-01', endDate: null, time: '6 PM', location: later.location, slots: [] },
     ])
   })
 
