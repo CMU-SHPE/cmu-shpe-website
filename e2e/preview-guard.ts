@@ -8,7 +8,8 @@ import type { FullConfig } from '@playwright/test'
  * Production also answers on *.vercel.app hosts (the git-main alias and every production
  * deployment's own URL), so a host's shape can't prove it is a preview. Vercel's API can: every
  * non-local host is looked up there with VERCEL_TOKEN before any test starts, and only a
- * deployment of this project whose target is preview passes.
+ * deployment of this project whose target is preview passes. Specs that write also skip on a local
+ * server unless E2E_LOCAL_DATABASE_IS_DISPOSABLE=1, because its database may be production's.
  */
 
 const PROJECT = 'cmu-shpe-website'
@@ -20,6 +21,7 @@ const DEPLOYMENT_HOST = new RegExp(`^${PROJECT}-[a-z0-9-]+-${TEAM}\\.vercel\\.ap
 
 /** Set by the global setup once Vercel has confirmed the origin is a preview; workers inherit it. */
 export const VERIFIED_ORIGIN_ENV = 'E2E_VERIFIED_PREVIEW_ORIGIN'
+export const LOCAL_WRITE_OPT_IN_ENV = 'E2E_LOCAL_DATABASE_IS_DISPOSABLE'
 
 function refuse(action: string, host: string, reason: string) {
   return new Error(`Refusing to ${action} on ${host}: ${reason}`)
@@ -72,6 +74,16 @@ export async function verifyPreviewTarget(
   return origin
 }
 
+/**
+ * Why specs that write must not run against this target, or null if they may. A local server uses whatever
+ * DATABASE_URL says, and that can be production, so no host check can show a local database is safe to write to.
+ */
+export function localWriteRefusal(baseURL: string | undefined): string | null {
+  if (!baseURL || !isLocal(new URL(baseURL))) return null
+  if (process.env[LOCAL_WRITE_OPT_IN_ENV] === '1') return null
+  return `This writes to the database, and a local server may be using production's. Set ${LOCAL_WRITE_OPT_IN_ENV}=1 only if the local DATABASE_URL is disposable.`
+}
+
 /** For the specs: re-checks the host, and refuses a non-local one the global setup did not verify. */
 export function assertPreviewTarget(baseURL: string | undefined, action: string) {
   const origin = previewOrigin(baseURL, action)
@@ -79,6 +91,13 @@ export function assertPreviewTarget(baseURL: string | undefined, action: string)
   if (process.env[VERIFIED_ORIGIN_ENV] !== origin) {
     throw refuse(action, new URL(origin).hostname, 'Vercel has not confirmed it is a preview (e2e/preview-guard.ts global setup did not run for it)')
   }
+}
+
+/** For each write in a spec: everything assertPreviewTarget checks, and refuses a local database not opted in. */
+export function assertWriteTarget(baseURL: string | undefined, action: string) {
+  assertPreviewTarget(baseURL, action)
+  const refusal = localWriteRefusal(baseURL)
+  if (refusal) throw refuse(action, new URL(baseURL!).hostname, refusal)
 }
 
 export default async function globalSetup(config: FullConfig) {

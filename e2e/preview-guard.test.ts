@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { VERIFIED_ORIGIN_ENV, assertPreviewTarget, previewOrigin, verifyPreviewTarget } from './preview-guard'
+import {
+  LOCAL_WRITE_OPT_IN_ENV,
+  VERIFIED_ORIGIN_ENV,
+  assertPreviewTarget,
+  assertWriteTarget,
+  localWriteRefusal,
+  previewOrigin,
+  verifyPreviewTarget,
+} from './preview-guard'
 
 const PREVIEW_HASH = 'https://cmu-shpe-website-e74uhdsnp-shpecmu.vercel.app'
 const PRODUCTION_HASH = 'https://cmu-shpe-website-a9jmr3ra0-shpecmu.vercel.app'
@@ -111,5 +119,40 @@ describe('assertPreviewTarget', () => {
   it('refuses the production site even with a matching verified origin', () => {
     vi.stubEnv(VERIFIED_ORIGIN_ENV, 'https://shpecmu.com')
     expect(() => assertPreviewTarget('https://shpecmu.com', 'send a newsletter')).toThrow(/production site/)
+  })
+})
+
+describe('writes against a local server', () => {
+  it.each([LOCAL, 'http://127.0.0.1:3000'])('are refused on %s without the opt-in, while read-only checks still pass', (url) => {
+    vi.stubEnv(LOCAL_WRITE_OPT_IN_ENV, undefined)
+    expect(localWriteRefusal(url)).toMatch(/E2E_LOCAL_DATABASE_IS_DISPOSABLE=1.*disposable/)
+    expect(() => assertWriteTarget(url, 'send a newsletter')).toThrow(/^Refusing to send a newsletter on .*production/)
+    expect(() => assertPreviewTarget(url, 'run e2e')).not.toThrow()
+  })
+
+  it.each(['', '0', 'true', 'yes'])('stay refused when the opt-in is %j', (value) => {
+    vi.stubEnv(LOCAL_WRITE_OPT_IN_ENV, value)
+    expect(localWriteRefusal(LOCAL)).not.toBeNull()
+    expect(() => assertWriteTarget(LOCAL, 'send a newsletter')).toThrow(/^Refusing/)
+  })
+
+  it('are allowed once the local database is declared disposable', () => {
+    vi.stubEnv(LOCAL_WRITE_OPT_IN_ENV, '1')
+    expect(localWriteRefusal(LOCAL)).toBeNull()
+    expect(() => assertWriteTarget(LOCAL, 'send a newsletter')).not.toThrow()
+  })
+
+  it('does not let the opt-in loosen a remote host', () => {
+    vi.stubEnv(LOCAL_WRITE_OPT_IN_ENV, '1')
+    vi.stubEnv(VERIFIED_ORIGIN_ENV, undefined)
+    expect(() => assertWriteTarget(PREVIEW_HASH, 'send a newsletter')).toThrow(/not confirmed/)
+    expect(() => assertWriteTarget('https://shpecmu.com', 'send a newsletter')).toThrow(/production site/)
+  })
+
+  it('are allowed on a preview the global setup verified, with no opt-in', () => {
+    vi.stubEnv(LOCAL_WRITE_OPT_IN_ENV, undefined)
+    vi.stubEnv(VERIFIED_ORIGIN_ENV, PREVIEW_HASH)
+    expect(localWriteRefusal(PREVIEW_HASH)).toBeNull()
+    expect(() => assertWriteTarget(PREVIEW_HASH, 'send a newsletter')).not.toThrow()
   })
 })

@@ -347,7 +347,11 @@ e.g. `npm run test:db -- src/db/harness.db.test.ts`.
 server, never in CI. They sign up accounts and send real email, so `e2e/preview-guard.ts`
 refuses to start on anything else, before any request reaches `BASE_URL`:
 
-- `localhost` and `127.0.0.1` are allowed as they are.
+- `localhost` and `127.0.0.1` run only the read-only tests by default. **A local server uses
+  whatever `DATABASE_URL` says, which can be production**, so every spec that writes skips
+  there and says why. Set `E2E_LOCAL_DATABASE_IS_DISPOSABLE=1` only when the local database
+  is one you can afford to lose; with production's connection string, it would create
+  records and send a newsletter on production.
 - `shpecmu.com`, `www.shpecmu.com` and the `cmu-shpe-website-git-main-shpecmu.vercel.app`
   alias are refused outright, as is any host that isn't an
   `https://cmu-shpe-website-…-shpecmu.vercel.app` deployment of this project.
@@ -369,12 +373,15 @@ BASE_URL=https://<preview>.vercel.app VERCEL_TOKEN=<token> VERCEL_BYPASS=<protec
 as `x-vercel-protection-bypass` to the preview's own origin only. A spec whose own
 variables are missing skips instead of failing.
 
+On a local server, every spec here except `sponsor-portal.spec.ts` and the broken-link tests in
+`newsletters.spec.ts` also needs `E2E_LOCAL_DATABASE_IS_DISPOSABLE=1`.
+
 | Spec | Needs, besides `BASE_URL` | Creates or changes |
 | --- | --- | --- |
 | `members.spec.ts`: sign-up, the resend-confirmation and forgot-password forms (which must answer known and unknown addresses alike), broken confirmation and reset links, signed-out redirects from `/account` and `/admin`, the Privacy and Terms links, and axe WCAG 2.1 AA scans in light and dark mode | nothing | Unconfirmed accounts for `delivered+…@resend.dev` (Resend's test inbox), and their confirmation and reset emails. Like any unconfirmed account, they are deleted by a later sign-up once they are 7 days old. |
 | `newsletters.spec.ts`: unsubscribe links (below) | `E2E_UNSUBSCRIBE_TOKEN` for the working-link tests | Nothing without the token. With it, unsubscribes that token's account from all of its topics. |
 | `sponsor-portal.spec.ts`: signed-out visitors are sent to `/login` from `/sponsor` and `/admin/sponsors/1`, and get no receipt PDF or attendee CSV | nothing | Nothing; read-only. |
-| `newsletter-journey.spec.ts`: an admin adds a topic, a member signs up, confirms by email and opts in, a real newsletter goes to that topic, and the member unsubscribes on the page and by one-click POST | `RESEND_API_KEY` (read-only, to fetch the emails; sent only to `api.resend.com`), `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates a topic, a confirmed member and a newsletter, and sends that newsletter (only `@resend.dev` inboxes receive it off production). The topic and the member are deleted at the end; the sent newsletter and its delivery records stay. If Site settings has no mailing address, it fills one in and leaves it. |
+| `newsletter-journey.spec.ts`: an admin adds a topic, a member signs up, confirms by email and opts in, a real newsletter goes to that topic, and the member unsubscribes on the page and by one-click POST | `RESEND_API_KEY` (read-only, to fetch the emails; sent only to `api.resend.com`), `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates a topic, a confirmed member and a newsletter, and sends that newsletter (only `@resend.dev` inboxes receive it off production). The topic and the member are deleted at the end; the newsletter row stays, and its delivery records go with the member. If Site settings has no mailing address, it fills one in and leaves it. |
 | `sponsor-journey.spec.ts`: two members sign up and confirm, the admin links one to a new sponsor listing and uploads a receipt, the sponsor edits the listing and downloads the receipt, the other member is kept out, and an RSVP fills and frees a capacity-1 event before the admin exports its attendees | `RESEND_API_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates two confirmed members, a sponsor listing with an edit-history entry and a 3.9 MB receipt PDF, and an event with RSVPs. Cleanup deletes the listing (its receipts and history go with it), the event (with its RSVPs) and both members, and fails the run listing anything it couldn't remove. The receipt file itself stays in Blob storage. |
 
 `e2e/newsletters.spec.ts` checks unsubscribe links. Without any setup it checks that
