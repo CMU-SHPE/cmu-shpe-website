@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+
+const mocks = vi.hoisted(() => ({ sendContactMessage: vi.fn() }))
+vi.mock('@/app/contact/actions', () => ({ sendContactMessage: mocks.sendContactMessage }))
+
 import ContactForm from '@/components/ContactForm'
 
 const contactEmail = 'club@example.org'
@@ -12,12 +16,12 @@ function fillRequiredFields() {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  mocks.sendContactMessage.mockReset()
 })
 
 describe('ContactForm', () => {
   it('shows the success state and lets the user send another message', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    mocks.sendContactMessage.mockResolvedValue({ ok: true })
     render(<ContactForm email={contactEmail} subjects={subjects} />)
     fillRequiredFields()
 
@@ -31,7 +35,7 @@ describe('ContactForm', () => {
   })
 
   it('shows an error with the fallback email when the request fails', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+    mocks.sendContactMessage.mockResolvedValue({ ok: false, reason: 'failed' })
     render(<ContactForm email={contactEmail} subjects={subjects} />)
     fillRequiredFields()
 
@@ -41,13 +45,23 @@ describe('ContactForm', () => {
   })
 
   it('shows an error when the request throws (e.g. offline)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    mocks.sendContactMessage.mockRejectedValue(new Error('network down'))
     render(<ContactForm email={contactEmail} subjects={subjects} />)
     fillRequiredFields()
 
     fireEvent.click(screen.getByRole('button', { name: /Send Message/ }))
 
     expect(await screen.findByText(new RegExp(contactEmail))).toBeInTheDocument()
+  })
+
+  it('explains when too many messages were sent', async () => {
+    mocks.sendContactMessage.mockResolvedValue({ ok: false, reason: 'throttled' })
+    render(<ContactForm email={contactEmail} subjects={subjects} />)
+    fillRequiredFields()
+
+    fireEvent.click(screen.getByRole('button', { name: /Send Message/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Too many messages/)
   })
 
   it('renders duplicate subject options without React key collisions', () => {
@@ -64,7 +78,7 @@ describe('ContactForm', () => {
     const pending = new Promise<{ ok: boolean }>((resolve) => {
       resolveFetch = resolve
     })
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(pending))
+    mocks.sendContactMessage.mockReturnValue(pending)
     render(<ContactForm email={contactEmail} subjects={subjects} />)
     fillRequiredFields()
 

@@ -28,6 +28,25 @@ export function blobPathname(folder: UploadFolder, fileName: string, type: Allow
   return `${folder}/${base}.${IMAGE_EXTENSIONS[type]}`
 }
 
+function storeIdFromToken(token: string | undefined): string | null {
+  const match = /^vercel_blob_rw_([a-z0-9]+)_/i.exec(token?.trim() ?? '')
+  return match ? match[1].toLowerCase() : null
+}
+
+/**
+ * Previews get production's Blob store unless a separate store is connected to the Preview
+ * environment, so they may write only once the token is shown to belong to a different store.
+ */
+export function blobWritesAllowed(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.VERCEL_ENV !== 'preview') return true
+  const productionStore = env.PRODUCTION_BLOB_STORE_ID?.trim().toLowerCase().replace(/^store_/, '')
+  const currentStore = storeIdFromToken(env.BLOB_READ_WRITE_TOKEN)
+  return Boolean(productionStore && currentStore && productionStore !== currentStore)
+}
+
+const PREVIEW_BLOB_REFUSED =
+  'Blob write refused: this preview could be using the production Blob store (see PRODUCTION_BLOB_STORE_ID)'
+
 export type UploadResult =
   | { ok: true; url: string }
   | { ok: false; reason: 'rejected' | 'unavailable' }
@@ -35,6 +54,10 @@ export type UploadResult =
 export async function uploadImage(file: File, folder: UploadFolder): Promise<UploadResult> {
   const type = file.type
   if (!isAllowedImageType(type) || validateImageFile(file)) return { ok: false, reason: 'rejected' }
+  if (!blobWritesAllowed()) {
+    console.error(PREVIEW_BLOB_REFUSED)
+    return { ok: false, reason: 'unavailable' }
+  }
   try {
     const blob = await put(blobPathname(folder, file.name, type), file, {
       access: 'public',
@@ -56,5 +79,9 @@ export function isBlobUrl(url: string): boolean {
 
 export async function deleteUploadedBlob(url: string | null | undefined) {
   if (!url || !isBlobUrl(url)) return
+  if (!blobWritesAllowed()) {
+    console.error(PREVIEW_BLOB_REFUSED)
+    return
+  }
   await del(url).catch(() => {})
 }

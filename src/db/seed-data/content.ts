@@ -133,7 +133,7 @@ export const contentDefaults = {
     'The club events you RSVP to, and when you RSVPed.',
     'If you are a sponsor contact: which sponsor listing your account is linked to, and a record of each change you make to that listing (your name at the time, when, and which parts you changed).',
     'For sponsors, the receipts for their sponsorship (PDF files) that club officers upload. These are stored privately in our database, not in public file storage.',
-    'Short-lived records of sign-in, sign-up, email confirmation, new confirmation link and password reset attempts (the email address involved and your IP address), used to stop abuse.',
+    'Short-lived records of sign-in, sign-up, email confirmation, new confirmation link, password reset and contact form attempts (the email address involved and your IP address), used to stop abuse.',
     'Whatever you type into the contact form, when you send us a message.',
   ].join('\n'),
   'privacy.use.heading': 'Why we collect it',
@@ -164,7 +164,7 @@ export const contentDefaults = {
   'privacy.retention.items': [
     'Your account and newsletter choices, the record of which newsletters were sent to you and whether each went out, and the record of when you unsubscribed from which topic: until you delete your account, then removed with it.',
     'Accounts whose email address is never confirmed: kept for 7 days, or until the last confirmation link we sent expires if that is later, then deleted automatically during later sign-up or new confirmation link requests.',
-    'Records of sign-in, sign-up, email confirmation, new confirmation link and password reset attempts: used for 15 minutes, then deleted automatically during later sign-in, sign-up, email confirmation, new confirmation link or password-reset activity.',
+    'Records of sign-in, sign-up, email confirmation, new confirmation link, password reset and contact form attempts: used for 15 minutes, then deleted automatically during later sign-in, sign-up, email confirmation, new confirmation link or password-reset activity.',
     'Server logs of failed or blocked sign-in attempts (the email address entered and your IP address) and of blocked sign-up, email confirmation, new confirmation link and password reset requests (your IP address): kept for a limited time by our host, Vercel, then deleted.',
     'Email confirmation links stop working after 24 hours, and password reset links after 1 hour.',
     'Your RSVPs: until you cancel them, the event is deleted, or you delete your account.',

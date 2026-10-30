@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, FormEvent } from 'react'
-import config from '@/lib/config'
+import { type ContactResult, sendContactMessage } from '@/app/contact/actions'
 
-type Status = 'idle' | 'loading' | 'success' | 'error'
+type Status = 'idle' | 'loading' | 'success' | Extract<ContactResult, { ok: false }>['reason']
 
 export default function ContactForm({ email: contactEmail, subjects }: { email: string; subjects: string[] }) {
   const defaultSubject = subjects[0] ?? ''
@@ -17,14 +17,10 @@ export default function ContactForm({ email: contactEmail, subjects }: { email: 
     e.preventDefault()
     setStatus('loading')
     try {
-      const res = await fetch(config.formspreeEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, subject, message }),
-      })
-      setStatus(res.ok ? 'success' : 'error')
+      const result = await sendContactMessage({ name, email, subject, message })
+      setStatus(result.ok ? 'success' : result.reason)
     } catch {
-      setStatus('error')
+      setStatus('failed')
     }
   }
 
@@ -117,9 +113,11 @@ export default function ContactForm({ email: contactEmail, subjects }: { email: 
         />
       </div>
 
-      {status === 'error' && (
-        <p className="text-shpe-red text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
-          Something went wrong. Please try emailing us directly at {contactEmail}.
+      {(status === 'failed' || status === 'invalid' || status === 'throttled') && (
+        <p role="alert" className="text-shpe-red text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">
+          {status === 'failed' && `Something went wrong. Please try emailing us directly at ${contactEmail}.`}
+          {status === 'invalid' && `Please check your name, email address and message. You can also email us at ${contactEmail}.`}
+          {status === 'throttled' && `Too many messages were sent recently. Please try again in a few minutes, or email us at ${contactEmail}.`}
         </p>
       )}
 

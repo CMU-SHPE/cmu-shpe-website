@@ -17,7 +17,14 @@ vi.mock('../src/db/schema', () => ({ members: {} }))
 vi.mock('drizzle-orm', () => ({ sql: () => ({}) }))
 vi.mock('drizzle-orm/neon-http', () => ({ drizzle: () => ({ execute: async () => ({ rows: [] }) }) }))
 
-import { runVercelBuild, shouldPushSchema } from './vercel-build-steps'
+import { previewDatabaseRefusal, runVercelBuild, shouldPushSchema } from './vercel-build-steps'
+
+const PRODUCTION_HOST = 'ep-prod-123456.us-east-2.aws.neon.tech'
+const PREVIEW = {
+  VERCEL_ENV: 'preview',
+  DATABASE_URL: 'postgres://user:pass@ep-branch-654321-pooler.us-east-2.aws.neon.tech/db',
+  PRODUCTION_DATABASE_HOST: PRODUCTION_HOST,
+}
 
 function plan(overrides: Record<string, unknown> = {}) {
   return {
@@ -57,7 +64,49 @@ describe('shouldPushSchema', () => {
   })
 })
 
+describe('previewDatabaseRefusal', () => {
+  it('allows a preview database on a different Neon endpoint', () => {
+    expect(previewDatabaseRefusal(PREVIEW)).toBeNull()
+  })
+
+  it.each([
+    ['the same host', `postgres://u:p@${PRODUCTION_HOST}/db`],
+    ['its pooled host', 'postgres://u:p@ep-prod-123456-pooler.us-east-2.aws.neon.tech/db?sslmode=require'],
+    ['different casing', 'postgresql://u:p@EP-PROD-123456.US-EAST-2.AWS.NEON.TECH/db'],
+  ])('refuses a DATABASE_URL on the production endpoint via %s', (_, databaseUrl) => {
+    expect(previewDatabaseRefusal({ ...PREVIEW, DATABASE_URL: databaseUrl })).toMatch(/production database/)
+  })
+
+  it('refuses when the production pooled host is the one configured', () => {
+    const env = { ...PREVIEW, DATABASE_URL: `postgres://u:p@${PRODUCTION_HOST}/db` }
+    expect(previewDatabaseRefusal({ ...env, PRODUCTION_DATABASE_HOST: 'ep-prod-123456-pooler.us-east-2.aws.neon.tech' })).not.toBeNull()
+  })
+
+  it.each([[undefined], [''], ['  ']])('fails closed when PRODUCTION_DATABASE_HOST is %j', (host) => {
+    expect(previewDatabaseRefusal({ ...PREVIEW, PRODUCTION_DATABASE_HOST: host })).toMatch(/PRODUCTION_DATABASE_HOST/)
+  })
+
+  it.each([[undefined], [''], ['not a url']])('refuses a DATABASE_URL of %j', (databaseUrl) => {
+    expect(previewDatabaseRefusal({ ...PREVIEW, DATABASE_URL: databaseUrl })).toMatch(/DATABASE_URL/)
+  })
+})
+
 describe('runVercelBuild', () => {
+  it('fails without pushing or building when a preview DATABASE_URL is production', async () => {
+    const env = { ...PREVIEW, DATABASE_URL: `postgres://u:p@${PRODUCTION_HOST}/db` }
+    expect(await runVercelBuild(env)).toBe(1)
+    expect(mocks.pushSchema).not.toHaveBeenCalled()
+    expect(mocks.spawn).not.toHaveBeenCalled()
+    expect(console.error).toHaveBeenCalledWith('PREVIEW SCHEMA PUSH REFUSED:', expect.stringMatching(/production/))
+  })
+
+  it('fails without pushing when PRODUCTION_DATABASE_HOST is missing', async () => {
+    expect(await runVercelBuild({ ...PREVIEW, PRODUCTION_DATABASE_HOST: undefined })).toBe(1)
+    expect(mocks.pushSchema).not.toHaveBeenCalled()
+    expect(mocks.spawn).not.toHaveBeenCalled()
+  })
+
+
   it.each(['production', 'development', undefined])(
     'runs only next build when VERCEL_ENV is %s, never drizzle-kit',
     async (vercelEnv) => {
@@ -74,7 +123,7 @@ describe('runVercelBuild', () => {
   })
 
   it('applies an additive preview change, then builds', async () => {
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' })).toBe(0)
+    expect(await runVercelBuild(PREVIEW)).toBe(0)
     expect(mocks.apply).toHaveBeenCalledTimes(1)
     expect(mocks.spawn).toHaveBeenCalledTimes(1)
     expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.spawn.mock.invocationCallOrder[0])
@@ -82,7 +131,7 @@ describe('runVercelBuild', () => {
 
   it('skips apply when the preview schema is already up to date', async () => {
     mocks.pushSchema.mockResolvedValue(plan({ statementsToExecute: [] }))
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' })).toBe(0)
+    expect(await runVercelBuild(PREVIEW)).toBe(0)
     expect(mocks.apply).not.toHaveBeenCalled()
   })
 
@@ -90,27 +139,27 @@ describe('runVercelBuild', () => {
     mocks.pushSchema.mockResolvedValue(
       plan({ hasDataLoss: true, warnings: ["You're about to delete legacy table with 5 items"] }),
     )
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' })).toBe(1)
+    expect(await runVercelBuild(PREVIEW)).toBe(1)
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.spawn).not.toHaveBeenCalled()
   })
 
   it('fails when drizzle-kit has warnings even without flagging data loss', async () => {
     mocks.pushSchema.mockResolvedValue(plan({ warnings: ['something to confirm'] }))
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' })).toBe(1)
+    expect(await runVercelBuild(PREVIEW)).toBe(1)
     expect(mocks.apply).not.toHaveBeenCalled()
     expect(mocks.spawn).not.toHaveBeenCalled()
   })
 
   it('fails when drizzle-kit needs a rename decision it cannot prompt for', async () => {
     mocks.pushSchema.mockRejectedValue(new Error('Interactive prompts require a TTY terminal'))
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' })).toBe(1)
+    expect(await runVercelBuild(PREVIEW)).toBe(1)
     expect(mocks.spawn).not.toHaveBeenCalled()
   })
 
   it('fails loudly instead of skipping when the preview has no DATABASE_URL', async () => {
     vi.stubEnv('DATABASE_URL', '')
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' })).toBe(1)
+    expect(await runVercelBuild({ ...PREVIEW, DATABASE_URL: '' })).toBe(1)
     expect(mocks.pushSchema).not.toHaveBeenCalled()
     expect(mocks.spawn).not.toHaveBeenCalled()
   })
@@ -118,7 +167,7 @@ describe('runVercelBuild', () => {
   it('fails instead of hanging when the push never finishes', async () => {
     const nextBuild = vi.fn(async () => 0)
     const pushSchema = () => new Promise<void>(() => {})
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' }, { pushSchema, nextBuild }, 10)).toBe(1)
+    expect(await runVercelBuild(PREVIEW, { pushSchema, nextBuild }, 10)).toBe(1)
     expect(nextBuild).not.toHaveBeenCalled()
   })
 
@@ -129,7 +178,7 @@ describe('runVercelBuild', () => {
       exitEvents.emit('exit', 0)
       exitEvents.emit('exit', 1)
     }
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' }, { pushSchema, nextBuild }, 1000, exitEvents)).toBe(0)
+    expect(await runVercelBuild(PREVIEW, { pushSchema, nextBuild }, 1000, exitEvents)).toBe(0)
     expect(console.error).toHaveBeenCalledTimes(1)
     expect(console.error).toHaveBeenCalledWith('PREVIEW SCHEMA PUSH FAILED: drizzle-kit exited during the schema push')
 
@@ -142,7 +191,7 @@ describe('runVercelBuild', () => {
     const exitEvents = new EventEmitter()
     const nextBuild = vi.fn(async () => 0)
     const hang = () => new Promise<void>(() => {})
-    expect(await runVercelBuild({ VERCEL_ENV: 'preview' }, { pushSchema: hang, nextBuild }, 10, exitEvents)).toBe(1)
+    expect(await runVercelBuild(PREVIEW, { pushSchema: hang, nextBuild }, 10, exitEvents)).toBe(1)
     expect(exitEvents.listenerCount('exit')).toBe(0)
   })
 

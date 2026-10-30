@@ -15,6 +15,28 @@ export class SchemaPushRefusedError extends Error {
   name = 'SchemaPushRefusedError'
 }
 
+// Neon serves each endpoint on two hosts; the pooled one adds "-pooler" to the endpoint ID.
+function neonEndpointHost(host: string) {
+  return host.trim().toLowerCase().replace(/^([^.]+)-pooler\./, '$1.')
+}
+
+/**
+ * The preview push writes to whatever DATABASE_URL names. If the Neon preview-branch integration
+ * is missing, that is production, so the push runs only once DATABASE_URL is known to differ.
+ */
+export function previewDatabaseRefusal(env: Record<string, string | undefined>): string | null {
+  const productionHost = env.PRODUCTION_DATABASE_HOST?.trim()
+  if (!productionHost) {
+    return 'PRODUCTION_DATABASE_HOST is not set for previews, so the preview database cannot be told apart from production'
+  }
+  if (!env.DATABASE_URL || !URL.canParse(env.DATABASE_URL)) return 'DATABASE_URL is not a valid URL for this preview'
+  const previewHost = new URL(env.DATABASE_URL).hostname
+  if (neonEndpointHost(previewHost) === neonEndpointHost(productionHost)) {
+    return 'DATABASE_URL points at the production database; check the Neon preview branching integration'
+  }
+  return null
+}
+
 export function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
@@ -90,6 +112,11 @@ export async function runVercelBuild(
   exitEvents: Pick<NodeJS.EventEmitter, 'on' | 'off'> = process,
 ) {
   if (shouldPushSchema(env.VERCEL_ENV)) {
+    const refusal = previewDatabaseRefusal(env)
+    if (refusal) {
+      console.error('PREVIEW SCHEMA PUSH REFUSED:', refusal)
+      return 1
+    }
     exitEvents.on('exit', reportExitDuringPush)
     try {
       await withTimeout(steps.pushSchema(), timeoutMs, 'Preview schema push')

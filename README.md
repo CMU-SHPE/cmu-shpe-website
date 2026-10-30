@@ -444,9 +444,18 @@ git branch's previews share one Neon branch, `preview/<git-branch>`: a copy of
 production's data taken at that branch's first preview, so editing a preview never
 changes the live site.
 
-- **Images:** previews upload to production's Blob store and never delete images, because
-  their copied rows still point at production's images. Images uploaded from previews
-  are left behind.
+- **Images:** connect a separate Blob store to the Preview environment and set
+  `PRODUCTION_BLOB_STORE_ID` there to production's store ID. A preview refuses to upload or
+  delete, showing the "couldn't be saved" message, if that variable is missing or its token
+  belongs to production's store. Previews never clean up replaced images, because their
+  copied rows still point at production's images.
+- **Database guard:** set `PRODUCTION_DATABASE_HOST` in the Preview environment to the host
+  from production's `DATABASE_URL`. The preview build fails without pushing if the variable
+  is missing or `DATABASE_URL` is on that host, pooled or not.
+- **Contact form:** only production sends messages to the club, through Formspree
+  (`CONTACT_FORM_ENDPOINT` overrides the address). Everywhere else the form reports success
+  and sends nothing, unless `CONTACT_FORM_TEST_ENDPOINT` is set. Submissions are limited per
+  email address and IP address in every environment.
 - **Sign-in:** Preview must have its own `AUTH_SECRET`. A preview's copy can hold an old
   password hash, and a session signed with production's secret would be accepted by
   production.
