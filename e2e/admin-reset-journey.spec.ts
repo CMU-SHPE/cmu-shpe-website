@@ -66,12 +66,12 @@ test.describe('admin password reset by email', () => {
         await signIn(master, journeyEnv('E2E_ADMIN_EMAIL'), journeyEnv('E2E_ADMIN_PASSWORD'), 'Master', '/admin')
         assertPreviewHost(baseURL, 'create a throwaway admin')
         await open(master, '/admin/admins')
-        const form = master.locator('form').filter({ has: master.getByRole('button', { name: UI.createAdmin.submit }) })
+        const form = master.locator('form').filter({ has: master.getByRole('button', { name: UI.createAdmin.submit, exact: true }) })
         await form.getByLabel(UI.createAdmin.name, { exact: true }).fill(ADMIN.name)
         await form.getByLabel(UI.createAdmin.email, { exact: true }).fill(ADMIN.email)
         await form.getByLabel(UI.createAdmin.password).fill(ADMIN.password)
         created.admin = true
-        await form.getByRole('button', { name: UI.createAdmin.submit }).click()
+        await form.getByRole('button', { name: UI.createAdmin.submit, exact: true }).click()
         await expectSaved(master, '/admin/admins', 'Creating the throwaway admin')
       })
 
