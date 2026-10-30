@@ -9,8 +9,8 @@
  */
 import type { BrowserContext } from '@playwright/test'
 import { expect, test } from './fixtures'
+import { assertWriteTarget } from './preview-guard'
 import {
-  assertPreviewHost,
   axeInBothThemes,
   deleteByName,
   expectSaved,
@@ -52,7 +52,7 @@ test.describe('admin password reset by email', () => {
   test.skip(missingJourneyEnv.length > 0, `Set ${missingJourneyEnv.join(', ')} to run the admin reset journey`)
 
   test('a throwaway admin resets its password by email and its old session ends', async ({ browser, baseURL }) => {
-    assertPreviewHost(baseURL, 'sign in as the master')
+    assertWriteTarget(baseURL, 'sign in as the master')
     created.baseURL = baseURL
     test.setTimeout(6 * 60_000)
     const contexts: BrowserContext[] = []
@@ -64,7 +64,7 @@ test.describe('admin password reset by email', () => {
     try {
       await test.step('the master creates a throwaway admin with a @resend.dev address', async () => {
         await signIn(master, journeyEnv('E2E_ADMIN_EMAIL'), journeyEnv('E2E_ADMIN_PASSWORD'), 'Master', '/admin')
-        assertPreviewHost(baseURL, 'create a throwaway admin')
+        assertWriteTarget(baseURL, 'create a throwaway admin')
         await open(master, '/admin/admins')
         const form = master.locator('form').filter({ has: master.getByRole('button', { name: UI.createAdmin.submit, exact: true }) })
         await form.getByLabel(UI.createAdmin.name, { exact: true }).fill(ADMIN.name)
@@ -84,7 +84,7 @@ test.describe('admin password reset by email', () => {
         await open(visitor, '/login')
         await visitor.getByRole('link', { name: UI.forgotLink }).click()
         await expect(visitor).toHaveURL((url) => url.pathname === '/forgot-password')
-        assertPreviewHost(baseURL, 'request an admin reset link')
+        assertWriteTarget(baseURL, 'request an admin reset link')
         await visitor.getByLabel(UI.forgot.email, { exact: true }).fill(ADMIN.email)
         await visitor.getByRole('button', { name: UI.forgot.submit }).click()
         await expect(visitor.locator('#request-sent')).toHaveText(UI.sentNotice)
@@ -103,7 +103,7 @@ test.describe('admin password reset by email', () => {
       })
 
       await test.step('choosing a new password through the link works once', async () => {
-        assertPreviewHost(baseURL, 'reset the throwaway admin password')
+        assertWriteTarget(baseURL, 'reset the throwaway admin password')
         await open(visitor, resetPath)
         await visitor.getByLabel(UI.reset.password, { exact: true }).fill(ADMIN.newPassword)
         await visitor.getByLabel(UI.reset.confirm, { exact: true }).fill(ADMIN.newPassword)
@@ -141,7 +141,7 @@ test.describe('admin password reset by email', () => {
     const context = await newJourneyContext(browser, baseURL)
     try {
       const master = await context.newPage()
-      assertPreviewHost(baseURL, 'delete the throwaway admin')
+      assertWriteTarget(baseURL, 'delete the throwaway admin')
       await signIn(master, journeyEnv('E2E_ADMIN_EMAIL'), journeyEnv('E2E_ADMIN_PASSWORD'), 'Master', '/admin')
       await deleteByName(master, '/admin/admins', ADMIN.name, '/admin/admins')
     } catch (error) {

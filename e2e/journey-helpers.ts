@@ -2,26 +2,17 @@ import type { Browser, Page } from '@playwright/test'
 import { expect, expectNoAxeViolations, installBypass, type Theme } from './fixtures'
 
 /**
- * Shared by the account recovery journeys. Every write they make is refused unless BASE_URL is a
- * cmu-shpe-website-<hash>-shpecmu.vercel.app preview, and only @resend.dev test inboxes are used.
+ * Shared by the account recovery journeys. Every write they make goes through assertWriteTarget,
+ * and only @resend.dev test inboxes are used.
  */
 export const JOURNEY_ENV = ['RESEND_API_KEY', 'E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD'] as const
 export const missingJourneyEnv = JOURNEY_ENV.filter((name) => !process.env[name]?.trim())
 
-const PREVIEW_HOST = /^cmu-shpe-website-[a-z0-9]+-shpecmu\.vercel\.app$/
 const RESEND_API = 'https://api.resend.com'
 const EMAIL_WAIT_MS = 120_000
 
 export function journeyEnv(name: (typeof JOURNEY_ENV)[number]): string {
   return process.env[name]!.trim()
-}
-
-/** Checked before each write rather than once, so a reordered step can't slip ahead of it. */
-export function assertPreviewHost(baseURL: string | undefined, action: string) {
-  const host = baseURL ? new URL(baseURL).hostname : '(no BASE_URL)'
-  if (!PREVIEW_HOST.test(host)) {
-    throw new Error(`Refusing to ${action} on ${host}: this journey only runs against a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.`)
-  }
 }
 
 type ResendListItem = { id: string; to: string[]; subject: string; created_at: string }

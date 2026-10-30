@@ -8,8 +8,8 @@
  */
 import type { BrowserContext, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
+import { assertWriteTarget } from './preview-guard'
 import {
-  assertPreviewHost,
   axeInBothThemes,
   deleteByName,
   expectSaved,
@@ -60,7 +60,7 @@ const created = { baseURL: undefined as string | undefined, member: false }
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
 async function requestChange(page: Page, baseURL: string | undefined, newEmail: string) {
-  assertPreviewHost(baseURL, 'request an email change')
+  assertWriteTarget(baseURL, 'request an email change')
   await open(page, '/account')
   const form = page.locator('form').filter({ has: page.getByRole('button', { name: UI.change.submit }) })
   await form.getByLabel(UI.change.newEmail, { exact: true }).fill(newEmail)
@@ -74,7 +74,7 @@ test.describe('member email change', () => {
   test.skip(missingJourneyEnv.length > 0, `Set ${missingJourneyEnv.join(', ')} to run the email change journey`)
 
   test('confirm the new address, notify the old one, and keep the account', async ({ browser, baseURL }) => {
-    assertPreviewHost(baseURL, 'sign up a member')
+    assertWriteTarget(baseURL, 'sign up a member')
     created.baseURL = baseURL
     test.setTimeout(8 * 60_000)
     const contexts: BrowserContext[] = []
@@ -96,7 +96,7 @@ test.describe('member email change', () => {
         await member.getByRole('button', { name: UI.join.submit }).click()
         await member.waitForURL('**/join/check-email')
         const confirmPath = linkIn(await waitForEmail(MEMBER.oldEmail, UI.subjects.signUp, start), '/join/confirm')
-        assertPreviewHost(baseURL, 'confirm the member')
+        assertWriteTarget(baseURL, 'confirm the member')
         await open(member, confirmPath)
         await member.getByLabel(UI.confirmSignUp.password, { exact: true }).fill(MEMBER.password)
         await member.getByRole('button', { name: UI.confirmSignUp.submit }).click()
@@ -120,7 +120,7 @@ test.describe('member email change', () => {
 
       await test.step('the replaced link no longer works', async () => {
         const path = linkIn(await waitForEmail(MEMBER.firstNewEmail, UI.subjects.confirmNew, firstRequestAt), '/account/confirm-email')
-        assertPreviewHost(baseURL, 'use the replaced email change link')
+        assertWriteTarget(baseURL, 'use the replaced email change link')
         await open(inbox, path)
         await inbox.getByRole('button', { name: UI.confirmChange }).click()
         await expect(inbox.getByRole('heading', { level: 1 })).toHaveText(UI.brokenLink)
@@ -130,7 +130,7 @@ test.describe('member email change', () => {
       await test.step('the newest link confirms the change and the confirm page passes axe', async () => {
         confirmPath = linkIn(await waitForEmail(MEMBER.newEmail, UI.subjects.confirmNew, secondRequestAt), '/account/confirm-email')
         await axeInBothThemes(inbox, confirmPath)
-        assertPreviewHost(baseURL, 'confirm the email change')
+        assertWriteTarget(baseURL, 'confirm the email change')
         await open(inbox, confirmPath)
         await inbox.getByRole('button', { name: UI.confirmChange }).click()
         await inbox.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('emailChanged') === '1')
@@ -170,7 +170,7 @@ test.describe('member email change', () => {
     const context = await newJourneyContext(browser, baseURL)
     try {
       const admin = await context.newPage()
-      assertPreviewHost(baseURL, 'delete the journey member')
+      assertWriteTarget(baseURL, 'delete the journey member')
       await signIn(admin, journeyEnv('E2E_ADMIN_EMAIL'), journeyEnv('E2E_ADMIN_PASSWORD'), 'Admin', '/admin')
       for (const email of [MEMBER.newEmail, MEMBER.oldEmail]) {
         if (await deleteByName(admin, `/admin/members?q=${encodeURIComponent(email)}`, MEMBER.name, '/admin/members')) return
