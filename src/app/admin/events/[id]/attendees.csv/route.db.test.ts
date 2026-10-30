@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ auth: vi.fn() }))
 vi.mock('@/auth', () => ({ auth: mocks.auth }))
 
 import { getDb } from '@/db'
-import { eventRsvps } from '@/db/schema'
+import { eventRsvps, eventTimeSlots } from '@/db/schema'
 import { createAdmin, createEvent, createMember, resetDb } from '@/test/db'
 import { GET } from './route'
 
@@ -48,10 +48,44 @@ describe('GET /admin/events/[id]/attendees.csv', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(await response.text()).toBe(
-      'Name,Email,RSVP time (Mountain)\r\n' +
-        `"Ana, Jr.",${ana.email},2026-10-01 06:00 MDT\r\n` +
-        `"' =HYPERLINK(""https://evil.example"")",${hostile.email},2026-10-02 06:00 MDT\r\n`,
+      'Name,Email,RSVP time (Mountain),Event start date,Event end date,Event times\r\n' +
+        `"Ana, Jr.",${ana.email},2026-10-01 06:00 MDT,2099-01-01,2099-01-01,\r\n` +
+        `"' =HYPERLINK(""https://evil.example"")",${hostile.email},2026-10-02 06:00 MDT,2099-01-01,2099-01-01,\r\n`,
     )
+  })
+
+  it('adds the dates and time slots of a multi-day event to every row', async () => {
+    const [admin, event, member] = await Promise.all([
+      createAdmin(),
+      createEvent({ date: '2099-10-10', endDate: '2099-10-12' }),
+      createMember(),
+    ])
+    await getDb()
+      .insert(eventTimeSlots)
+      .values([
+        { eventId: event.id, startDate: '2099-10-10', endDate: '2099-10-11', startTime: '18:00', endTime: '20:00', sortOrder: 0 },
+        { eventId: event.id, startDate: '2099-10-12', endDate: '2099-10-12', startTime: '19:00', endTime: '20:00', sortOrder: 1 },
+      ])
+    await getDb().insert(eventRsvps).values({ eventId: event.id, memberId: member.id, createdAt: new Date('2026-10-01T12:00:00Z') })
+    signInAs('admin', admin)
+
+    const lines = (await (await download(event.id)).text()).split('\r\n')
+    expect(lines[1]).toBe(
+      `${member.name},${member.email},2026-10-01T12:00:00.000Z,2099-10-10,2099-10-12,Oct 10–11 · 6 PM – 8 PM; Oct 12 · 7 PM – 8 PM`,
+    )
+  })
+
+  it('defuses a legacy free-text time that looks like a formula', async () => {
+    const [admin, event, member] = await Promise.all([
+      createAdmin(),
+      createEvent({ time: '=1+1' }),
+      createMember(),
+    ])
+    await getDb().insert(eventRsvps).values({ eventId: event.id, memberId: member.id })
+    signInAs('admin', admin)
+
+    const lines = (await (await download(event.id)).text()).split('\r\n')
+    expect(lines[1].endsWith(",2099-01-01,2099-01-01,'=1+1")).toBe(true)
   })
 
   it('refuses a signed-out visitor and a member session with 401', async () => {

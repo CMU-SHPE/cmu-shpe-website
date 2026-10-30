@@ -12,7 +12,7 @@ import {
   tableRowClass,
 } from '@/components/admin/styles'
 import { requireAdmin } from '@/lib/admin'
-import { formatEventDate } from '@/lib/event-dates'
+import { eventSchedule } from '@/lib/event-dates'
 import { recordId } from '@/lib/form-fields'
 import { findEvent, listAttendees } from '@/lib/rsvp'
 
@@ -35,6 +35,8 @@ export default async function AttendeesPage(props: { params: Promise<{ id: strin
   if (!event) notFound()
 
   const going = event.capacity === null ? `${attendees.length}` : `${attendees.length} of ${event.capacity}`
+  const { dates, times } = eventSchedule(event)
+  const oneLine = times.length <= 1
 
   return (
     <div className="space-y-6">
@@ -44,9 +46,16 @@ export default async function AttendeesPage(props: { params: Promise<{ id: strin
       <div>
         <h1 className={pageHeadingClass}>Attendees: {event.title}</h1>
         <p className={`mt-1 ${mutedTextClass}`}>
-          {formatEventDate(event.date)}
-          {event.time && ` · ${event.time}`} · {going} going
+          {dates}
+          {oneLine && times[0] && ` · ${times[0]}`} · {going} going
         </p>
+        {!oneLine && (
+          <ul className={mutedTextClass}>
+            {times.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <section className={`${cardClass} overflow-x-auto`}>

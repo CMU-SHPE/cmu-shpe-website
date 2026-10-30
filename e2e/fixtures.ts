@@ -1,5 +1,6 @@
 import { test as base, expect, type BrowserContext, type Page, type PlaywrightWorkerArgs } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { assertPreviewTarget } from './preview-guard'
 
 /**
  * The protection bypass secret is attached only to requests for the preview's own origin,
@@ -23,7 +24,14 @@ export async function installBypass(context: BrowserContext, baseURL: string | u
   )
 }
 
-export const test = base.extend({
+export const test = base.extend<{ previewGuard: void }>({
+  previewGuard: [
+    async ({ baseURL }, provide) => {
+      assertPreviewTarget(baseURL, 'run e2e')
+      await provide()
+    },
+    { auto: true },
+  ],
   context: async ({ context, baseURL }, provide) => {
     await installBypass(context, baseURL)
     await provide(context)
