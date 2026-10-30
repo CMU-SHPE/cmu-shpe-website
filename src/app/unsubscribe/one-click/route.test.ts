@@ -62,6 +62,7 @@ describe('POST /unsubscribe/one-click', () => {
     await POST(oneClick(token))
     const response = await POST(oneClick(token))
     expect(response.status).toBe(200)
+    expect(await response.text()).not.toContain('Unsubscribed')
     expect(db.state.log).toHaveLength(2)
     expect(db.state.subscriptions).toEqual([{ memberId: 7, topicId: 3 }])
   })
@@ -72,6 +73,15 @@ describe('POST /unsubscribe/one-click', () => {
     expect(response.status).toBe(200)
     expect(db.state.subscriptions).toEqual([])
     expect(db.state.log.map((row) => row.topicName)).toEqual(['Events', 'Jobs', 'Other'])
+  })
+
+  it('does not claim success when the member’s only topic of a partly deleted newsletter is gone', async () => {
+    db.state.selections = [{ newsletterId: 4, topicId: 2 }]
+    db.state.subscriptions = [{ memberId: 7, topicId: 3 }]
+    const response = await POST(oneClick(token))
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('No subscriptions were removed; this link’s topics are not on your list.\n')
+    expect(db.state.subscriptions).toEqual([{ memberId: 7, topicId: 3 }])
   })
 
   it.each([
