@@ -5,28 +5,22 @@
  * editing pre-fills the slots. The event is deleted in afterAll, which runs even when a step fails.
  *
  * Runs only when E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD (an admin on the preview) are set.
- * Every write is refused unless BASE_URL is a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.
+ * Each write first calls assertWriteTarget from preview-guard.ts, and the spec skips on a local server
+ * unless its database is declared disposable.
  */
 import type { Page } from '@playwright/test'
 import { expect, expectNoAxeViolations, installBypass, test } from './fixtures'
+import { assertWriteTarget, localWriteRefusal } from './preview-guard'
 
 const REQUIRED_ENV = ['E2E_ADMIN_EMAIL', 'E2E_ADMIN_PASSWORD'] as const
 const missingEnv = REQUIRED_ENV.filter((name) => !process.env[name]?.trim())
 
-const PREVIEW_HOST = /^cmu-shpe-website-[a-z0-9]+-shpecmu\.vercel\.app$/
 const EVENT_TITLE = `E2E Hackathon ${Date.now()}`
 
 const SLOTS = [
   { from: '2026-10-10', to: '2026-10-11', start: '18:00', end: '20:00' },
   { from: '2026-10-12', to: '2026-10-12', start: '19:00', end: '20:00' },
 ]
-
-function assertPreviewHost(baseURL: string | undefined, action: string) {
-  const host = baseURL ? new URL(baseURL).hostname : '(no BASE_URL)'
-  if (!PREVIEW_HOST.test(host)) {
-    throw new Error(`Refusing to ${action} on ${host}: this spec only writes to a cmu-shpe-website-<hash>-shpecmu.vercel.app preview.`)
-  }
-}
 
 async function open(page: Page, path: string) {
   const response = await page.goto(path)
@@ -50,13 +44,15 @@ let eventCreated = false
 
 test.describe('event date ranges', () => {
   test.skip(missingEnv.length > 0, `Set ${missingEnv.join(', ')} to run the event date range spec`)
+  test.skip(localWriteRefusal(process.env.BASE_URL) !== null, localWriteRefusal(process.env.BASE_URL) ?? '')
 
   test('an admin adds a three-day event with per-day times and /events shows them', async ({ page, baseURL }) => {
     test.setTimeout(180_000)
+    assertWriteTarget(baseURL, 'sign in as the admin')
     await signInAsAdmin(page)
 
     await test.step('an overlapping slot is refused next to the field, keeping what was typed', async () => {
-      assertPreviewHost(baseURL, 'submit the event form')
+      assertWriteTarget(baseURL, 'submit the event form')
       await open(page, '/admin/events')
       const form = addForm(page)
       await form.getByLabel('Title', { exact: true }).fill(EVENT_TITLE)
@@ -88,7 +84,7 @@ test.describe('event date ranges', () => {
     })
 
     await test.step('removing the overlapping slot lets the event save', async () => {
-      assertPreviewHost(baseURL, 'create the event')
+      assertWriteTarget(baseURL, 'create the event')
       const form = addForm(page)
       await form.getByRole('button', { name: 'Remove time slot 3', exact: true }).click()
       await expect(form.getByRole('group', { name: 'Time slot 2', exact: true }).getByLabel('From')).toBeFocused()
@@ -122,7 +118,7 @@ test.describe('event date ranges', () => {
 
   test.afterAll(async ({ browser, baseURL }) => {
     if (!eventCreated) return
-    assertPreviewHost(baseURL, 'delete the event')
+    assertWriteTarget(baseURL, 'delete the event')
     const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
     await installBypass(context, baseURL)
     const page = await context.newPage()
