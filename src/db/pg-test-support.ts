@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { getDb } from '@/db'
+import { resetDb } from '@/test/db'
 import { localTestDatabase } from '../../scripts/test-db-env'
 
 /** Only for *.pg.test files, which run against a throwaway database (scripts/test-db.sh); throws anywhere else. */
@@ -12,12 +13,6 @@ export async function query<T = Record<string, unknown>>(text: string, params: u
   return result.rows
 }
 
-export async function resetDatabase() {
-  await query(
-    'truncate members, newsletters, newsletter_topics, admins, newsletter_unsubscribes, site_settings restart identity cascade',
-  )
-}
-
 export type SeedMember = { email: string; confirmed?: boolean; topics?: number[]; name?: string }
 
 /**
@@ -25,7 +20,7 @@ export type SeedMember = { email: string; confirmed?: boolean; topics?: number[]
  * and the given members with their subscriptions. Member ids follow the array order from 1.
  */
 export async function seed(members: SeedMember[]) {
-  await resetDatabase()
+  await resetDb()
   await query("insert into admins (email, name, password_hash) values ('ada@example.org', 'Ada', 'h')")
   await query("insert into newsletter_topics (name, sort_order) values ('Events', 1), ('Jobs', 2), ('Other', 3)")
   await query(

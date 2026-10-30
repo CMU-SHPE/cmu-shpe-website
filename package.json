@@ -12,6 +12,7 @@
     "test:db": "bash scripts/test-db.sh",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
     "db:generate": "drizzle-kit generate",
+    "db:check": "bash scripts/check-migrations.sh",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/db/seed.ts",
     "db:reset-master": "tsx src/db/reset-master.ts"
