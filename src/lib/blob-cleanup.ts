@@ -18,8 +18,10 @@ export async function cleanupBlobs(...urls: (string | null | undefined)[]) {
 }
 
 /**
- * Runs the write that stores freshly uploaded blobs. If it throws or matches no row, the uploads are
- * deleted again: they carry a random suffix, so nothing else can point at them, in any environment.
+ * Runs the write that stores freshly uploaded blobs. When it matches no row, the uploads are deleted
+ * again: they carry a random suffix, so nothing else can point at them, in any environment. When it
+ * throws, the write may still have committed with only its response lost, so uploads that a row now
+ * shows are kept, and all of them are kept if that can't be checked.
  */
 export async function writeOrDiscardUploads(
   uploads: readonly string[],
@@ -29,12 +31,23 @@ export async function writeOrDiscardUploads(
   try {
     rows = await write()
   } catch (error) {
-    await discardUploads(uploads)
+    await discardUnreferencedUploads(uploads)
     throw error
   }
   if (rows.length > 0) return true
   await discardUploads(uploads)
   return false
+}
+
+async function discardUnreferencedUploads(uploads: readonly string[]) {
+  let referenced: Set<string>
+  try {
+    referenced = await findReferencedImageUrls(uploads)
+  } catch {
+    console.error(`Kept ${uploads.length} upload(s) after a failed save: could not check whether a row uses them`)
+    return
+  }
+  await discardUploads(uploads.filter((url) => !referenced.has(url)))
 }
 
 async function discardUploads(uploads: readonly string[]) {

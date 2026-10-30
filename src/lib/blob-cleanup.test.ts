@@ -83,4 +83,27 @@ describe('writeOrDiscardUploads', () => {
     ).rejects.toBe(failure)
     expect(mocks.del.mock.calls).toEqual([[photo]])
   })
+
+  it('keeps an upload the row now shows when the write threw after committing', async () => {
+    mocks.findReferencedImageUrls.mockResolvedValue(new Set([photo]))
+    const failure = new Error('response lost')
+    await expect(
+      writeOrDiscardUploads([photo, original], async () => {
+        throw failure
+      }),
+    ).rejects.toBe(failure)
+    expect(mocks.del.mock.calls).toEqual([[original]])
+  })
+
+  it('keeps every upload and rethrows the write error when the reference check also fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mocks.findReferencedImageUrls.mockRejectedValue(new Error('database down'))
+    const failure = new Error('response lost')
+    await expect(
+      writeOrDiscardUploads([photo], async () => {
+        throw failure
+      }),
+    ).rejects.toBe(failure)
+    expect(mocks.del).not.toHaveBeenCalled()
+  })
 })

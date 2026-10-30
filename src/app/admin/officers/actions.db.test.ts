@@ -25,6 +25,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/admin', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: '1', kind: 'admin' } })) }))
 vi.mock('@vercel/blob', () => ({ del: mocks.del, put: mocks.put }))
 
+import { writeOrDiscardUploads } from '@/lib/blob-cleanup'
 import { createOfficer, deleteAdvisor, deleteOfficer, updateAdvisor, updateOfficer } from './actions'
 
 const blobUrl = (name: string) => `https://store.public.blob.vercel-storage.com/${name}`
@@ -146,6 +147,22 @@ describe('updating a person', () => {
     expect(mocks.put).not.toHaveBeenCalled()
     const [row] = await getDb().select().from(officers).where(eq(officers.id, officer.id))
     expect(row.photoUrl).toBe(OWN)
+  })
+})
+
+describe('a write that commits but loses its response', () => {
+  it('keeps the upload the row now shows, and removes the one it does not', async () => {
+    const officer = await insertOfficer({ photoUrl: OWN })
+    const unused = blobUrl('officers/unused.jpg')
+
+    await expect(
+      writeOrDiscardUploads([NEW_PHOTO, unused], async () => {
+        await getDb().update(officers).set({ photoUrl: NEW_PHOTO }).where(eq(officers.id, officer.id))
+        throw new Error('response lost')
+      }),
+    ).rejects.toThrow('response lost')
+
+    expect(mocks.del.mock.calls).toEqual([[unused]])
   })
 })
 

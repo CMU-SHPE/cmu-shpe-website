@@ -23,6 +23,16 @@ describe('findReferencedImageUrls', () => {
     expect(await findReferencedImageUrls([...all, url('unused')])).toEqual(new Set(all))
   })
 
+  it('treats a copy with a query string or fragment as the same stored file', async () => {
+    await createSponsor({ logoUrl: `${url('a.png')}?v=1` })
+    await createSponsor({ logoOriginalUrl: `${url('b.png')}#top` })
+
+    expect(await findReferencedImageUrls([url('a.png'), url('b.png'), url('c.png')])).toEqual(
+      new Set([url('a.png'), url('b.png')]),
+    )
+    expect(await findReferencedImageUrls([`${url('a.png')}?v=2`])).toEqual(new Set([`${url('a.png')}?v=2`]))
+  })
+
   it('returns nothing for unreferenced URLs or an empty list', async () => {
     await createSponsor({ logoUrl: url('logo') })
     expect(await findReferencedImageUrls([url('other')])).toEqual(new Set())

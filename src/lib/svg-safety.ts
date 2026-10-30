@@ -12,6 +12,9 @@ const SCRIPTABLE_ELEMENTS = new Set([
   'listener',
 ])
 const SCRIPT_SCHEME = /(^|[^a-z0-9+.-])(javascript|vbscript|data):/
+// Anything looser can hide markup from this scanner inside a literal or declare default attributes.
+const ALLOWED_DOCTYPE =
+  /<!DOCTYPE\s+svg\s+PUBLIC\s+(?:"-\/\/W3C\/\/DTD SVG 1\.1\/\/EN"\s+"http:\/\/www\.w3\.org\/Graphics\/SVG\/1\.1\/DTD\/svg11\.dtd"|"-\/\/W3C\/\/DTD SVG 1\.0\/\/EN"\s+"http:\/\/www\.w3\.org\/TR\/2001\/REC-SVG-20010904\/DTD\/svg10\.dtd")\s*>/y
 const NAME_END = /[\s/>=]/
 const WHITESPACE = /\s/
 
@@ -89,6 +92,11 @@ function skipPast(text: string, from: number, terminator: string): number {
   return end === -1 ? -1 : end + terminator.length
 }
 
+// A browser honours the declared encoding, so other encodings can reveal markup this UTF-8 scan never saw.
+function declaresOnlyUtf8(declaration: string): boolean {
+  return !/encoding/i.test(declaration) || /\sencoding\s*=\s*(["'])utf-8\1/i.test(declaration)
+}
+
 /** Scans every tag of an SVG document; false if any part could run script or load another resource. */
 export function isSafeSvg(text: string): boolean {
   if (text.includes('\u0000')) return false
@@ -103,13 +111,14 @@ export function isSafeSvg(text: string): boolean {
     } else if (text.startsWith('<![CDATA[', open)) {
       index = skipPast(text, open + 9, ']]>')
     } else if (text.startsWith('<!', open)) {
-      index = skipPast(text, open + 2, '>')
-      // An internal DTD subset can declare entities that expand into script elements.
-      if (index !== -1 && /[[\]]|entity/i.test(text.slice(open, index))) return false
+      ALLOWED_DOCTYPE.lastIndex = open
+      if (!ALLOWED_DOCTYPE.test(text)) return false
+      index = ALLOWED_DOCTYPE.lastIndex
     } else if (text.startsWith('<?', open)) {
       // Only the XML declaration; xml-stylesheet can load XSLT that emits script.
       if (!/^<\?xml\s/.test(text.slice(open, open + 6))) return false
       index = skipPast(text, open + 2, '?>')
+      if (index !== -1 && !declaresOnlyUtf8(text.slice(open, index))) return false
     } else if (text.startsWith('</', open)) {
       const nameEnd = readName(text, open + 2)
       if (SCRIPTABLE_ELEMENTS.has(localName(text.slice(open + 2, nameEnd)))) return false
