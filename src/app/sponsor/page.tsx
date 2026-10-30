@@ -31,6 +31,7 @@ const errorMessages: Record<string, string> = {
   invalid:
     'Please check the fields — the name is required, the website must start with http:// or https://, and the description must be 1000 characters or fewer.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
+  svg: "This SVG contains scripts or links and can't be used. Export it as PNG or a plain SVG.",
   storage: "The logo couldn't be saved right now — please try again in a minute. Nothing was changed.",
   missing: 'Your sponsor access changed while you were editing, so nothing was saved. Check the form and try again.',
 }

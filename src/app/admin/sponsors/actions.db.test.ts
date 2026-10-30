@@ -19,7 +19,10 @@ vi.mock('next/navigation', () => ({
   },
 }))
 vi.mock('@/lib/admin', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: '1', kind: 'admin' } })) }))
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 
 import { deleteSponsor } from './actions'
 

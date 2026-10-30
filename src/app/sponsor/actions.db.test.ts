@@ -25,7 +25,10 @@ vi.mock('next/navigation', () => ({
     throw new mocks.Redirect(url)
   },
 }))
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 vi.mock('@/lib/uploads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/uploads')>()),
   uploadImage: mocks.uploadImage,

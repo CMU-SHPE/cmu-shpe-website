@@ -60,6 +60,22 @@ describe('uploadImage', () => {
     expect(blob.put).not.toHaveBeenCalled()
   })
 
+  it('refuses an SVG that could run script from its public URL, without calling Blob', async () => {
+    const svg = (body: string) =>
+      new File([`<svg xmlns="http://www.w3.org/2000/svg">${body}</svg>`], 'logo.svg', { type: 'image/svg+xml' })
+
+    await expect(uploadImage(svg('<script>alert(1)</script>'), 'sponsors')).resolves.toEqual({
+      ok: false,
+      reason: 'unsafe-svg',
+    })
+    expect(blob.put).not.toHaveBeenCalled()
+
+    await expect(uploadImage(svg('<path d="M0 0h1v1z"/>'), 'sponsors')).resolves.toEqual({
+      ok: true,
+      url: 'https://abc123.public.blob.vercel-storage.com/sponsors/logo.svg',
+    })
+  })
+
   it('reports storage as unavailable instead of throwing when Blob fails', async () => {
     blob.put.mockRejectedValueOnce(new Error('No token found'))
     await expect(uploadImage(makeFile('image/png', 10), 'sponsors')).resolves.toEqual({ ok: false, reason: 'unavailable' })
