@@ -87,6 +87,11 @@ export async function resolveUnsubscribeToken(token: unknown): Promise<Unsubscri
  * The token is the only credential, so the member and newsletter are looked up from it inside
  * the same statement that deletes. Deleting and logging in one statement makes a repeat, or two
  * racing clicks, remove and log each subscription once.
+ *
+ * A one-click request whose newsletter has no topics left (an admin deleted them all) removes
+ * every subscription instead: the mail provider has already told the member they are out, and
+ * removing nothing would leave them on the list. The page shows what it will remove first, so
+ * its "these" button never widens.
  */
 export async function unsubscribe(
   token: unknown,
@@ -98,6 +103,7 @@ export async function unsubscribe(
   if (!(await findRecipient(tokenHash))) return { ok: false }
 
   const everything = scope === 'all'
+  const everythingIfTopicsGone = source === 'one_click'
   const rows = await run<{ topic_name: string; created_at: Date | string }>(sql`
     with target as (
       select member_id, newsletter_id from newsletter_recipients where unsubscribe_token_hash = ${tokenHash}
@@ -109,6 +115,10 @@ export async function unsubscribe(
         and t.id = mts.topic_id
         and (
           ${everything}::boolean
+          or (
+            ${everythingIfTopicsGone}::boolean
+            and not exists (select 1 from newsletter_topic_selections s where s.newsletter_id = target.newsletter_id)
+          )
           or exists (
             select 1 from newsletter_topic_selections s
             where s.newsletter_id = target.newsletter_id and s.topic_id = mts.topic_id

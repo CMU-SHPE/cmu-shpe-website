@@ -22,6 +22,8 @@ import { createTopic, deleteTopic, moveTopic, updateTopic } from './actions'
 const errorMessages: Record<string, string> = {
   invalid: `Please check the fields — a topic needs a name of up to ${MAX_TOPIC_NAME_LENGTH} characters, and descriptions can be up to ${MAX_TOPIC_DESCRIPTION_LENGTH} characters.`,
   missing: 'That topic no longer exists.',
+  in_use:
+    'That topic can’t be deleted while a newsletter that uses it is still being sent. Open the newsletter, press Continue sending until it finishes, then delete the topic.',
 }
 
 function TopicFields({ topic }: { topic?: { name: string; description: string } }) {

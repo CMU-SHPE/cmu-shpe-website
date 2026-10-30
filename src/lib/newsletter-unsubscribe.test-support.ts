@@ -29,13 +29,14 @@ export function createFakeUnsubscribeDb() {
   function respond(text: string, params: unknown[]): unknown[] {
     if (text.includes('delete from member_topic_subscriptions')) {
       state.writes += 1
-      const [hash, everything, source] = params as [string, boolean, string]
+      const [hash, everything, everythingIfTopicsGone, source] = params as [string, boolean, boolean, string]
       const recipient = recipientFor(hash)
       if (!recipient) return []
+      const topicsGone = !state.selections.some((s) => s.newsletterId === recipient.newsletterId)
       const inScope = (topicId: number) =>
         state.selections.some((s) => s.newsletterId === recipient.newsletterId && s.topicId === topicId)
       const removed = state.subscriptions.filter(
-        (s) => s.memberId === recipient.memberId && (everything || inScope(s.topicId)),
+        (s) => s.memberId === recipient.memberId && (everything || (everythingIfTopicsGone && topicsGone) || inScope(s.topicId)),
       )
       state.subscriptions = state.subscriptions.filter((s) => !removed.includes(s))
       const createdAt = new Date('2026-10-26T18:30:00Z').toISOString()

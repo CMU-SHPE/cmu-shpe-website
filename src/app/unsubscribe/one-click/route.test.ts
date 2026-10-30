@@ -66,6 +66,14 @@ describe('POST /unsubscribe/one-click', () => {
     expect(db.state.subscriptions).toEqual([{ memberId: 7, topicId: 3 }])
   })
 
+  it('removes every subscription when all of the newsletter’s topics were deleted, rather than claiming success for nothing', async () => {
+    db.state.selections = []
+    const response = await POST(oneClick(token))
+    expect(response.status).toBe(200)
+    expect(db.state.subscriptions).toEqual([])
+    expect(db.state.log.map((row) => row.topicName)).toEqual(['Events', 'Jobs', 'Other'])
+  })
+
   it.each([
     ['missing', null],
     ['too short', 'abc'],

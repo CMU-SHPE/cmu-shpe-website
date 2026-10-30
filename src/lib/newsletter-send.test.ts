@@ -143,9 +143,9 @@ describe('startNewsletterSend', () => {
     await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: true, recipients: 3 })
     expect(fake.queries).toHaveLength(1)
     const sql = squash(fake.queries[0].sql)
-    expect(sql).toMatch(/^with claimed as \( update newsletters set status = 'sending'/)
-    expect(sql).toContain("where id = $9 and status = 'draft'")
-    expect(sql).toContain('select distinct m.id as member_id from claimed')
+    expect(sql).toMatch(/^with audience as \( select distinct m\.id as member_id from newsletter_topic_selections s/)
+    expect(sql).toMatch(/claimed as \( update newsletters set status = 'sending'/)
+    expect(sql).toMatch(/where id = \$\d+ and status = 'draft'/)
     expect(sql).toContain('m.email_confirmed_at is not null')
     expect(sql).toContain('insert into newsletter_recipients (newsletter_id, member_id, chunk)')
     expect(sql).toContain('((row_number() over (order by member_id) - 1) /')
@@ -158,17 +158,17 @@ describe('startNewsletterSend', () => {
     await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
     const sql = squash(fake.queries[0].sql)
     const filters = sql.match(/lower\(m\.email\) like \$\d+/g) ?? []
-    expect(filters).toHaveLength(2)
-    expect(sql).toMatch(/where s\.newsletter_id = \$\d+ and lower\(m\.email\) like \$\d+ \) where id/)
-    expect(sql).toMatch(/m\.email_confirmed_at is not null where lower\(m\.email\) like \$\d+ \), inserted/)
-    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(2)
+    expect(filters).toHaveLength(1)
+    expect(sql).toMatch(/where s\.newsletter_id = \$\d+ and lower\(m\.email\) like \$\d+ \), draft_state/)
+    expect(sql).toContain('recipient_count = (select count(*)::int from audience)')
+    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(1)
   })
 
   it('limits the audience when VERCEL_ENV is missing, failing safe', async () => {
     vi.stubEnv('VERCEL_ENV', undefined)
     fake.respond = () => [{ claimed: 1, recipients: 1 }]
     await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
-    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(2)
+    expect(fake.queries[0].params.filter((param) => param === '%@resend.dev')).toHaveLength(1)
   })
 
   it('leaves a production audience unfiltered', async () => {
@@ -182,13 +182,29 @@ describe('startNewsletterSend', () => {
   it('claims only the reviewed version when given the time it was reviewed', async () => {
     fake.respond = () => [{ claimed: 1, recipients: 1 }]
     await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot, new Date('2026-10-20T22:00:00.123Z'))
-    expect(squash(fake.queries[0].sql)).toMatch(/and date_trunc\('milliseconds', updated_at\) = \$\d+::timestamptz returning id/)
+    const sql = squash(fake.queries[0].sql)
+    expect(sql).toMatch(/and date_trunc\('milliseconds', updated_at\) = \$\d+::timestamptz returning id/)
+    expect(sql).toMatch(/date_trunc\('milliseconds', updated_at\) = \$\d+::timestamptz as reviewed/)
     expect(fake.queries[0].params).toContain('2026-10-20T22:00:00.123Z')
   })
 
-  it('reports nothing started when the draft was already claimed', async () => {
-    fake.respond = () => [{ claimed: 0, recipients: 0 }]
-    await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false })
+  const refused = { claimed: 0, recipients: 0, status: 'draft', complete: true, reviewed: true, has_topics: true, has_audience: true }
+
+  it.each([
+    ['not_draft', { status: 'sending' }],
+    ['incomplete', { complete: false, reviewed: false, has_topics: false, has_audience: false }],
+    ['changed', { reviewed: false, has_topics: false, has_audience: false }],
+    ['topics', { has_topics: false, has_audience: false }],
+    ['no_recipients', { has_audience: false }],
+    ['conflict', {}],
+  ])('reports nothing started, with reason %s, from what the claim saw', async (reason, row) => {
+    fake.respond = () => [{ ...refused, ...row }]
+    await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false, reason })
+  })
+
+  it('reports a newsletter that no longer exists as missing', async () => {
+    fake.respond = () => [{ ...refused, status: null, complete: null, reviewed: null, has_topics: false, has_audience: false }]
+    await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false, reason: 'missing' })
   })
 })
 
@@ -588,19 +604,18 @@ describe('processNewsletterSend retries and failures', () => {
 describe('startNewsletterSend SQL', () => {
   const snapshot = { mailingAddress: 'Addr', replyTo: null, siteUrl: 'https://shpe.example', fromAddress: 'from' }
 
-  it('refuses a blank subject or body and a draft without topics inside the claiming statement', async () => {
+  it('refuses a blank subject or body and a draft without an audience inside the claiming statement', async () => {
     fake.respond = () => [{ claimed: 1, recipients: 1 }]
     await startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)
     const sql = squash(fake.queries[0].sql)
     expect(sql).toContain("btrim(subject) <> '' and btrim(body) <> ''")
-    expect(sql).toContain('and exists (select 1 from newsletter_topic_selections where newsletter_id =')
-    expect(sql).toContain('count(distinct m.id)::int')
-    expect(sql).toMatch(/audience as \( select distinct m\.id as member_id from claimed join newsletter_topic_selections s on s\.newsletter_id = claimed\.id/)
+    expect(sql).toContain('and exists (select 1 from audience)')
+    expect(sql).toContain('from audience where exists (select 1 from claimed) returning 1')
   })
 
   it('treats a missing result row as not started', async () => {
     fake.respond = () => []
-    await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false })
+    await expect(startNewsletterSend(4, { id: 2, name: 'Ada' }, snapshot)).resolves.toEqual({ started: false, reason: 'missing' })
   })
 })
 

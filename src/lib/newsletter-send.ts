@@ -22,7 +22,9 @@ export type SendSnapshot = {
   fromAddress: string
 }
 
-export type StartResult = { started: true; recipients: number } | { started: false }
+export type StartRefusal = 'missing' | 'not_draft' | 'incomplete' | 'changed' | 'topics' | 'no_recipients' | 'conflict'
+
+export type StartResult = { started: true; recipients: number } | { started: false; reason: StartRefusal }
 
 export type ProcessResult =
   | { status: 'sent' }
@@ -89,11 +91,33 @@ export async function sendNewsletterTest(
   return 'id' in result.outcomes[0] ? { ok: true } : { ok: false, reason: result.outcomes[0].error }
 }
 
+type StartRow = {
+  claimed: number
+  recipients: number
+  status: 'draft' | 'sending' | 'sent' | null
+  complete: boolean | null
+  reviewed: boolean | null
+  has_topics: boolean
+  has_audience: boolean
+}
+
+/** Every check reads the snapshot the claim itself saw, so the reason given is why it failed. */
+function refusalReason(row: StartRow | undefined): StartRefusal {
+  if (!row?.status) return 'missing'
+  if (row.status !== 'draft') return 'not_draft'
+  if (!row.complete) return 'incomplete'
+  if (!row.reviewed) return 'changed'
+  if (!row.has_topics) return 'topics'
+  if (!row.has_audience) return 'no_recipients'
+  return 'conflict'
+}
+
 /**
  * Claims the draft and snapshots its recipients in one statement, so two admins pressing Send
  * can't both start it, and the list can't drift between counting and inserting. With
  * reviewedAt, an edit saved after the admin reviewed the draft makes the claim fail, so the
- * version sent is always the one confirmed.
+ * version sent is always the one confirmed. An empty audience also makes it fail, so a draft
+ * whose last subscriber just left stays a draft instead of being marked sent to nobody.
  */
 export async function startNewsletterSend(
   newsletterId: number,
@@ -101,10 +125,21 @@ export async function startNewsletterSend(
   snapshot: SendSnapshot,
   reviewedAt?: Date,
 ): Promise<StartResult> {
-  const reviewedVersion = reviewedAt ? sql`and date_trunc('milliseconds', updated_at) = ${reviewedAt.toISOString()}::timestamptz` : sql``
+  const reviewedVersion = reviewedAt ? sql`date_trunc('milliseconds', updated_at) = ${reviewedAt.toISOString()}::timestamptz` : sql`true`
   const audienceEmail = audienceEmailCondition(sql`m.email`)
-  const [row] = await run<{ claimed: number; recipients: number }>(sql`
-    with claimed as (
+  const [row] = await run<StartRow>(sql`
+    with audience as (
+      select distinct m.id as member_id
+      from newsletter_topic_selections s
+      join member_topic_subscriptions mts on mts.topic_id = s.topic_id
+      join members m on m.id = mts.member_id and m.email_confirmed_at is not null
+      where s.newsletter_id = ${newsletterId} and ${audienceEmail}
+    ),
+    draft_state as (
+      select status, btrim(subject) <> '' and btrim(body) <> '' as complete, ${reviewedVersion} as reviewed
+      from newsletters where id = ${newsletterId}
+    ),
+    claimed as (
       update newsletters set
         status = 'sending',
         send_started_at = now(),
@@ -120,38 +155,32 @@ export async function startNewsletterSend(
           from newsletter_topic_selections s join newsletter_topics t on t.id = s.topic_id
           where s.newsletter_id = ${newsletterId}
         ),
-        recipient_count = (
-          select count(distinct m.id)::int
-          from newsletter_topic_selections s
-          join member_topic_subscriptions mts on mts.topic_id = s.topic_id
-          join members m on m.id = mts.member_id and m.email_confirmed_at is not null
-          where s.newsletter_id = ${newsletterId} and ${audienceEmail}
-        )
+        recipient_count = (select count(*)::int from audience)
       where id = ${newsletterId}
         and status = 'draft'
         and btrim(subject) <> ''
         and btrim(body) <> ''
-        and exists (select 1 from newsletter_topic_selections where newsletter_id = ${newsletterId})
-        ${reviewedVersion}
+        and exists (select 1 from audience)
+        and ${reviewedVersion}
       returning id
-    ),
-    audience as (
-      select distinct m.id as member_id
-      from claimed
-      join newsletter_topic_selections s on s.newsletter_id = claimed.id
-      join member_topic_subscriptions mts on mts.topic_id = s.topic_id
-      join members m on m.id = mts.member_id and m.email_confirmed_at is not null
-      where ${audienceEmail}
     ),
     inserted as (
       insert into newsletter_recipients (newsletter_id, member_id, chunk)
       select ${newsletterId}::int, member_id, ((row_number() over (order by member_id) - 1) / ${CHUNK_SIZE}::int)::int
       from audience
+      where exists (select 1 from claimed)
       returning 1
     )
-    select (select count(*) from claimed)::int as claimed, (select count(*) from inserted)::int as recipients
+    select
+      (select count(*) from claimed)::int as claimed,
+      (select count(*) from inserted)::int as recipients,
+      (select status from draft_state) as status,
+      (select complete from draft_state) as complete,
+      (select reviewed from draft_state) as reviewed,
+      exists (select 1 from newsletter_topic_selections where newsletter_id = ${newsletterId}) as has_topics,
+      exists (select 1 from audience) as has_audience
   `)
-  return row && row.claimed > 0 ? { started: true, recipients: row.recipients } : { started: false }
+  return row && row.claimed > 0 ? { started: true, recipients: row.recipients } : { started: false, reason: refusalReason(row) }
 }
 
 type FrozenNewsletter = {

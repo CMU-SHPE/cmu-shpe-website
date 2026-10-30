@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     inserts: [] as Record<string, unknown>[],
     updates: [] as Record<string, unknown>[],
     affected: [{ id: 3 }] as { id: number }[],
+    existing: [] as { id: number }[],
   }
   const returning = async () => state.affected
   return {
@@ -34,6 +35,14 @@ const mocks = vi.hoisted(() => {
         state.calls.push('delete')
         return { where: () => ({ returning }) }
       },
+      select: () => ({
+        from: () => ({
+          where: async () => {
+            state.calls.push('select')
+            return state.existing
+          },
+        }),
+      }),
     },
     moveRow: vi.fn(async () => {
       state.calls.push('moveRow')
@@ -75,6 +84,7 @@ beforeEach(() => {
   mocks.state.inserts.length = 0
   mocks.state.updates.length = 0
   mocks.state.affected = [{ id: 3 }]
+  mocks.state.existing = []
   mocks.moveRow.mockClear()
 })
 
@@ -146,6 +156,12 @@ describe('deleteTopic', () => {
   it('reports a topic that was already deleted', async () => {
     mocks.state.affected = []
     expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?error=missing')
+  })
+
+  it('refuses to delete a topic a newsletter still being sent uses, and says why', async () => {
+    mocks.state.affected = []
+    mocks.state.existing = [{ id: 3 }]
+    expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?error=in_use')
   })
 })
 
