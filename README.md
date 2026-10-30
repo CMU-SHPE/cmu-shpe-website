@@ -172,7 +172,7 @@ to RSVP to events.
 - **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
   also removes their newsletter choices, newsletter send and unsubscribe records, RSVPs and
   pending email links. Any sponsor listing edits they made stay in that listing's history
-  under the name they had at the time, marked "(account deleted)".
+  under the name they had at the time, marked "(sponsor, account deleted)".
 - **Privacy Policy and Terms of Use** (`/privacy`, `/terms`) are linked from the footer
   and edited in place like other page text. They are required disclosures for member
   accounts: keep them accurate and never blank a section. New sign-ups record the
@@ -233,9 +233,11 @@ linked accounts; an account can be linked to one listing.
   The listing is always the one the signed-in account is linked to, decided on the server.
   Admins who open `/sponsor` see a preview where they can edit the page's text. Search
   engines are asked not to index it.
-- **Edit history:** every save that changes something records who made it (their name at
-  the time), when and which fields changed. Admins see it on the listing's **Details**
-  page, newest first. A deleted account's entries stay, marked "(account deleted)".
+- **Edit history:** every save that changes something, by a sponsor in the portal or an
+  officer on the admin **Sponsors** page, records who made it (their name at the time),
+  when and which fields changed. Admins see it on the listing's **Details** page, newest
+  first, as "Ana Ruiz (sponsor)" or "Jayden (officer)". A deleted account's entries stay,
+  marked "(sponsor, account deleted)" or "(officer, account deleted)".
 - **Receipts:** admins upload PDF receipts (title, date, file up to 4 MB, checked to really
   be a PDF) on the listing's **Details** page and can delete them. They are stored in the
   database, not in Vercel Blob, so they are never at a public URL. Only admins and the
@@ -273,6 +275,30 @@ columns and shows the new policy as soon as it deploys.
 
 The `sponsor.*` text keys are new, so the portal shows their defaults until an admin edits
 them; running `npm run db:seed` also stores them.
+
+### Production steps for the UI clarity release
+
+Do these in order, all *before* merging to `main`, because the new code reads and writes the
+new `sponsor_edits` columns and the policy should match what the site does once it deploys.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** apply the additive `sponsor_edits` change (the `sponsor_editor_kind` type, the
+   `editor_kind` and `admin_id` columns and the `sponsor_edits_one_editor` check, reviewed in
+   the release's numbered migration) to production with `npm run db:push`, as described under
+   [Preview databases](#preview-databases). Existing rows read as sponsor edits.
+3. **Policy text (required):** run `scripts/sql/2026-10-30-privacy-ui-clarity.sql` as
+   described under
+   [Releasing a change to the Privacy Policy or Terms](#releasing-a-change-to-the-privacy-policy-or-terms):
+   once without `-v commit=1`, check that every key shows `applied now` or `already new`,
+   then again with `-v commit=1`. It updates `privacy.use.items`, `privacy.retention.items`
+   and `privacy.choices.items`, then "Last updated", which only moves once all three hold the
+   new text. It expects the sponsor portal release's text: if any key shows `older`, commit
+   `2026-10-27-privacy-sponsor-portal.sql` first and run this one again. A key shown as
+   `changed elsewhere` was changed by an officer or another release and is left alone. A
+   changed section holds back the date (`held: section changed elsewhere`): after the COMMIT,
+   work this release's wording into it by hand on `/privacy`, then change **Last updated** by
+   hand, last. A later date is never moved backwards. Other releases may change these keys
+   too, so this script doesn't need to run last, but a later script must expect its text.
 
 ## Scripts
 
@@ -419,7 +445,8 @@ New default text in `src/db/seed-data/content.ts` never reaches production on it
 `db:seed` doesn't overwrite rows that already exist. Ship it with a SQL file in
 `scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`; for the
 sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
-committed first). Run it
+committed first; for the UI clarity release, `2026-10-30-privacy-ui-clarity.sql`, which needs
+the sponsor portal one committed first). Run it
 with the production connection string after the code deploys and before the first
 newsletter goes out. It backs the old rows up, only replaces text still matching the old
 default, and rolls back unless run with `-v commit=1`: run it once without, check the
