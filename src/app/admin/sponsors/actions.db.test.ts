@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => {
   return {
     Redirect,
     adminId: '1',
+    del: vi.fn<(url: string) => Promise<void>>(async () => {}),
+    put: vi.fn(async (pathname: string) => ({ url: `https://store.public.blob.vercel-storage.com/${pathname}` })),
     cleanupBlobs: vi.fn<(...urls: (string | null | undefined)[]) => Promise<void>>(async () => {}),
   }
 })
@@ -23,8 +25,12 @@ vi.mock('next/navigation', () => ({
     throw new mocks.Redirect(url)
   },
 }))
+vi.mock('@vercel/blob', () => ({ del: mocks.del, put: mocks.put }))
 vi.mock('@/lib/admin', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: mocks.adminId, kind: 'admin' } })) }))
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 
 import { deleteSponsor, updateSponsor } from './actions'
 
@@ -59,6 +65,8 @@ beforeEach(async () => {
   await resetDb()
   mocks.cleanupBlobs.mockClear()
   mocks.adminId = '1'
+  mocks.del.mockClear()
+  mocks.put.mockClear()
 })
 
 describe('deleteSponsor', () => {
@@ -99,6 +107,9 @@ describe('deleteSponsor', () => {
     expect(mocks.cleanupBlobs).not.toHaveBeenCalled()
   })
 })
+
+const OLD_LOGO = 'https://store.public.blob.vercel-storage.com/sponsors/old.png'
+const logoFile = () => new File([new Uint8Array(10)], 'new.png', { type: 'image/png' })
 
 function sponsorForm(listing: Sponsor, overrides: Record<string, string> = {}) {
   const form = new FormData()
@@ -213,22 +224,37 @@ describe('updateSponsor', () => {
     expect(await editLog()).toEqual([])
   })
 
-  it('saves nothing and reports it when the officer’s account is deleted mid-request, removing only the new logo', async () => {
-    const newLogo = 'https://blob.example/new.png'
-    const [officer, listing] = await Promise.all([
-      createAdmin(),
-      createSponsor({ name: 'Acme', logoUrl: 'https://blob.example/old.png' }),
-    ])
+  it('saves nothing and discards the fresh upload when the officer’s account is deleted mid-request', async () => {
+    const [officer, listing] = await Promise.all([createAdmin(), createSponsor({ name: 'Acme', logoUrl: OLD_LOGO })])
     mocks.adminId = String(officer.id)
     await getDb().delete(admins).where(eq(admins.id, officer.id))
 
-    const form = sponsorForm(listing, { name: 'Renamed', logoUrl: newLogo })
+    const form = sponsorForm(listing, { name: 'Renamed' })
+    form.set('logoFile', logoFile())
     expect(await redirectOf(updateSponsor(listing.id, form))).toBe('/admin/sponsors?error=not-saved')
 
     const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
     expect(row).toEqual(listing)
     expect(await editLog()).toEqual([])
-    expect(mocks.cleanupBlobs).toHaveBeenCalledWith(newLogo)
+    expect(mocks.put).toHaveBeenCalledTimes(1)
+    expect(mocks.del.mock.calls).toEqual([[(await mocks.put.mock.results[0].value).url]])
+    expect(mocks.cleanupBlobs).not.toHaveBeenCalled()
+  })
+
+  it('keeps the fresh upload, cleans up the old logo and logs it when the save succeeds', async () => {
+    const [officer, listing] = await Promise.all([createAdmin({ name: 'Jayden' }), createSponsor({ logoUrl: OLD_LOGO })])
+    mocks.adminId = String(officer.id)
+
+    const form = sponsorForm(listing)
+    form.set('logoFile', logoFile())
+    expect(await redirectOf(updateSponsor(listing.id, form))).toBe('/admin/sponsors?saved=1')
+
+    const { url } = await mocks.put.mock.results[0].value
+    const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+    expect(row.logoUrl).toBe(url)
+    expect((await editLog()).map((edit) => edit.fields)).toEqual([['logo']])
+    expect(mocks.del).not.toHaveBeenCalled()
+    expect(mocks.cleanupBlobs).toHaveBeenCalledWith(OLD_LOGO)
   })
 })
 

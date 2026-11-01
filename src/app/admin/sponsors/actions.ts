@@ -5,9 +5,16 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { members, sponsors } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { cleanupBlobs } from '@/lib/blob-cleanup'
+import { cleanupBlobs, writeOrDiscardUploads } from '@/lib/blob-cleanup'
 import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
-import { NO_UPLOAD, UPLOAD_FAILED, UPLOAD_UNAVAILABLE, resolveCroppedUpload } from '@/lib/crop-upload'
+import {
+  NO_UPLOAD,
+  UPLOAD_FAILED,
+  UPLOAD_UNAVAILABLE,
+  UPLOAD_UNSAFE_SVG,
+  newlyUploaded,
+  resolveCroppedUpload,
+} from '@/lib/crop-upload'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
 import { changedOfficerFields, officerListingEdit } from '@/lib/sponsor-portal'
@@ -23,7 +30,7 @@ async function resolveLogo(
   formData: FormData,
   logoPath: string | null,
   existing: CroppedImage | null,
-): Promise<CroppedImage> {
+): Promise<{ logo: CroppedImage; uploads: string[] }> {
   const uploaded = await resolveCroppedUpload({
     formData,
     names: LOGO_FIELD_NAMES,
@@ -32,10 +39,11 @@ async function resolveLogo(
   })
   if (uploaded === UPLOAD_FAILED) redirect('/admin/sponsors?error=upload')
   if (uploaded === UPLOAD_UNAVAILABLE) redirect('/admin/sponsors?error=storage')
-  if (uploaded !== NO_UPLOAD) return uploaded
+  if (uploaded === UPLOAD_UNSAFE_SVG) redirect('/admin/sponsors?error=svg')
+  if (uploaded !== NO_UPLOAD) return { logo: uploaded, uploads: newlyUploaded(uploaded, existing) }
 
-  if (existing?.imageUrl && logoPath === existing.imageUrl) return existing
-  return { imageUrl: logoPath, originalUrl: null, crop: null }
+  if (existing?.imageUrl && logoPath === existing.imageUrl) return { logo: existing, uploads: [] }
+  return { logo: { imageUrl: logoPath, originalUrl: null, crop: null }, uploads: [] }
 }
 
 export async function createSponsor(formData: FormData) {
@@ -45,14 +53,17 @@ export async function createSponsor(formData: FormData) {
   if (!parsed.success) redirect('/admin/sponsors?error=invalid')
 
   const { logoUrl, ...fields } = parsed.data
-  const logo = await resolveLogo(formData, logoUrl, null)
-  await getDb()
-    .insert(sponsors)
-    .values({
-      ...fields,
-      ...logoColumns(logo),
-      sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)),
-    })
+  const { logo, uploads } = await resolveLogo(formData, logoUrl, null)
+  await writeOrDiscardUploads(uploads, async () =>
+    getDb()
+      .insert(sponsors)
+      .values({
+        ...fields,
+        ...logoColumns(logo),
+        sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)),
+      })
+      .returning({ id: sponsors.id }),
+  )
 
   redirect('/admin/sponsors?saved=1')
 }
@@ -81,26 +92,25 @@ export async function updateSponsor(id: number, formData: FormData) {
 
   const existing = logoImage(row)
   const { logoUrl, ...fields } = parsed.data
-  const logo = await resolveLogo(formData, logoUrl, existing)
-  const tierChange =
-    fields.tier === row.tier
-      ? {}
-      : { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
-
-  const values = { ...fields, ...logoColumns(logo) }
-  const [updated] = await db.batch(
-    officerListingEdit(
-      db,
-      Number(session.user.id),
-      sponsorId.data,
-      { ...values, ...tierChange },
-      changedOfficerFields(row, values),
-    ),
-  )
-  if (updated.length === 0) {
-    await cleanupBlobs(...orphanedBlobs(logo, existing))
-    redirect('/admin/sponsors?error=not-saved')
-  }
+  const { logo, uploads } = await resolveLogo(formData, logoUrl, existing)
+  const saved = await writeOrDiscardUploads(uploads, async () => {
+    const tierChange =
+      fields.tier === row.tier
+        ? {}
+        : { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
+    const values = { ...fields, ...logoColumns(logo) }
+    const [updated] = await db.batch(
+      officerListingEdit(
+        db,
+        Number(session.user.id),
+        sponsorId.data,
+        { ...values, ...tierChange },
+        changedOfficerFields(row, values),
+      ),
+    )
+    return updated
+  })
+  if (!saved) redirect('/admin/sponsors?error=not-saved')
   await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/admin/sponsors?saved=1')
