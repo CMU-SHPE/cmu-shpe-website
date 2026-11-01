@@ -50,6 +50,12 @@ describe('Privacy Policy and Terms of Use text in production', () => {
     }
   })
 
+  it('gives every policy script its own date, so their order is never a tie', () => {
+    const dates = scripts.map(({ name }) => name.slice(0, 10))
+    const shared = scripts.filter(({ name }) => dates.indexOf(name.slice(0, 10)) !== dates.lastIndexOf(name.slice(0, 10)))
+    expect(shared.map(({ name }) => name), 'each scripts/sql/<date>-*.sql needs its own date').toEqual([])
+  })
+
   it('matches the content.ts defaults key for key', () => {
     const production = productionText()
     for (const [key, value] of policyDefaults) {

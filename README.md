@@ -327,8 +327,9 @@ Runs in `.github/workflows/ci.yml` on every push to `main` and every pull reques
 `npm test` also compares the Privacy Policy and Terms of Use defaults in
 `src/db/seed-data/content.ts` with what production should hold: the sections in
 `scripts/sql/policy-text-baseline.json` (never changed by a script) plus each
-`scripts/sql/<date>-*.sql` script's new text, in date order. Changing that text therefore
-needs a new script that updates production, which is run by hand.
+`scripts/sql/<date>-*.sql` script's new text, in date order, so each script needs its own
+date. Changing that text therefore needs a new script that updates production, which is
+run by hand.
 
 ### Database tests
 

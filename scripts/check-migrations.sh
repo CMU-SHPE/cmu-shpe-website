@@ -8,6 +8,15 @@ cd "$(dirname "$0")/.."
 SCRATCH="$(mktemp -d ./.migrations-check.XXXXXX)"
 trap 'rm -rf "$SCRATCH"' EXIT
 
+JOURNAL_TAGS="$(node -p "require('./drizzle/meta/_journal.json').entries.map((entry) => entry.tag).join('\\n')" | sort)"
+SQL_FILES="$(find drizzle -maxdepth 1 -name '*.sql' -printf '%f\n' | sed 's/\.sql$//' | sort)"
+if [ "$JOURNAL_TAGS" != "$SQL_FILES" ]; then
+  echo "drizzle/meta/_journal.json and drizzle/*.sql disagree:" >&2
+  comm -23 <(echo "$JOURNAL_TAGS") <(echo "$SQL_FILES") | sed 's/^/  in the journal, no .sql file: /' >&2
+  comm -13 <(echo "$JOURNAL_TAGS") <(echo "$SQL_FILES") | sed 's/^/  .sql file not in the journal: /' >&2
+  exit 1
+fi
+
 cp -R drizzle/. "$SCRATCH"
 # A rename makes drizzle-kit ask a question it can't get answered here: it crashes, writes nothing and still
 # exits 0. So only its own "No schema changes" counts as a pass, never the exit code or an empty diff.

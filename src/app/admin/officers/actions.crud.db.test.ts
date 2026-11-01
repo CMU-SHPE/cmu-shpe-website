@@ -23,7 +23,10 @@ vi.mock('next/navigation', () => ({
   },
 }))
 vi.mock('@/lib/admin', () => ({ requireAdmin: mocks.requireAdmin }))
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 
 import {
   createAdvisor,
