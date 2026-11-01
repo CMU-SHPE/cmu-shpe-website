@@ -98,7 +98,7 @@ export default function Navbar({
               </Link>
             ))}
             <Link
-              href="/contact"
+              href="/join"
               className="ml-4 bg-shpe-red hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-semibold transition-colors duration-200"
             >
               Join Us
@@ -151,7 +151,7 @@ export default function Navbar({
               </Link>
             ))}
             <Link
-              href="/contact"
+              href="/join"
               className="mt-2 block bg-shpe-red hover:bg-red-700 text-white px-3 py-2 rounded-md text-base font-semibold transition-colors duration-200 text-center"
               onClick={() => setIsOpen(false)}
             >

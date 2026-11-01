@@ -15,6 +15,9 @@ export class SchemaPushRefusedError extends Error {
   name = 'SchemaPushRefusedError'
 }
 
+// A port or a full URL would never equal DATABASE_URL's hostname, so the guard would always pass.
+const BARE_HOSTNAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i
+
 // Neon serves each endpoint on two hosts; the pooled one adds "-pooler" to the endpoint ID.
 function neonEndpointHost(host: string) {
   return host.trim().toLowerCase().replace(/^([^.]+)-pooler\./, '$1.')
@@ -28,6 +31,9 @@ export function previewDatabaseRefusal(env: Record<string, string | undefined>):
   const productionHost = env.PRODUCTION_DATABASE_HOST?.trim()
   if (!productionHost) {
     return 'PRODUCTION_DATABASE_HOST is not set for previews, so the preview database cannot be told apart from production'
+  }
+  if (!BARE_HOSTNAME.test(productionHost)) {
+    return 'PRODUCTION_DATABASE_HOST must be a bare hostname, with no scheme, credentials, port or path'
   }
   if (!env.DATABASE_URL || !URL.canParse(env.DATABASE_URL)) return 'DATABASE_URL is not a valid URL for this preview'
   const previewHost = new URL(env.DATABASE_URL).hostname

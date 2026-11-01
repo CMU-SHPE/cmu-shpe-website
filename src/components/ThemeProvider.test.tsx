@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import ThemeProvider, { useTheme } from './ThemeProvider'
 
@@ -59,5 +59,23 @@ describe('ThemeProvider', () => {
     expect(screen.getByTestId('theme')).toHaveTextContent('light')
     expect(localStorage.getItem('theme')).toBe('light')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('still flips the page theme when browser storage is blocked', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError')
+    })
+    render(
+      <ThemeProvider>
+        <ThemeConsumer />
+      </ThemeProvider>,
+    )
+    await screen.findByTestId('theme')
+
+    fireEvent.click(screen.getByText('toggle'))
+
+    expect(screen.getByTestId('theme')).toHaveTextContent('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    setItem.mockRestore()
   })
 })

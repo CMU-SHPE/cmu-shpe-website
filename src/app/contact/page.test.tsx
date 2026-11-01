@@ -64,6 +64,13 @@ describe('ContactForm', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/Too many messages/)
   })
 
+  it('stops typing at the limits the server enforces', () => {
+    render(<ContactForm email={contactEmail} subjects={subjects} />)
+    expect(screen.getByLabelText(/Full Name/)).toHaveAttribute('maxLength', '200')
+    expect(screen.getByLabelText(/Email Address/)).toHaveAttribute('maxLength', '320')
+    expect(screen.getByLabelText(/Message/)).toHaveAttribute('maxLength', '5000')
+  })
+
   it('renders duplicate subject options without React key collisions', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<ContactForm email={contactEmail} subjects={['Events', 'Events']} />)

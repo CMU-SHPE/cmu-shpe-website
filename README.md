@@ -69,8 +69,8 @@ locally: links in emails use `http://localhost:3000` under `npm run dev`, and a 
 
 Newsletters only reach `@resend.dev` test inboxes unless `VERCEL_ENV=production`. A
 `.env.local` pulled from Vercel's production environment (`vercel env pull`) contains
-`VERCEL_ENV=production`, which turns that guard off locally and would email real members;
-delete that line from `.env.local`.
+`VERCEL_ENV=production`, which turns that guard off locally and would email real members
+and let image cleanup delete files from the Blob store; delete that line from `.env.local`.
 
 ### First-time database setup
 
@@ -288,6 +288,7 @@ them; running `npm run db:seed` also stores them.
 | `npm run test:e2e` | Run the [Playwright](https://playwright.dev) smoke tests against a preview deployment (see [Testing](#testing)) |
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
+| `npm run db:check` | Fail if `src/db/schema.ts` has changes with no migration in `drizzle/` |
 | `npm run db:seed` | Seed the database with the site's content and the master admin |
 | `npm run db:reset-master` | Move the master account to `MASTER_EMAIL` and reset its password |
 
@@ -319,7 +320,16 @@ npm test
 ```
 
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
-(lint, test, build).
+(lint, test, build), alongside two more jobs that use no secrets: `db-tests` runs
+`npm run test:db`, and `migrations` runs `npm run db:check`, which fails if
+`src/db/schema.ts` has changes that no migration in `drizzle/` covers.
+
+`npm test` also compares the Privacy Policy and Terms of Use defaults in
+`src/db/seed-data/content.ts` with what production should hold: the sections in
+`scripts/sql/policy-text-baseline.json` (never changed by a script) plus each
+`scripts/sql/<date>-*.sql` script's new text, in date order, so each script needs its own
+date. Changing that text therefore needs a new script that updates production, which is
+run by hand.
 
 ### Database tests
 
@@ -343,22 +353,47 @@ e.g. `npm run test:db -- src/db/harness.db.test.ts`.
 
 ### Preview smoke tests
 
-`e2e/` holds Playwright tests for sign-up, the resend-confirmation and forgot-password
-forms (which must answer known and unknown addresses alike), broken confirmation and
-reset links, the signed-out redirects from `/account` and `/admin`, the Privacy and Terms
-links, and an axe WCAG 2.1 AA scan of each account page in light and dark mode. They run
-by hand against a **preview** deployment, never in CI and never against production: the
-config refuses any URL that isn't a Vercel preview or localhost. They create unconfirmed
-accounts for `delivered+…@resend.dev` (Resend's test inbox), which are deleted like any
-other unconfirmed account once they are 7 days old.
+`e2e/` holds Playwright tests that run by hand against a **preview** deployment or a local
+server, never in CI. They sign up accounts and send real email, so `e2e/preview-guard.ts`
+refuses to start on anything else, before any request reaches `BASE_URL`:
+
+- `localhost` and `127.0.0.1` run only the read-only tests by default. **A local server uses
+  whatever `DATABASE_URL` says, which can be production**, so every spec that writes skips
+  there and says why. Set `E2E_LOCAL_DATABASE_IS_DISPOSABLE=1` only when the local database
+  is one you can afford to lose; with production's connection string, it would create
+  records and send a newsletter on production.
+- `shpecmu.com`, `www.shpecmu.com` and the `cmu-shpe-website-git-main-shpecmu.vercel.app`
+  alias are refused outright, as is any host that isn't an
+  `https://cmu-shpe-website-…-shpecmu.vercel.app` deployment of this project.
+- Every other host, branch alias or deployment URL, is looked up in the Vercel API with
+  `VERCEL_TOKEN` before the first test, and refused unless Vercel says it is a preview
+  of `cmu-shpe-website`. Production deployment URLs look just like preview ones, so this
+  lookup is what tells them apart. No token, an error or an unknown host also refuses.
+
+The config, every spec (through `e2e/fixtures.ts`) and each write in the journey specs
+use that one check.
 
 ```bash
 npx playwright install chromium   # once
-BASE_URL=https://<preview>.vercel.app VERCEL_BYPASS=<protection bypass secret> npm run test:e2e
+BASE_URL=https://<preview>.vercel.app VERCEL_TOKEN=<token> VERCEL_BYPASS=<protection bypass secret> npm run test:e2e
 ```
 
+`VERCEL_TOKEN` is sent only to `api.vercel.com`, and only to read the deployment's target.
 `VERCEL_BYPASS` is only needed when the preview has Deployment Protection on; it is sent
-as `x-vercel-protection-bypass` to the preview's own origin only.
+as `x-vercel-protection-bypass` to the preview's own origin only. A spec whose own
+variables are missing skips instead of failing.
+
+On a local server, every spec here except `sponsor-portal.spec.ts` and the broken-link tests in
+`newsletters.spec.ts` also needs `E2E_LOCAL_DATABASE_IS_DISPOSABLE=1`.
+
+| Spec | Needs, besides `BASE_URL` | Creates or changes |
+| --- | --- | --- |
+| `members.spec.ts`: sign-up, the resend-confirmation and forgot-password forms (which must answer known and unknown addresses alike), broken confirmation and reset links, signed-out redirects from `/account` and `/admin`, the Privacy and Terms links, and axe WCAG 2.1 AA scans in light and dark mode | nothing | Unconfirmed accounts for `delivered+…@resend.dev` (Resend's test inbox), and their confirmation and reset emails. Like any unconfirmed account, they are deleted by a later sign-up once they are 7 days old. |
+| `newsletters.spec.ts`: unsubscribe links (below) | `E2E_UNSUBSCRIBE_TOKEN` for the working-link tests | Nothing without the token. With it, unsubscribes that token's account from all of its topics. |
+| `sponsor-portal.spec.ts`: signed-out visitors are sent to `/login` from `/sponsor` and `/admin/sponsors/1`, and get no receipt PDF or attendee CSV | nothing | Nothing; read-only. |
+| `newsletter-journey.spec.ts`: an admin adds a topic, a member signs up, confirms by email and opts in, a real newsletter goes to that topic, and the member unsubscribes on the page and by one-click POST | `RESEND_API_KEY` (read-only, to fetch the emails; sent only to `api.resend.com`), `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates a topic, a confirmed member and a newsletter, and sends that newsletter (only `@resend.dev` inboxes receive it off production). The topic and the member are deleted at the end; the newsletter row stays, and its delivery records go with the member. If Site settings has no mailing address, it fills one in and leaves it. |
+| `sponsor-journey.spec.ts`: two members sign up and confirm, the admin links one to a new sponsor listing and uploads a receipt, the sponsor edits the listing and downloads the receipt, the other member is kept out, and an RSVP fills and frees a capacity-1 event before the admin exports its attendees | `RESEND_API_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates two confirmed members, a sponsor listing with an edit-history entry and a 3.9 MB receipt PDF, and an event with RSVPs. Cleanup deletes the listing (its receipts and history go with it), the event (with its RSVPs) and both members, and fails the run listing anything it couldn't remove. The receipt file itself stays in Blob storage. |
+| `event-dates.spec.ts`: an admin adds a three-day event with per-day time slots, an overlapping slot is refused next to the field without losing what was typed, `/events` shows the date range and one line per slot, and editing pre-fills them | `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates one event, which appears under Past events on `/events` because its dates are fixed in October 2026. Cleanup deletes it, with its time slots. |
 
 `e2e/newsletters.spec.ts` checks unsubscribe links. Without any setup it checks that
 malformed and unknown links show the "This link doesn't work" page, that one-click POSTs
@@ -387,7 +422,7 @@ A run unsubscribes that account, so each run needs a fresh token (or resubscribe
 account from `/account` first).
 
 ```bash
-E2E_UNSUBSCRIBE_TOKEN=<token> BASE_URL=https://<preview>.vercel.app npm run test:e2e
+E2E_UNSUBSCRIBE_TOKEN=<token> BASE_URL=https://<preview>.vercel.app VERCEL_TOKEN=<token> npm run test:e2e
 ```
 
 ## Deployment
@@ -395,7 +430,7 @@ E2E_UNSUBSCRIBE_TOKEN=<token> BASE_URL=https://<preview>.vercel.app npm run test
 The site is deployed on Vercel, connected to this GitHub repository: every push to
 `main` deploys to production, and every pull request gets its own preview URL. The
 custom domain `shpecmu.com` is configured in the Vercel project settings rather than a
-`CNAME` file. `.github/workflows/ci.yml` only runs checks (lint/test/build) — it does
+`CNAME` file. `.github/workflows/ci.yml` only runs checks (lint, tests, database tests, migrations) — it does
 not deploy anything.
 
 The Vercel project needs `DATABASE_URL`, `AUTH_SECRET`, `BLOB_READ_WRITE_TOKEN`,

@@ -30,8 +30,12 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light'
     setTheme(next)
-    localStorage.setItem('theme', next)
     document.documentElement.classList.toggle('dark', next === 'dark')
+    try {
+      localStorage.setItem('theme', next)
+    } catch {
+      // Blocked storage only means the choice isn't remembered for the next visit.
+    }
   }
 
   return (

@@ -15,7 +15,13 @@ import {
   sendableNewsletterSchema,
   type NewsletterDraft,
 } from '@/lib/newsletter-admin'
-import { loadSendSnapshot, processNewsletterSend, sendNewsletterTest, startNewsletterSend } from '@/lib/newsletter-send'
+import {
+  loadSendSnapshot,
+  processNewsletterSend,
+  sendNewsletterTest,
+  startNewsletterSend,
+  type StartRefusal,
+} from '@/lib/newsletter-send'
 import { countExistingTopics } from '@/lib/newsletter-topics'
 
 const LIST = '/admin/newsletters'
@@ -139,6 +145,25 @@ export async function reviewNewsletter(id: number | null, formData: FormData) {
   redirect(`${LIST}/${saved.id}/send`)
 }
 
+async function refusedSendPath(newsletterId: number, reason: StartRefusal): Promise<string> {
+  const confirmPath = `${LIST}/${newsletterId}/send`
+  switch (reason) {
+    case 'missing':
+      return `${LIST}?error=missing`
+    case 'changed':
+    case 'no_recipients':
+      return `${confirmPath}?error=${reason}`
+    case 'not_draft':
+    case 'incomplete':
+    case 'topics':
+      return `${LIST}/${newsletterId}?error=${reason}`
+    case 'conflict': {
+      const now = await getNewsletter(newsletterId)
+      return now?.status === 'draft' ? `${confirmPath}?error=changed` : `${LIST}/${newsletterId}?error=not_draft`
+    }
+  }
+}
+
 const expectedCount = z.string().regex(/^\d{1,9}$/).transform(Number)
 const reviewedVersion = z.iso.datetime().transform((value) => new Date(value))
 
@@ -171,10 +196,7 @@ export async function sendNewsletter(id: number, formData: FormData) {
   const adminId = adminIdOf(admin)
   const name = (await getAdminName(adminId)) ?? admin.user.name ?? 'An admin'
   const started = await startNewsletterSend(newsletterId, { id: adminId, name }, ready.snapshot, reviewed.data)
-  if (!started.started) {
-    const now = await getNewsletter(newsletterId)
-    redirect(now?.status === 'draft' ? `${confirmPath}?error=changed` : `${LIST}/${newsletterId}?error=not_draft`)
-  }
+  if (!started.started) redirect(await refusedSendPath(newsletterId, started.reason))
 
   const result = await processNewsletterSend(newsletterId)
   redirect(`${LIST}/${newsletterId}?${result.status === 'sent' ? 'sent=1' : `progress=${'reason' in result ? result.reason : 'busy'}`}`)

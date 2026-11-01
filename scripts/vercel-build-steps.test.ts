@@ -86,6 +86,16 @@ describe('previewDatabaseRefusal', () => {
     expect(previewDatabaseRefusal({ ...PREVIEW, PRODUCTION_DATABASE_HOST: host })).toMatch(/PRODUCTION_DATABASE_HOST/)
   })
 
+  it.each([
+    ['a port', `${PRODUCTION_HOST}:5432`],
+    ['a full URL', `postgresql://u:p@${PRODUCTION_HOST}/neondb`],
+    ['a path', `${PRODUCTION_HOST}/neondb`],
+    ['no domain', 'ep-prod-123456'],
+  ])('fails closed when PRODUCTION_DATABASE_HOST has %s', (_, host) => {
+    const env = { ...PREVIEW, PRODUCTION_DATABASE_HOST: host }
+    expect(previewDatabaseRefusal(env)).toMatch(/bare hostname/)
+  })
+
   it.each([[undefined], [''], ['not a url']])('refuses a DATABASE_URL of %j', (databaseUrl) => {
     expect(previewDatabaseRefusal({ ...PREVIEW, DATABASE_URL: databaseUrl })).toMatch(/DATABASE_URL/)
   })

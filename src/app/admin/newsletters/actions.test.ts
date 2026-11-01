@@ -287,7 +287,7 @@ describe('sendNewsletter', () => {
       () =>
         mocks.startNewsletterSend.mockImplementation(async () => {
           mocks.state.newsletter = { ...mocks.state.newsletter, status: 'sending' }
-          return { started: false }
+          return { started: false, reason: 'conflict' }
         }),
       undefined,
       '/admin/newsletters/4?error=not_draft',
@@ -306,8 +306,21 @@ describe('sendNewsletter', () => {
   })
 
   it('reports an edit that lands between the checks and the claim as a change, not as already sent', async () => {
-    mocks.startNewsletterSend.mockResolvedValue({ started: false })
+    mocks.startNewsletterSend.mockResolvedValue({ started: false, reason: 'conflict' })
     expect(await redirectOf(sendNewsletter(4, confirmed()))).toBe('/admin/newsletters/4/send?error=changed')
+    expect(mocks.processNewsletterSend).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['missing', '/admin/newsletters?error=missing'],
+    ['not_draft', '/admin/newsletters/4?error=not_draft'],
+    ['incomplete', '/admin/newsletters/4?error=incomplete'],
+    ['changed', '/admin/newsletters/4/send?error=changed'],
+    ['topics', '/admin/newsletters/4?error=topics'],
+    ['no_recipients', '/admin/newsletters/4/send?error=no_recipients'],
+  ])('tells the admin the claim’s own reason when it refuses with %s', async (reason, url) => {
+    mocks.startNewsletterSend.mockResolvedValue({ started: false, reason })
+    expect(await redirectOf(sendNewsletter(4, confirmed()))).toBe(url)
     expect(mocks.processNewsletterSend).not.toHaveBeenCalled()
   })
 

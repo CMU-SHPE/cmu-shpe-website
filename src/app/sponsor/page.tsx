@@ -16,7 +16,7 @@ import {
 } from '@/components/admin/styles'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { eventSchedule, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { getEvents, getSiteContentWithDefaults } from '@/lib/queries'
 import { type RsvpState, getRsvpStates, rsvpCounts } from '@/lib/rsvp'
 import { requireSponsor } from '@/lib/sponsor-portal'
@@ -31,6 +31,7 @@ const errorMessages: Record<string, string> = {
   invalid:
     'Please check the fields — the name is required, the website must start with http:// or https://, and the description must be 1000 characters or fewer.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
+  svg: "This SVG contains scripts or links and can't be used. Export it as PNG or a plain SVG.",
   storage: "The logo couldn't be saved right now — please try again in a minute. Nothing was changed.",
   missing: 'Your sponsor access changed while you were editing, so nothing was saved. Check the form and try again.',
 }
@@ -151,28 +152,38 @@ export default async function SponsorPortalPage(props: {
             />
           ) : (
             <ul className="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
-              {upcoming.map((event) => (
-                <li key={event.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <h3 className="font-medium text-gray-900 dark:text-white">{event.title}</h3>
-                    <p className={mutedTextClass}>
-                      <time dateTime={event.date}>{formatEventDate(event.date)}</time>
-                      {event.time && ` · ${event.time}`}
-                    </p>
-                    <p className={`flex items-center gap-1 ${mutedTextClass}`}>
-                      <span aria-hidden="true">
-                        <LocationIcon className="h-4 w-4 shrink-0" />
-                      </span>
-                      {event.location}
-                    </p>
-                  </div>
-                  <EventRsvp
-                    capacity={event.capacity}
-                    taken={counts.get(event.id) ?? 0}
-                    rsvp={memberId ? { eventId: event.id, state: states.get(event.id) ?? 'open' } : null}
-                  />
-                </li>
-              ))}
+              {upcoming.map((event) => {
+                const schedule = eventSchedule(event)
+                return (
+                  <li key={event.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <h3 className="font-medium text-gray-900 dark:text-white">{event.title}</h3>
+                      <p className={mutedTextClass}>
+                        {event.endDate ? schedule.dates : <time dateTime={event.date}>{schedule.dates}</time>}
+                        {schedule.times.length === 1 && ` · ${schedule.times[0]}`}
+                      </p>
+                      {schedule.times.length > 1 && (
+                        <ul className={mutedTextClass}>
+                          {schedule.times.map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className={`flex items-center gap-1 ${mutedTextClass}`}>
+                        <span aria-hidden="true">
+                          <LocationIcon className="h-4 w-4 shrink-0" />
+                        </span>
+                        {event.location}
+                      </p>
+                    </div>
+                    <EventRsvp
+                      capacity={event.capacity}
+                      taken={counts.get(event.id) ?? 0}
+                      rsvp={memberId ? { eventId: event.id, state: states.get(event.id) ?? 'open' } : null}
+                    />
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>

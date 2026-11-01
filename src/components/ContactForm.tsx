@@ -58,6 +58,7 @@ export default function ContactForm({ email: contactEmail, subjects }: { email: 
           id="name"
           type="text"
           required
+          maxLength={200}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Jane Doe"
@@ -73,6 +74,7 @@ export default function ContactForm({ email: contactEmail, subjects }: { email: 
           id="email"
           type="email"
           required
+          maxLength={320}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="jane@example.com"
@@ -105,6 +107,7 @@ export default function ContactForm({ email: contactEmail, subjects }: { email: 
         <textarea
           id="message"
           required
+          maxLength={5000}
           rows={5}
           value={message}
           onChange={(e) => setMessage(e.target.value)}

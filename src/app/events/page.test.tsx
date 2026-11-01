@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
-import type { ClubEvent } from '@/db/schema'
+import type { EventWithSlots } from '@/lib/queries'
 
 const mocks = vi.hoisted(() => ({
   currentAdmin: vi.fn(),
   currentMember: vi.fn(),
   getRsvpStates: vi.fn(),
   rsvpCounts: vi.fn(),
-  events: [] as ClubEvent[],
+  events: [] as EventWithSlots[],
 }))
 
 vi.mock('@/lib/admin', () => ({ currentAdmin: mocks.currentAdmin }))
@@ -31,7 +31,7 @@ vi.mock('@/components/rsvp/rsvp-button', () => ({
 
 import Events from './page'
 
-function event(id: number, overrides: Partial<ClubEvent> = {}): ClubEvent {
+function event(id: number, overrides: Partial<EventWithSlots> = {}): EventWithSlots {
   return {
     id,
     title: `Event ${id}`,
@@ -39,9 +39,11 @@ function event(id: number, overrides: Partial<ClubEvent> = {}): ClubEvent {
     location: 'Room 1',
     type: 'Meeting',
     date: '2099-01-01',
+    endDate: null,
     time: null,
     capacity: null,
     createdAt: new Date(),
+    slots: [],
     ...overrides,
   }
 }
