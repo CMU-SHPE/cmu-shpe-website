@@ -1,5 +1,5 @@
 import { cardClass, sectionHeadingClass } from '@/components/admin/styles'
-import { formatEventDate } from '@/lib/event-dates'
+import { eventSchedule } from '@/lib/event-dates'
 import { listMyRsvps } from '@/lib/rsvp'
 import MyRsvpList from './my-rsvp-list'
 
@@ -15,12 +15,17 @@ export default async function MyRsvps({ memberId }: { memberId: number }) {
       </h2>
       <MyRsvpList
         headingId={HEADING_ID}
-        rsvps={rsvps.map((rsvp) => ({
-          eventId: rsvp.eventId,
-          title: rsvp.title,
-          when: rsvp.time ? `${formatEventDate(rsvp.date)} · ${rsvp.time}` : formatEventDate(rsvp.date),
-          location: rsvp.location,
-        }))}
+        rsvps={rsvps.map((rsvp) => {
+          const { dates, times } = eventSchedule(rsvp)
+          const oneLine = times.length <= 1
+          return {
+            eventId: rsvp.eventId,
+            title: rsvp.title,
+            when: oneLine ? [dates, ...times].join(' · ') : dates,
+            times: oneLine ? [] : times,
+            location: rsvp.location,
+          }
+        })}
       />
     </section>
   )

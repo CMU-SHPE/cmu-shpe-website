@@ -2,9 +2,12 @@ import { and, asc, count, eq, gte, inArray, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { eventRsvps, events, members } from '@/db/schema'
 import { todayInDenver } from '@/lib/event-dates'
+import { getEventTimeSlots } from '@/lib/queries'
 
 export type RsvpOutcome = 'going' | 'full' | 'closed' | 'missing'
 export type RsvpState = 'going' | 'open' | 'full'
+
+const lastDay = sql<string>`coalesce(${events.endDate}, ${events.date})`
 
 type Standing = { exists: boolean; upcoming: boolean; going: boolean; full: boolean; confirmed: boolean }
 
@@ -36,14 +39,16 @@ export async function rsvp(memberId: number, eventId: number, now = new Date()):
       from events e
       join members m on m.id = ${memberId} and m.email_confirmed_at is not null
       where e.id = ${eventId}
-        and e.date >= ${today}::date
+        and coalesce(e.end_date, e.date) >= ${today}::date
         and (e.capacity is null or (select count(*) from event_rsvps r where r.event_id = e.id) < e.capacity)
       on conflict (event_id, member_id) do nothing
       returning id`),
     db.execute<Standing>(sql`
       select
         exists (select 1 from events where id = ${eventId}) as "exists",
-        exists (select 1 from events where id = ${eventId} and date >= ${today}::date) as "upcoming",
+        exists (
+          select 1 from events where id = ${eventId} and coalesce(end_date, date) >= ${today}::date
+        ) as "upcoming",
         exists (select 1 from event_rsvps where event_id = ${eventId} and member_id = ${memberId}) as "going",
         exists (
           select 1 from events e
@@ -71,7 +76,7 @@ export async function cancelRsvp(memberId: number, eventId: number, now = new Da
           getDb()
             .select({ id: events.id })
             .from(events)
-            .where(and(eq(events.id, eventId), gte(events.date, today))),
+            .where(and(eq(events.id, eventId), gte(lastDay, today))),
         ),
       ),
     )
@@ -101,18 +106,21 @@ export async function getRsvpStates(memberId: number, eventIds: number[]): Promi
 }
 
 export async function listMyRsvps(memberId: number, now = new Date()) {
-  return getDb()
+  const rows = await getDb()
     .select({
       eventId: events.id,
       title: events.title,
       date: events.date,
+      endDate: events.endDate,
       time: events.time,
       location: events.location,
     })
     .from(eventRsvps)
     .innerJoin(events, eq(events.id, eventRsvps.eventId))
-    .where(and(eq(eventRsvps.memberId, memberId), gte(events.date, todayInDenver(now))))
+    .where(and(eq(eventRsvps.memberId, memberId), gte(lastDay, todayInDenver(now))))
     .orderBy(asc(events.date), asc(events.id))
+  const slots = await getEventTimeSlots(rows.map((row) => row.eventId))
+  return rows.map((row) => ({ ...row, slots: slots.get(row.eventId) ?? [] }))
 }
 
 export async function rsvpCounts(eventIds?: number[]): Promise<Map<number, number>> {
@@ -127,11 +135,20 @@ export async function rsvpCounts(eventIds?: number[]): Promise<Map<number, numbe
 
 export async function findEvent(eventId: number) {
   const [event] = await getDb()
-    .select({ id: events.id, title: events.title, date: events.date, time: events.time, capacity: events.capacity })
+    .select({
+      id: events.id,
+      title: events.title,
+      date: events.date,
+      endDate: events.endDate,
+      time: events.time,
+      capacity: events.capacity,
+    })
     .from(events)
     .where(eq(events.id, eventId))
     .limit(1)
-  return event ?? null
+  if (!event) return null
+  const slots = await getEventTimeSlots([event.id])
+  return { ...event, slots: slots.get(event.id) ?? [] }
 }
 
 export async function listAttendees(eventId: number) {

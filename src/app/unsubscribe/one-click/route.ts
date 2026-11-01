@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const result = await unsubscribe(token, 'these', 'one_click')
   if (!result.ok) return reply(404, 'Unknown unsubscribe link.\n')
-  return reply(200, 'Unsubscribed.\n')
+  return reply(200, result.removed.length > 0 ? 'Unsubscribed.\n' : 'No subscriptions were removed; this link’s topics are not on your list.\n')
 }
 
 // Link scanners and people opening the URL send GET, which must never unsubscribe anyone.

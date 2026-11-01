@@ -1,5 +1,6 @@
 import { currentAdmin } from '@/lib/admin'
 import { toCsv } from '@/lib/csv'
+import { eventSchedule, lastEventDay } from '@/lib/event-dates'
 import { recordId } from '@/lib/form-fields'
 import { findEvent, listAttendees } from '@/lib/rsvp'
 
@@ -16,9 +17,17 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const [event, attendees] = await Promise.all([findEvent(id.data), listAttendees(id.data)])
   if (!event) return new Response('Not found', { status: 404, headers: PRIVATE_HEADERS })
 
+  const times = eventSchedule(event).times.join('; ')
   const csv = toCsv([
-    ['Name', 'Email', 'RSVP time (UTC)'],
-    ...attendees.map((attendee) => [attendee.name, attendee.email, attendee.rsvpAt.toISOString()]),
+    ['Name', 'Email', 'RSVP time (UTC)', 'Event start date', 'Event end date', 'Event times'],
+    ...attendees.map((attendee) => [
+      attendee.name,
+      attendee.email,
+      attendee.rsvpAt.toISOString(),
+      event.date,
+      lastEventDay(event),
+      times,
+    ]),
   ])
   return new Response(csv, {
     headers: {

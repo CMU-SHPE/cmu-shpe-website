@@ -1,7 +1,10 @@
 import { asc, inArray } from 'drizzle-orm'
 import { getDb } from '@/db'
 import {
+  type ClubEvent,
+  type EventTimeSlot,
   advisors,
+  eventTimeSlots,
   events,
   homePillars,
   homeStats,
@@ -73,8 +76,24 @@ export async function getAdvisors() {
   return getDb().select().from(advisors).orderBy(asc(advisors.sortOrder), asc(advisors.id))
 }
 
-export async function getEvents() {
-  return getDb().select().from(events).orderBy(asc(events.date), asc(events.id))
+export type EventWithSlots = ClubEvent & { slots: EventTimeSlot[] }
+
+export async function getEventTimeSlots(eventIds: number[]): Promise<Map<number, EventTimeSlot[]>> {
+  const slots = new Map<number, EventTimeSlot[]>()
+  if (eventIds.length === 0) return slots
+  const rows = await getDb()
+    .select()
+    .from(eventTimeSlots)
+    .where(inArray(eventTimeSlots.eventId, eventIds))
+    .orderBy(asc(eventTimeSlots.sortOrder), asc(eventTimeSlots.id))
+  for (const row of rows) slots.set(row.eventId, [...(slots.get(row.eventId) ?? []), row])
+  return slots
+}
+
+export async function getEvents(): Promise<EventWithSlots[]> {
+  const rows = await getDb().select().from(events).orderBy(asc(events.date), asc(events.id))
+  const slots = await getEventTimeSlots(rows.map((event) => event.id))
+  return rows.map((event) => ({ ...event, slots: slots.get(event.id) ?? [] }))
 }
 
 export async function getHomeStats() {

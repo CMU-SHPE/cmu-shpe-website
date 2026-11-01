@@ -1,5 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { formatEventDate, isRealDate, splitEvents, todayInDenver } from './event-dates'
+import {
+  addDays,
+  eventSchedule,
+  formatClockTime,
+  formatEventDate,
+  formatEventDateRange,
+  formatTimeSlot,
+  isRealDate,
+  splitEvents,
+  todayInDenver,
+} from './event-dates'
 
 describe('todayInDenver', () => {
   it('returns the Denver calendar date, not the UTC one, on a UTC evening', () => {
@@ -70,5 +80,114 @@ describe('splitEvents', () => {
 
   it('handles no events', () => {
     expect(splitEvents([], '2026-04-15')).toEqual({ upcoming: [], past: [] })
+  })
+})
+
+describe('splitEvents with multi-day events', () => {
+  const events = [
+    { id: 1, date: '2026-10-10', endDate: '2026-10-12' },
+    { id: 2, date: '2026-10-11', endDate: null },
+    { id: 3, date: '2026-10-08', endDate: '2026-10-10' },
+  ]
+
+  it('keeps an event upcoming through its last day and sorts by its first day', () => {
+    expect(splitEvents(events, '2026-10-11').upcoming.map((event) => event.id)).toEqual([1, 2])
+    expect(splitEvents(events, '2026-10-12').upcoming.map((event) => event.id)).toEqual([1])
+  })
+
+  it('moves it to past the day after its last day', () => {
+    expect(splitEvents(events, '2026-10-11').past.map((event) => event.id)).toEqual([3])
+    expect(splitEvents(events, '2026-10-13').past.map((event) => event.id)).toEqual([2, 1, 3])
+  })
+})
+
+describe('formatEventDateRange', () => {
+  it('keeps a one-day event exactly as before', () => {
+    expect(formatEventDateRange('2026-04-15')).toBe('April 15, 2026')
+    expect(formatEventDateRange('2026-04-15', null)).toBe('April 15, 2026')
+    expect(formatEventDateRange('2026-04-15', '2026-04-15')).toBe('April 15, 2026')
+  })
+
+  it('shortens a range within one month', () => {
+    expect(formatEventDateRange('2026-10-10', '2026-10-12')).toBe('Oct 10–12, 2026')
+  })
+
+  it('names both months across months', () => {
+    expect(formatEventDateRange('2026-10-30', '2026-11-01')).toBe('Oct 30 – Nov 1, 2026')
+  })
+
+  it('gives full dates across years', () => {
+    expect(formatEventDateRange('2026-12-30', '2027-01-02')).toBe('Dec 30, 2026 – Jan 2, 2027')
+  })
+})
+
+describe('formatClockTime', () => {
+  it('drops zero minutes and keeps the rest', () => {
+    expect(formatClockTime('18:00:00')).toBe('6 PM')
+    expect(formatClockTime('18:30')).toBe('6:30 PM')
+    expect(formatClockTime('09:05')).toBe('9:05 AM')
+  })
+
+  it('handles midnight and noon', () => {
+    expect(formatClockTime('00:00')).toBe('12 AM')
+    expect(formatClockTime('12:00')).toBe('12 PM')
+    expect(formatClockTime('12:45')).toBe('12:45 PM')
+  })
+})
+
+describe('formatTimeSlot', () => {
+  it('formats the approved slot lines', () => {
+    expect(formatTimeSlot({ startDate: '2026-10-10', endDate: '2026-10-11', startTime: '18:00:00', endTime: '20:00:00' })).toBe(
+      'Oct 10–11 · 6 PM – 8 PM',
+    )
+    expect(formatTimeSlot({ startDate: '2026-10-12', endDate: '2026-10-12', startTime: '19:00', endTime: '20:00' })).toBe(
+      'Oct 12 · 7 PM – 8 PM',
+    )
+  })
+
+  it('shows minutes only when they are not zero, and spans months', () => {
+    expect(formatTimeSlot({ startDate: '2026-10-31', endDate: '2026-11-01', startTime: '18:30', endTime: '20:00' })).toBe(
+      'Oct 31 – Nov 1 · 6:30 PM – 8 PM',
+    )
+  })
+})
+
+describe('eventSchedule', () => {
+  it('shows a legacy free-text time when there are no slots', () => {
+    expect(eventSchedule({ date: '2026-04-15', endDate: null, time: '6:00 PM – 9:00 PM', slots: [] })).toEqual({
+      dates: 'April 15, 2026',
+      times: ['6:00 PM – 9:00 PM'],
+    })
+    expect(eventSchedule({ date: '2026-04-15', time: null })).toEqual({ dates: 'April 15, 2026', times: [] })
+  })
+
+  it('shows the slots instead of the free-text time for the approved example', () => {
+    expect(
+      eventSchedule({
+        date: '2026-10-10',
+        endDate: '2026-10-12',
+        time: 'ignored',
+        slots: [
+          { startDate: '2026-10-10', endDate: '2026-10-11', startTime: '18:00:00', endTime: '20:00:00' },
+          { startDate: '2026-10-12', endDate: '2026-10-12', startTime: '19:00:00', endTime: '20:00:00' },
+        ],
+      }),
+    ).toEqual({ dates: 'Oct 10–12, 2026', times: ['Oct 10–11 · 6 PM – 8 PM', 'Oct 12 · 7 PM – 8 PM'] })
+  })
+
+  it('leaves the date off slot lines of a one-day event', () => {
+    expect(
+      eventSchedule({
+        date: '2026-10-10',
+        slots: [{ startDate: '2026-10-10', endDate: '2026-10-10', startTime: '18:00', endTime: '19:30' }],
+      }).times,
+    ).toEqual(['6 PM – 7:30 PM'])
+  })
+})
+
+describe('addDays', () => {
+  it('crosses month and year ends', () => {
+    expect(addDays('2026-10-31', 1)).toBe('2026-11-01')
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
   })
 })

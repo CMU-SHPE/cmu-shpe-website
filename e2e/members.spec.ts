@@ -8,6 +8,9 @@ import {
   setThemeBeforeLoad,
   test,
 } from './fixtures'
+import { localWriteRefusal } from './preview-guard'
+
+test.skip(localWriteRefusal(process.env.BASE_URL) !== null, localWriteRefusal(process.env.BASE_URL) ?? '')
 
 const PASSWORD = 'e2e preview password 123'
 
