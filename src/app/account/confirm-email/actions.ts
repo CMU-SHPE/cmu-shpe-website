@@ -50,7 +50,6 @@ export async function confirmEmailChangeFromLink(_state: FormState, formData: Fo
   const ip = clientIp((await headers()).get('x-forwarded-for'))
   const { throttled } = await recordRequest('confirm_email_change', pending.currentEmail, ip)
   if (throttled) {
-    console.warn(`CONFIRM EMAIL CHANGE THROTTLED from ${ip ?? 'unknown ip'}`)
     return { formError: THROTTLED }
   }
   if (!(await bcrypt.compare(password, pending.passwordHash))) return { formError: PASSWORD_MISMATCH }
