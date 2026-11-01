@@ -7,10 +7,10 @@
 -- scripts/sql/2026-10-30-privacy-ui-clarity.sql with commit=1 first. privacy.collect.items isn't touched by that
 -- script, so its expected text is the sponsor portal release's. Run this with the production connection string
 -- before merging the account recovery release:
---   psql "$DATABASE_URL" -f scripts/sql/2026-10-30-privacy-account-recovery.sql
+--   psql "$DATABASE_URL" -f scripts/sql/2026-10-31-privacy-account-recovery.sql
 --
 -- By default it ROLLS BACK, so running it as is changes nothing. Read the check at the end, then commit with:
---   psql -v commit=1 "$DATABASE_URL" -f scripts/sql/2026-10-30-privacy-account-recovery.sql
+--   psql -v commit=1 "$DATABASE_URL" -f scripts/sql/2026-10-31-privacy-account-recovery.sql
 -- Without it, or with commit=0, it rolls back. Each key ends in one of these states:
 --   applied now     the row held the expected text and now holds the new text;
 --   already new     an earlier run already applied it (safe to run again: nothing changes);
