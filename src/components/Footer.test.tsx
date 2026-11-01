@@ -1,16 +1,47 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
+const queries = vi.hoisted(() => ({ settings: null as Record<string, unknown> | null }))
 vi.mock('@/lib/queries', () => ({
   getSiteContent: async (keys: string[]) => Object.fromEntries(keys.map((key) => [key, key])),
-  getSiteSettings: async () => null,
+  getSiteSettings: async () => queries.settings,
 }))
 vi.mock('@/app/edit-actions', () => ({ saveContentText: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {} }), unstable_rethrow() {} }))
 
 import Footer from './Footer'
 
+afterEach(() => {
+  queries.settings = null
+})
+
 describe('Footer', () => {
+  it('shows the social links from site settings, each opening in a new tab', async () => {
+    queries.settings = {
+      contactEmail: 'shpe@example.org',
+      meetingDay: 'Mon',
+      meetingTime: '6pm',
+      meetingLocation: 'Room 1',
+      instagramUrl: 'https://instagram.example/shpe',
+      linkedinUrl: null,
+      xUrl: null,
+      youtubeUrl: null,
+      tiktokUrl: null,
+      mavlifeUrl: 'https://mavlife.example/shpe',
+    }
+    render(await Footer({ editable: false, signedIn: false }))
+    for (const [name, href] of [
+      ['Instagram', 'https://instagram.example/shpe'],
+      ['MavLife', 'https://mavlife.example/shpe'],
+    ]) {
+      const link = screen.getByRole('link', { name })
+      expect(link).toHaveAttribute('href', href)
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    }
+    expect(screen.queryByRole('link', { name: 'LinkedIn' })).toBeNull()
+  })
+
   it('colours the SHPE wordmark with the tint that passes contrast on maroon', async () => {
     render(await Footer({ editable: false, signedIn: false }))
     const wordmark = screen.getByText('SHPE')
