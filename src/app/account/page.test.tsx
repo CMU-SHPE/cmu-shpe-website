@@ -117,6 +117,14 @@ describe('AccountPage', () => {
     expect(within(form).getByRole('textbox', { name: 'Type DELETE to confirm' })).toBeRequired()
   })
 
+  it('says everything deleting the account removes, and what the sponsor edit history keeps', async () => {
+    await renderPage()
+    const form = screen.getByRole('button', { name: 'Delete my account' }).closest('form')!
+    expect(form).toHaveAccessibleDescription(
+      'This permanently deletes your account, your newsletter choices, our records of the newsletters we sent you and of your unsubscribes, your event RSVPs (you come off those attendee lists), and any sponsor portal access, and signs you out. If you edited a sponsor listing, its edit history keeps your name. It can’t be undone.',
+    )
+  })
+
   it('moves focus to a saved message without also making it a live region', async () => {
     await renderPage({ saved: 'topics' })
     const banner = document.getElementById('account-status')

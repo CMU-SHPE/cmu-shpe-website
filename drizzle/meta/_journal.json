@@ -50,6 +50,13 @@
       "when": 1793241644271,
       "tag": "0006_green_gunslinger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793393617712,
+      "tag": "0007_steady_sandman",
+      "breakpoints": true
     }
   ]
 }

@@ -48,9 +48,9 @@ describe('GET /admin/events/[id]/attendees.csv', () => {
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(await response.text()).toBe(
-      'Name,Email,RSVP time (UTC),Event start date,Event end date,Event times\r\n' +
-        `"Ana, Jr.",${ana.email},2026-10-01T12:00:00.000Z,2099-01-01,2099-01-01,\r\n` +
-        `"' =HYPERLINK(""https://evil.example"")",${hostile.email},2026-10-02T12:00:00.000Z,2099-01-01,2099-01-01,\r\n`,
+      'Name,Email,RSVP time (Mountain),Event start date,Event end date,Event times\r\n' +
+        `"Ana, Jr.",${ana.email},2026-10-01 06:00 MDT,2099-01-01,2099-01-01,\r\n` +
+        `"' =HYPERLINK(""https://evil.example"")",${hostile.email},2026-10-02 06:00 MDT,2099-01-01,2099-01-01,\r\n`,
     )
   })
 
@@ -71,7 +71,7 @@ describe('GET /admin/events/[id]/attendees.csv', () => {
 
     const lines = (await (await download(event.id)).text()).split('\r\n')
     expect(lines[1]).toBe(
-      `${member.name},${member.email},2026-10-01T12:00:00.000Z,2099-10-10,2099-10-12,Oct 10–11 · 6 PM – 8 PM; Oct 12 · 7 PM – 8 PM`,
+      `${member.name},${member.email},2026-10-01 06:00 MDT,2099-10-10,2099-10-12,Oct 10–11 · 6 PM – 8 PM; Oct 12 · 7 PM – 8 PM`,
     )
   })
 
