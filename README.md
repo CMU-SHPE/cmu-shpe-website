@@ -497,6 +497,29 @@ In Vercel's project settings (**Build and Deployment**), leave **Build Command**
 override. Vercel then runs `npm run vercel-build`, which preview deployments need to apply
 the schema; an override would skip it.
 
+### Production steps for the account recovery release
+
+Do these in order, all *before* merging to `main`, after the UI clarity release's steps,
+because the new code reads and writes the new tables and the policy should match what the site
+does once it deploys.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** apply the additive `admin_tokens` and `member_email_changes` tables (reviewed in
+   `drizzle/0008_narrow_guardsmen.sql`; it only adds) to production with `npm run db:push`, as
+   described under [Preview databases](#preview-databases).
+3. **Policy text (required):** run `scripts/sql/2026-10-31-privacy-account-recovery.sql` as
+   described under
+   [Releasing a change to the Privacy Policy or Terms](#releasing-a-change-to-the-privacy-policy-or-terms):
+   once without `-v commit=1`, check that every key shows `applied now` or `already new`,
+   then again with `-v commit=1`. It updates `privacy.collect.items`, `privacy.use.items`,
+   `privacy.retention.items` and `privacy.choices.items`, then "Last updated", which only moves
+   once all four hold the new text. It expects the UI clarity release's text: if any key shows
+   `older`, commit `2026-10-30-privacy-ui-clarity.sql` first and run this one again (for
+   `privacy.collect.items`, which that script doesn't change, commit
+   `2026-10-27-privacy-sponsor-portal.sql`). A key shown as `changed elsewhere` is left alone and
+   holds back the date: after the COMMIT, work this release's wording into it by hand on
+   `/privacy`, then change **Last updated** by hand, last.
+
 ### Releasing a change to the Privacy Policy or Terms
 
 New default text in `src/db/seed-data/content.ts` never reaches production on its own:
@@ -504,7 +527,8 @@ New default text in `src/db/seed-data/content.ts` never reaches production on it
 `scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`; for the
 sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
 committed first; for the UI clarity release, `2026-10-30-privacy-ui-clarity.sql`, which needs
-the sponsor portal one committed first). Run it with the production connection string at the
+the sponsor portal one committed first; for the account recovery release,
+`2026-10-31-privacy-account-recovery.sql`, which needs the UI clarity one committed first). Run it with the production connection string at the
 point that release's own production steps and the script's header give. It backs the old rows up, only replaces text still matching the old
 default, and rolls back unless run with `-v commit=1`: run it once without, check the
 report at the end, then run `psql -v commit=1 "$DATABASE_URL" -f <file>`. The comments at
