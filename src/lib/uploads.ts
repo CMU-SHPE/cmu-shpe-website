@@ -1,5 +1,6 @@
 import { del, put } from '@vercel/blob'
 import { type AllowedImageType, IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, isAllowedImageType } from './image-files'
+import { isSafeSvgFile } from './svg-safety'
 
 export { MAX_IMAGE_BYTES }
 
@@ -30,11 +31,12 @@ export function blobPathname(folder: UploadFolder, fileName: string, type: Allow
 
 export type UploadResult =
   | { ok: true; url: string }
-  | { ok: false; reason: 'rejected' | 'unavailable' }
+  | { ok: false; reason: 'rejected' | 'unsafe-svg' | 'unavailable' }
 
 export async function uploadImage(file: File, folder: UploadFolder): Promise<UploadResult> {
   const type = file.type
   if (!isAllowedImageType(type) || validateImageFile(file)) return { ok: false, reason: 'rejected' }
+  if (type === 'image/svg+xml' && !(await isSafeSvgFile(file))) return { ok: false, reason: 'unsafe-svg' }
   try {
     const blob = await put(blobPathname(folder, file.name, type), file, {
       access: 'public',

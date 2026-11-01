@@ -27,3 +27,6 @@ next-env.d.ts
 # Playwright
 /test-results/
 /playwright-report/
+
+# npm run db:check scratch copies
+/.migrations-check.*

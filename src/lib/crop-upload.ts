@@ -18,15 +18,28 @@ export const NO_UPLOAD = 'none'
 export const UPLOAD_FAILED = 'failed'
 /** Storage could not take the upload (Blob down or misconfigured); the file may be fine. */
 export const UPLOAD_UNAVAILABLE = 'unavailable'
+/** An SVG that could run script or load another resource when its public URL is opened. */
+export const UPLOAD_UNSAFE_SVG = 'unsafe-svg'
 
 export type ResolvedUpload =
   | { imageUrl: string; originalUrl: string | null; crop: string | null }
   | typeof NO_UPLOAD
   | typeof UPLOAD_FAILED
   | typeof UPLOAD_UNAVAILABLE
+  | typeof UPLOAD_UNSAFE_SVG
 
 function failure(result: Extract<UploadResult, { ok: false }>) {
-  return result.reason === 'unavailable' ? UPLOAD_UNAVAILABLE : UPLOAD_FAILED
+  if (result.reason === 'unavailable') return UPLOAD_UNAVAILABLE
+  if (result.reason === 'unsafe-svg') return UPLOAD_UNSAFE_SVG
+  return UPLOAD_FAILED
+}
+
+/** The blobs an upload just stored, leaving out an original it carried over from `existing`. */
+export function newlyUploaded(upload: CroppedImage, existing: CroppedImage | null): string[] {
+  const carried = cropSourceUrl(existing)
+  return [upload.imageUrl, upload.originalUrl].filter(
+    (url): url is string => Boolean(url) && url !== carried,
+  )
 }
 
 export async function resolveCroppedUpload({

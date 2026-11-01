@@ -1,6 +1,6 @@
 import { currentAdmin } from '@/lib/admin'
 import { toCsv } from '@/lib/csv'
-import { eventSchedule, lastEventDay } from '@/lib/event-dates'
+import { eventSchedule, formatDenverTimestamp, lastEventDay } from '@/lib/event-dates'
 import { recordId } from '@/lib/form-fields'
 import { findEvent, listAttendees } from '@/lib/rsvp'
 
@@ -19,11 +19,11 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
   const times = eventSchedule(event).times.join('; ')
   const csv = toCsv([
-    ['Name', 'Email', 'RSVP time (UTC)', 'Event start date', 'Event end date', 'Event times'],
+    ['Name', 'Email', 'RSVP time (Mountain)', 'Event start date', 'Event end date', 'Event times'],
     ...attendees.map((attendee) => [
       attendee.name,
       attendee.email,
-      attendee.rsvpAt.toISOString(),
+      formatDenverTimestamp(attendee.rsvpAt),
       event.date,
       lastEventDay(event),
       times,

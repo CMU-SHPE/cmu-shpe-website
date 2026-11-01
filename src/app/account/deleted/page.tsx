@@ -10,7 +10,8 @@ export default function AccountDeletedPage() {
       <section className={`mx-auto w-full max-w-lg space-y-3 ${cardClass}`}>
         <h1 className={pageHeadingClass}>Your account has been deleted</h1>
         <p className="text-gray-700 dark:text-gray-300">
-          Your account and newsletter choices are gone, and you have been signed out.
+          Your account, newsletter choices and newsletter records, event RSVPs and any sponsor portal access are
+          gone, and you have been signed out.
         </p>
         <p>
           <Link

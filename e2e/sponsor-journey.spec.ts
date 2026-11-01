@@ -1,7 +1,7 @@
 /**
  * Full sponsor journey against a preview deployment: two members sign up and confirm by email, the
  * admin links member A to a fresh listing, A edits the listing (live on /sponsors, logged in the edit
- * history), sees /sponsor and its event calendar, and downloads a receipt the admin uploaded, member B
+ * history), the admin edits it too (logged as an officer edit), A sees /sponsor and its event calendar, and downloads a receipt the admin uploaded, member B
  * (a supporter) is kept out of both, an RSVP fills and frees a capacity-1 event, B RSVPs and the admin
  * exports the attendee CSV. Everything it creates is deleted in afterAll, which runs even when a step
  * fails.
@@ -56,6 +56,7 @@ const EDITED_LISTING = {
   description: `Edited by the sponsor journey, run ${RUN_ID}.`,
   bgColor: '#1f6f8b',
 }
+const OFFICER_DESCRIPTION = `Edited by an officer in the sponsor journey, run ${RUN_ID}.`
 const RECEIPT_TITLE = `E2E receipt ${RUN_ID}`
 const RECEIPT_FILE_NAME = `e2e-receipt-${RUN_ID}.pdf`
 const RECEIPT_DATE = '2026-01-15'
@@ -74,7 +75,7 @@ const UI = {
   },
   confirm: { password: 'Password', submit: 'Confirm my email' },
   delete: (name: string) => `Delete ${name}`,
-  adminSponsors: { name: 'Name', add: 'Add sponsor' },
+  adminSponsors: { name: 'Name', add: 'Add sponsor', save: 'Save changes', description: 'Description (optional)' },
   adminMembers: { listing: /Sponsor listing/, promote: 'Make sponsor', roleSponsor: 'Sponsor' },
   listingForm: {
     name: 'Name',
@@ -344,9 +345,26 @@ test.describe('sponsor journey', () => {
       await test.step('the admin sees the edit in the listing audit log', async () => {
         await open(admin, `/admin/sponsors/${created.listing!.id}`)
         const audit = admin.getByRole('region', { name: UI.auditRegion })
-        await expect(audit).toContainText(SPONSOR_MEMBER.name)
+        await expect(audit).toContainText(`${SPONSOR_MEMBER.name} (sponsor)`)
         for (const field of [/name/i, /description/i, /colou?r/i]) await expect(audit).toContainText(field)
         await expect(audit).not.toContainText(SPONSOR_MEMBER.email)
+      })
+
+      await test.step('an officer edit on the Sponsors page is logged as an officer edit', async () => {
+        assertWriteTarget(baseURL, 'edit the listing as the admin')
+        await open(admin, '/admin/sponsors')
+        const item = admin.locator('li').filter({ has: admin.getByText(`Edit ${EDITED_LISTING.name}`, { exact: true }) })
+        await item.getByText(`Edit ${EDITED_LISTING.name}`, { exact: true }).click()
+        const form = item.locator('form').filter({ has: admin.getByRole('button', { name: UI.adminSponsors.save, exact: true }) })
+        await form.getByRole('textbox', { name: UI.adminSponsors.description, exact: true }).fill(OFFICER_DESCRIPTION)
+        await form.getByRole('button', { name: UI.adminSponsors.save, exact: true }).click()
+        await expectSaved(admin, '/admin/sponsors', 'Saving the officer edit')
+
+        await open(admin, `/admin/sponsors/${created.listing!.id}`)
+        const rows = admin.getByRole('region', { name: UI.auditRegion }).getByRole('row')
+        await expect(rows.nth(1)).toContainText('(officer)')
+        await expect(rows.nth(1)).toContainText('Description')
+        await expect(rows.nth(2)).toContainText(`${SPONSOR_MEMBER.name} (sponsor)`)
       })
 
       const pdf = generatedPdf()
@@ -459,8 +477,9 @@ test.describe('sponsor journey', () => {
         expect(download.suggestedFilename()).toMatch(/^event-\d+-attendees\.csv$/)
         const csv = await readFile(await download.path(), 'utf8')
         const lines = csv.trim().split(/\r?\n/)
-        expect(lines[0]).toBe('Name,Email,RSVP time (UTC),Event start date,Event end date,Event times')
+        expect(lines[0]).toBe('Name,Email,RSVP time (Mountain),Event start date,Event end date,Event times')
         expect(lines.slice(1)).toEqual([expect.stringContaining(SUPPORTER_MEMBER.email)])
+        expect(lines[1]).toMatch(/,\d{4}-\d{2}-\d{2} \d{2}:\d{2} M[SD]T,/)
       })
     } finally {
       for (const context of contexts) await context.close()

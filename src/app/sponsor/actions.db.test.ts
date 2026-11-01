@@ -25,7 +25,10 @@ vi.mock('next/navigation', () => ({
     throw new mocks.Redirect(url)
   },
 }))
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 vi.mock('@/lib/uploads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/uploads')>()),
   uploadImage: mocks.uploadImage,
@@ -72,8 +75,10 @@ async function auditRows() {
   return getDb()
     .select({
       sponsorId: sponsorEdits.sponsorId,
+      editorKind: sponsorEdits.editorKind,
       memberId: sponsorEdits.memberId,
-      memberName: sponsorEdits.memberName,
+      adminId: sponsorEdits.adminId,
+      editorName: sponsorEdits.editorName,
       fields: sponsorEdits.fields,
     })
     .from(sponsorEdits)
@@ -110,7 +115,14 @@ describe('updateListing', () => {
       sortOrder: listing.sortOrder,
     })
     expect(await auditRows()).toEqual([
-      { sponsorId: listing.id, memberId: sponsor.id, memberName: 'Sam Sponsor', fields: ['name', 'description'] },
+      {
+        sponsorId: listing.id,
+        editorKind: 'sponsor',
+        memberId: sponsor.id,
+        adminId: null,
+        editorName: 'Sam Sponsor',
+        fields: ['name', 'description'],
+      },
     ])
     expect(mocks.cleanupBlobs).toHaveBeenCalledWith()
   })
@@ -213,7 +225,7 @@ describe('listingEdit', () => {
     await db.batch(listingEdit(db, sponsor.id, listing.id, values, ['name']))
     await db.delete(members).where(eq(members.id, sponsor.id))
     expect(await auditRows()).toEqual([
-      { sponsorId: listing.id, memberId: null, memberName: 'Sam Sponsor', fields: ['name'] },
+      { sponsorId: listing.id, editorKind: 'sponsor', memberId: null, adminId: null, editorName: 'Sam Sponsor', fields: ['name'] },
     ])
   })
 })

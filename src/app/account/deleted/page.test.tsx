@@ -7,5 +7,10 @@ describe('AccountDeletedPage', () => {
     render(<AccountDeletedPage />)
     expect(screen.getByRole('heading', { level: 1, name: 'Your account has been deleted' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to the home page' })).toHaveAttribute('href', '/')
+    expect(
+      screen.getByText(
+        'Your account, newsletter choices and newsletter records, event RSVPs and any sponsor portal access are gone, and you have been signed out.',
+      ),
+    ).toBeInTheDocument()
   })
 })

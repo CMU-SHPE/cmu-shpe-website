@@ -24,7 +24,10 @@ vi.mock('next/navigation', () => ({
   },
 }))
 // No logo is uploaded anywhere here; this only keeps a delete from reaching Blob storage.
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 
 import { getDb } from '@/db'
 import { admins, eventRsvps, events, members, siteContent, sponsorEdits, sponsorReceipts, sponsors } from '@/db/schema'
@@ -326,7 +329,20 @@ const TARGETS: Target[] = [
     run: (w) => updateSponsor(w.listingB.id, sponsorForm('Renamed B')),
     expect: adminOnly({
       outcome: '→ /admin/sponsors?saved=1',
-      effect: (w, _before, after) => expect(row(after.sponsors, w.listingB.id)?.name).toBe('Renamed B'),
+      effect: (w, before, after, persona) => {
+        expect(row(after.sponsors, w.listingB.id)?.name).toBe('Renamed B')
+        const officer = w.sessions[persona]!
+        expect(after.sponsorEdits.slice(before.sponsorEdits.length)).toEqual([
+          expect.objectContaining({
+            sponsorId: w.listingB.id,
+            editorKind: 'officer',
+            memberId: null,
+            adminId: officer.id,
+            editorName: officer.name,
+            fields: ['name'],
+          }),
+        ])
+      },
     }),
   },
   {
@@ -445,9 +461,15 @@ const TARGETS: Target[] = [
               website: null,
             })
             expect(row(after.sponsors, other.id)).toEqual(row(before.sponsors, other.id))
-            expect(after.sponsorEdits.map(({ sponsorId, memberId, memberName }) => ({ sponsorId, memberId, memberName }))).toEqual([
-              { sponsorId: own.id, memberId: editor.id, memberName: editor.name },
-            ])
+            expect(
+              after.sponsorEdits.map(({ sponsorId, editorKind, memberId, adminId, editorName }) => ({
+                sponsorId,
+                editorKind,
+                memberId,
+                adminId,
+                editorName,
+              })),
+            ).toEqual([{ sponsorId: own.id, editorKind: 'sponsor', memberId: editor.id, adminId: null, editorName: editor.name }])
           },
         },
       ],
