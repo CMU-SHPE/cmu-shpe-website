@@ -1,7 +1,7 @@
 /**
  * Member email change against a preview deployment: a member signs up and confirms, asks to
  * change their email twice (the first link must then stop working), confirms the second through
- * the emailed link, is signed out, signs in with the new address only, and the old address gets
+ * the emailed link and their password (a wrong one changes nothing), is signed out, signs in with the new address only, and the old address gets
  * a notice naming the new one only as d***@resend.dev. afterAll deletes the member.
  *
  * Needs RESEND_API_KEY, E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD (for cleanup), and skips otherwise.
@@ -45,7 +45,7 @@ const UI = {
   confirmSignUp: { password: 'Password', submit: 'Confirm my email' },
   change: { newEmail: 'New email', password: 'Current password', submit: 'Send confirmation link' },
   sent: 'Check the inbox of your new email address for a confirmation link. Your email won’t change until you open it. The link works for 24 hours.',
-  confirmChange: 'Confirm my new email',
+  confirmChange: { password: 'Current password', submit: 'Confirm my new email' },
   brokenLink: "This link doesn't work",
   changedStatus: 'Your email address was changed — sign in with your new email address.',
   subjects: {
@@ -68,6 +68,11 @@ async function requestChange(page: Page, baseURL: string | undefined, newEmail: 
   await form.getByRole('button', { name: UI.change.submit }).click()
   await expectSaved(page, '/account', `Requesting a change to ${newEmail}`)
   await expect(page.locator('#account-status')).toHaveText(UI.sent)
+}
+
+async function confirmWith(page: Page, password: string) {
+  await page.getByLabel(UI.confirmChange.password, { exact: true }).fill(password)
+  await page.getByRole('button', { name: UI.confirmChange.submit }).click()
 }
 
 test.describe('member email change', () => {
@@ -122,7 +127,6 @@ test.describe('member email change', () => {
         const path = linkIn(await waitForEmail(MEMBER.firstNewEmail, UI.subjects.confirmNew, firstRequestAt), '/account/confirm-email')
         assertWriteTarget(baseURL, 'use the replaced email change link')
         await open(inbox, path)
-        await inbox.getByRole('button', { name: UI.confirmChange }).click()
         await expect(inbox.getByRole('heading', { level: 1 })).toHaveText(UI.brokenLink)
       })
 
@@ -132,14 +136,16 @@ test.describe('member email change', () => {
         await axeInBothThemes(inbox, confirmPath)
         assertWriteTarget(baseURL, 'confirm the email change')
         await open(inbox, confirmPath)
-        await inbox.getByRole('button', { name: UI.confirmChange }).click()
+        await expect(inbox.locator('main')).toContainText(MEMBER.newEmail)
+        await confirmWith(inbox, `${MEMBER.password} wrong`)
+        await expect(inbox.getByRole('group', { name: 'There is a problem' })).toContainText('That password is incorrect')
+        await confirmWith(inbox, MEMBER.password)
         await inbox.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('emailChanged') === '1')
         await expect(inbox.getByRole('status')).toHaveText(UI.changedStatus)
       })
 
       await test.step('the link is single-use', async () => {
         await open(inbox, confirmPath)
-        await inbox.getByRole('button', { name: UI.confirmChange }).click()
         await expect(inbox.getByRole('heading', { level: 1 })).toHaveText(UI.brokenLink)
       })
 

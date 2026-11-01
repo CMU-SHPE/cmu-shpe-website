@@ -10,6 +10,7 @@ export type ThrottledAction =
   | 'confirm_email'
   | 'admin_password_reset'
   | 'change_email'
+  | 'confirm_email_change'
 
 type RequestLimit = { perEmail: number; perIp: number }
 
@@ -23,6 +24,7 @@ export const REQUEST_LIMITS: Record<ThrottledAction, RequestLimit> = {
   confirm_email: LOGIN_LIMITS,
   admin_password_reset: { perEmail: 3, perIp: 10 },
   change_email: { perEmail: 5, perIp: 10 },
+  confirm_email_change: { perEmail: 5, perIp: 10 },
 }
 
 /**

@@ -86,6 +86,7 @@ describe('recordRequest', () => {
   it.each([
     ['admin_password_reset', 3, 10],
     ['change_email', 5, 10],
+    ['confirm_email_change', 5, 10],
   ] as const)('gives %s its own limits of %i per email and %i per ip', async (action, perEmail, perIp) => {
     expect(REQUEST_LIMITS[action]).toEqual({ perEmail, perIp })
     fake.state.counts = { emailRequests: perEmail, ipRequests: perIp }

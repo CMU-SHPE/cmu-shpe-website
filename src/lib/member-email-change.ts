@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
-import { lt, sql } from 'drizzle-orm'
+import { and, eq, gt, isNotNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, type Db } from '@/db'
-import { memberEmailChanges } from '@/db/schema'
+import { memberEmailChanges, members } from '@/db/schema'
 import { isUniqueViolation } from '@/lib/db-errors'
 import { emailAddress } from '@/lib/form-fields'
 import { hashToken, memberTokenParam } from '@/lib/member-tokens'
@@ -48,6 +48,33 @@ export function savePendingEmailChange(db: Db, row: ReturnType<typeof newEmailCh
     })
 }
 
+/** A pending change was authorised by the old password, so a new password has to cancel it. */
+export function deletePendingEmailChange(db: Db, memberId: number) {
+  return db.delete(memberEmailChanges).where(eq(memberEmailChanges.memberId, memberId))
+}
+
+/** Reads without using up the link, so a wrong password leaves it working. */
+export async function findEmailChange(token: string) {
+  if (!memberTokenParam.safeParse(token).success) return null
+  const [row] = await getDb()
+    .select({
+      newEmail: memberEmailChanges.newEmail,
+      currentEmail: members.email,
+      passwordHash: members.passwordHash,
+    })
+    .from(memberEmailChanges)
+    .innerJoin(members, eq(members.id, memberEmailChanges.memberId))
+    .where(
+      and(
+        eq(memberEmailChanges.tokenHash, hashToken(token)),
+        gt(memberEmailChanges.expiresAt, sql`now()`),
+        isNotNull(members.emailConfirmedAt),
+      ),
+    )
+    .limit(1)
+  return row ?? null
+}
+
 export function purgeExpiredEmailChanges(db: Db) {
   return db.delete(memberEmailChanges).where(lt(memberEmailChanges.expiresAt, sql`now()`))
 }
@@ -59,8 +86,9 @@ export function purgeExpiredEmailChanges(db: Db) {
 const lockAdmins = sql`lock table admins in share mode`
 
 /**
- * Whoever opens the link controls the new inbox, so an unconfirmed sign-up already holding that
- * address (theirs or a squatter's) gives way rather than blocking the change for 7 days.
+ * Runs only after the caller has checked the account's password, so whoever gets here controls
+ * both the account and the new inbox. An unconfirmed sign-up holding that address gives way
+ * rather than blocking the change for 7 days.
  */
 function releaseUnconfirmedHolder(tokenHash: string) {
   return sql`
@@ -73,8 +101,10 @@ function releaseUnconfirmedHolder(tokenHash: string) {
 /**
  * The link is used up whatever happens, and the address is re-checked against every admin and
  * every other member at this moment, in the same statement as the update. Reset links the
- * member had went to the old inbox, so they are revoked. The member id never changes, so
- * RSVPs, topic choices, the sponsor link and past unsubscribe links all stay attached.
+ * member had went to the old inbox, so they are revoked. password_changed_at ends every session,
+ * so changing to another address and back can't revive old ones; it uses the server clock,
+ * matching the authTime it is compared with. The member id never changes, so RSVPs, topic
+ * choices, the sponsor link and past unsubscribe links all stay attached.
  */
 function applyEmailChange(tokenHash: string) {
   return sql`
@@ -89,7 +119,7 @@ function applyEmailChange(tokenHash: string) {
       where m.email_confirmed_at is not null
     ),
     updated as (
-      update members m set email = c.new_email
+      update members m set email = c.new_email, password_changed_at = ${new Date().toISOString()}::timestamptz
       from consumed c join previous p on p.id = c.member_id
       where m.id = c.member_id
         and not exists (select 1 from admins a where lower(a.email) = c.new_email)

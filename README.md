@@ -107,8 +107,8 @@ npm run db:reset-master
 ```
 
 It moves the master account to `MASTER_EMAIL`, sets its password to `MASTER_PASSWORD`,
-clears the failed sign-ins recorded against both emails and signs out every existing
-master session. It reports the new password's length; if that doesn't match what you
+clears the failed sign-ins recorded against both emails, cancels its emailed reset links and
+signs out every existing master session. It reports the new password's length; if that doesn't match what you
 typed, fix the quoting and run it again. Variables already set in the shell take
 precedence over `.env.local`. Other admins are left alone; the master resets their
 passwords from **Admin accounts**.
@@ -178,7 +178,10 @@ to RSVP to events.
   of account.
 - **Changing email:** **Change email** on `/account` asks for the new address and the current
   password, then emails a confirmation link to the new address that works for 24 hours, once.
-  Nothing changes until it is used, and a newer request cancels the older link. Confirming
+  Nothing changes until it is used, and a newer request or a password change or reset cancels
+  the pending link. Opening the link shows the new address and asks for the account's current
+  password, so someone else's account can't be moved onto an address just because its owner
+  clicked; a wrong password leaves the link working and changes nothing. Confirming then
   re-checks that no admin or other member has the address (an unconfirmed sign-up holding it
   is deleted), changes the email, signs the member out everywhere and tells the old address
   (showing the new one as `n***@domain`, with the club's contact email). The account keeps

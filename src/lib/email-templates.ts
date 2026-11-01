@@ -101,7 +101,7 @@ export function adminPasswordReset(name: string, link: string): EmailContent {
 // No name: the address was typed by the member and isn't verified yet, so it may not be theirs.
 export function confirmNewEmail(link: string): EmailContent {
   return render('Confirm your new email for SHPE @ CMU', '', [
-    'Someone asked to change the email address of a SHPE @ CMU account to this address. Confirm it to finish the change.',
+    'Someone asked to change the email address of a SHPE @ CMU account to this address. If that was you, confirm it to finish the change. You’ll need that account’s current password.',
     { href: link, label: 'Confirm my new email' },
     'This link expires in 24 hours and can be used once. If you didn’t ask for this, you can ignore this email and nothing will change.',
   ])

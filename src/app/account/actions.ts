@@ -23,7 +23,13 @@ import {
   parseTopicSelection,
 } from '@/lib/member-account'
 import { memberDeletion } from '@/lib/member-admin'
-import { newEmailChange, parseEmailChange, purgeExpiredEmailChanges, savePendingEmailChange } from '@/lib/member-email-change'
+import {
+  deletePendingEmailChange,
+  newEmailChange,
+  parseEmailChange,
+  purgeExpiredEmailChanges,
+  savePendingEmailChange,
+} from '@/lib/member-email-change'
 import { deleteMemberTokens } from '@/lib/member-tokens'
 import { countExistingTopics } from '@/lib/newsletter-topics'
 import { recordRequest } from '@/lib/request-throttle'
@@ -108,10 +114,11 @@ export async function changePassword(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12)
   const db = getDb()
-  // A reset link emailed before this change would otherwise still set a password for the next hour.
+  // Links issued under the old password would otherwise keep working: a reset for the next hour, an email change for a day.
   await db.batch([
     db.update(members).set({ passwordHash, passwordChangedAt: new Date() }).where(eq(members.id, member.id)),
     deleteMemberTokens(db, member.id, 'reset_password'),
+    deletePendingEmailChange(db, member.id),
   ])
   await clearLoginAttempts(member.email)
   await notifyPasswordChanged(member)

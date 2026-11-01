@@ -48,11 +48,16 @@ import {
 } from '@/db/schema'
 import { currentAdmin } from '@/lib/admin'
 import { newAdminResetToken, replaceAdminResetTokens } from '@/lib/admin-tokens'
-import { confirmEmailChange, newEmailChange, savePendingEmailChange } from '@/lib/member-email-change'
+import { authorizeCredentials } from '@/lib/authorize'
+import { currentMember } from '@/lib/member'
+import { confirmEmailChange, findEmailChange, newEmailChange, savePendingEmailChange } from '@/lib/member-email-change'
 import { hashToken, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
 import { resolveUnsubscribeToken } from '@/lib/newsletter-unsubscribe'
 import { unsubscribeTokenFor } from '@/lib/newsletter-unsubscribe-token'
 import { TEST_PASSWORD, createAdmin, createEvent, createMember, createSponsor, resetDb } from '@/test/db'
+import { masterResetWrites } from '@/db/reset-master-writes'
+import { changePassword } from './account/actions'
+import { confirmEmailChangeFromLink } from './account/confirm-email/actions'
 import { requestPasswordReset } from './forgot-password/actions'
 import { resetMemberPassword } from './reset-password/actions'
 import { resetAdminPasswordWithLink } from './reset-password/admin/actions'
@@ -229,6 +234,25 @@ describe('admin password reset by email', () => {
   })
 })
 
+describe('db:reset-master', () => {
+  it('cancels the master’s emailed reset links, and only theirs, in its batch', async () => {
+    const db = getDb()
+    const master = await createAdmin({ email: 'max@shpe.test', role: 'master' })
+    const other = await createAdmin()
+    const masterToken = await issueAdminToken(master.id)
+    const otherToken = await issueAdminToken(other.id)
+
+    await db.batch(masterResetWrites(db, master, 'new-max@shpe.test', 'new hash'))
+
+    expect(await db.select({ adminId: adminTokens.adminId }).from(adminTokens)).toEqual([{ adminId: other.id }])
+    await expect(resetAdminPasswordWithLink({}, resetForm(masterToken))).resolves.toEqual({
+      formError: expect.stringContaining('expired'),
+    })
+    expect(await adminRow(master.id)).toMatchObject({ email: 'new-max@shpe.test', passwordHash: 'new hash' })
+    expect(await redirectOf(resetAdminPasswordWithLink({}, resetForm(otherToken)))).toBe('/login?reset=1')
+  })
+})
+
 describe('member email change', () => {
   async function pendingChange(memberId: number, newEmail: string, now = Date.now()) {
     const db = getDb()
@@ -313,13 +337,106 @@ describe('member email change', () => {
     expect(await confirmEmailChange(token)).toEqual({ status: 'invalid' })
   })
 
-  it('takes the address over from an unconfirmed sign-up, since the confirmer controls that inbox', async () => {
+  function confirmForm(token: string, password: string) {
+    const formData = new FormData()
+    formData.set('token', token)
+    formData.set('password', password)
+    return formData
+  }
+
+  it('takes the address over from an unconfirmed sign-up only with the account password', async () => {
     const member = await createMember({ email: 'old@shpe.test' })
-    const squatter = await createMember({ email: 'wanted@shpe.test', confirmed: false })
+    const signUp = await createMember({ email: 'wanted@shpe.test', confirmed: false })
     const token = await pendingChange(member.id, 'wanted@shpe.test')
-    expect(await confirmEmailChange(token)).toMatchObject({ status: 'changed' })
-    expect(await memberRow(squatter.id)).toBeUndefined()
+    expect(await redirectOf(confirmEmailChangeFromLink({}, confirmForm(token, TEST_PASSWORD)))).toBe('/login?emailChanged=1')
+    expect(await memberRow(signUp.id)).toBeUndefined()
     expect((await memberRow(member.id)).email).toBe('wanted@shpe.test')
+  })
+
+  it('stops a victim clicking the link from moving their address onto someone else’s account', async () => {
+    const attacker = await createMember({ email: 'attacker@shpe.test' })
+    const victimSignUp = await createMember({ email: 'victim@shpe.test', confirmed: false })
+    const token = await pendingChange(attacker.id, 'victim@shpe.test')
+
+    const refused = await confirmEmailChangeFromLink({}, confirmForm(token, 'not the attacker password'))
+    expect(refused.formError).toContain('That password is incorrect')
+    expect(await confirmEmailChangeFromLink({}, confirmForm(token, ''))).toEqual({
+      errors: { password: 'Enter your current password.' },
+    })
+
+    expect((await memberRow(attacker.id)).email).toBe('attacker@shpe.test')
+    expect(await memberRow(victimSignUp.id)).toBeDefined()
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(await findEmailChange(token)).toMatchObject({ newEmail: 'victim@shpe.test' })
+  })
+
+  it('throttles password guesses at the link, even with the right password', async () => {
+    const member = await createMember({ email: 'old@shpe.test' })
+    const token = await pendingChange(member.id, 'new@shpe.test')
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const result = await confirmEmailChangeFromLink({}, confirmForm(token, 'a wrong guess'))
+      expect(result.formError).toContain('That password is incorrect')
+    }
+    const blocked = await confirmEmailChangeFromLink({}, confirmForm(token, TEST_PASSWORD))
+    expect(blocked.formError).toContain('Too many attempts')
+    expect((await memberRow(member.id)).email).toBe('old@shpe.test')
+  })
+
+  it('cancels a pending change when the password is changed on /account', async () => {
+    const member = await createMember({ email: 'old@shpe.test' })
+    const token = await pendingChange(member.id, 'new@shpe.test')
+    mocks.auth.mockResolvedValue({
+      user: { id: String(member.id), email: 'old@shpe.test', kind: 'member' },
+      authTime: Date.now(),
+      expires: '',
+    })
+    const formData = new FormData()
+    formData.set('currentPassword', TEST_PASSWORD)
+    formData.set('newPassword', NEW_PASSWORD)
+    formData.set('confirmPassword', NEW_PASSWORD)
+    await changePassword(formData).catch(() => undefined)
+
+    expect(await bcrypt.compare(NEW_PASSWORD, (await memberRow(member.id)).passwordHash)).toBe(true)
+    expect(await getDb().select().from(memberEmailChanges)).toEqual([])
+    expect(await confirmEmailChange(token)).toEqual({ status: 'invalid' })
+    expect((await memberRow(member.id)).email).toBe('old@shpe.test')
+  })
+
+  it('cancels a pending change when the password is reset by email', async () => {
+    const member = await createMember({ email: 'old@shpe.test' })
+    const token = await pendingChange(member.id, 'new@shpe.test')
+    expect(await redirectOf(resetMemberPassword({}, resetForm(await issueMemberResetToken(member.id))))).toBe('/login?reset=1')
+    expect(await getDb().select().from(memberEmailChanges)).toEqual([])
+    expect(await confirmEmailChange(token)).toEqual({ status: 'invalid' })
+    expect((await memberRow(member.id)).email).toBe('old@shpe.test')
+  })
+
+  it('leaves another member’s pending change alone on a password reset', async () => {
+    const [member, other] = [await createMember(), await createMember()]
+    await pendingChange(other.id, 'other-new@shpe.test')
+    await redirectOf(resetMemberPassword({}, resetForm(await issueMemberResetToken(member.id))))
+    expect(await getDb().select().from(memberEmailChanges)).toEqual([expect.objectContaining({ memberId: other.id })])
+  })
+
+  it('ends old sessions for good, even after changing to another address and back, and sign-in still works', async () => {
+    const member = await createMember({ email: 'a@shpe.test' })
+    const oldSession = {
+      user: { id: String(member.id), email: 'a@shpe.test', kind: 'member' },
+      authTime: Date.now() - 1000,
+      expires: '',
+    }
+    mocks.auth.mockResolvedValue(oldSession)
+    expect(await currentMember()).not.toBeNull()
+
+    expect(await confirmEmailChange(await pendingChange(member.id, 'b@shpe.test'))).toMatchObject({ status: 'changed' })
+    expect(await confirmEmailChange(await pendingChange(member.id, 'a@shpe.test'))).toMatchObject({ status: 'changed' })
+    expect((await memberRow(member.id)).email).toBe('a@shpe.test')
+    expect(await currentMember()).toBeNull()
+
+    const signedIn = await authorizeCredentials({ email: 'a@shpe.test', password: TEST_PASSWORD }, null)
+    expect(signedIn).not.toBeNull()
+    mocks.auth.mockResolvedValue({ ...oldSession, authTime: signedIn!.authTime })
+    expect(await currentMember()).not.toBeNull()
   })
 
   it('leaves an unconfirmed holder alone when the link is not valid', async () => {

@@ -1,8 +1,9 @@
 import { config } from 'dotenv'
 import bcrypt from 'bcryptjs'
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { getDb } from './index'
-import { admins, loginAttempts } from './schema'
+import { admins } from './schema'
+import { masterResetWrites } from './reset-master-writes'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, parseAdminAccount } from '../lib/admin-account'
 import { isUniqueViolation, safeErrorMessage } from '../lib/db-errors'
 
@@ -46,14 +47,7 @@ async function resetMaster(): Promise<string> {
     .limit(1)
   if (taken) throw new Error(`${email} ${EMAIL_TAKEN}`)
 
-  // Clock of record for passwordChangedAt is the database, not the machine running this script.
-  await db.batch([
-    db
-      .update(admins)
-      .set({ email, passwordHash: await bcrypt.hash(password, 12), passwordChangedAt: sql`now()` })
-      .where(eq(admins.id, master.id)),
-    db.delete(loginAttempts).where(inArray(loginAttempts.email, [master.email, email])),
-  ])
+  await db.batch(masterResetWrites(db, master, email, await bcrypt.hash(password, 12)))
 
   const length = `${Array.from(password).length}-character password`
   return master.email === email

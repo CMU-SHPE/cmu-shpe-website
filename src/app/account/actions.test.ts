@@ -246,13 +246,16 @@ describe('changePassword', () => {
     })
   })
 
-  it('cancels pending reset links in the same batch as the password change', async () => {
+  it('cancels pending reset links and any pending email change in the same batch as the password change', async () => {
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?saved=password')
     expect(mocks.state.batches).toHaveLength(1)
     const [update, cancelResets] = mocks.state.batches[0]
     expect(update.sql).toMatch(/^update "members" set "password_hash" = \$1, "password_changed_at" = \$2 where/)
     expect(cancelResets.sql).toMatch(/^delete from "member_tokens" where/)
     expect(cancelResets.params).toEqual([7, 'reset_password'])
+    const cancelEmailChange = mocks.state.batches[0][2]
+    expect(cancelEmailChange.sql).toBe('delete from "member_email_changes" where "member_email_changes"."member_id" = $1')
+    expect(cancelEmailChange.params).toEqual([7])
   })
 
   it('still finishes the change when the notice fails, logging only a tag', async () => {

@@ -78,6 +78,7 @@ describe('email templates', () => {
     const email = confirmNewEmail(LINK)
     expect(email.subject).toBe('Confirm your new email for SHPE @ CMU')
     expect(email.text.startsWith('Hi,\n')).toBe(true)
+    expect(email.text).toContain('You’ll need that account’s current password.')
     expect(email.text).toContain(`Confirm my new email:\n${LINK}`)
     expect(email.text).toContain('expires in 24 hours')
   })
