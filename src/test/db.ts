@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { admins, events, members, sponsors, type MemberRole } from '@/db/schema'
 
@@ -7,6 +7,9 @@ export const TEST_PASSWORD = 'correct horse battery'
 
 let passwordHash: Promise<string> | undefined
 let sequence = 0
+
+const GATE_TAG = 'rsvp-race-gate'
+const GATE_TIMEOUT_SECONDS = 20
 
 function testPasswordHash() {
   passwordHash ??= bcrypt.hash(TEST_PASSWORD, 4)
@@ -93,4 +96,44 @@ export async function createEvent(overrides: Partial<typeof events.$inferInsert>
     })
     .returning()
   return event
+}
+
+/**
+ * Makes every racer start its statement while the event row is still locked, so they all queue on the
+ * lock and the outcome no longer depends on how the requests happen to interleave. A gate transaction
+ * locks the row and waits inside Postgres until `racers.length` backends are blocked on it, then
+ * commits and lets them through.
+ */
+export async function raceBehindLockedEvent<T>(eventId: number, racers: (() => Promise<T>)[]): Promise<T[]> {
+  const db = getDb()
+  const gate = db.batch([
+    db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).for('update'),
+    db.execute(
+      sql.raw(`/* ${GATE_TAG} */ do $$
+        declare deadline timestamptz := clock_timestamp() + interval '${GATE_TIMEOUT_SECONDS} seconds';
+        begin
+          while (select count(*) from pg_locks where not granted) < ${racers.length} loop
+            if clock_timestamp() > deadline then raise exception 'racers never queued behind the gate'; end if;
+            perform pg_sleep(0.01);
+          end loop;
+        end $$`),
+    ),
+  ])
+  await waitForGateToHoldLock()
+  const results = Promise.all(racers.map((race) => race()))
+  await gate
+  return results
+}
+
+async function waitForGateToHoldLock() {
+  const deadline = Date.now() + GATE_TIMEOUT_SECONDS * 1000
+  while (Date.now() < deadline) {
+    const { rows } = await getDb().execute<{ holding: boolean }>(sql`
+      select exists (
+        select 1 from pg_stat_activity
+        where pid <> pg_backend_pid() and state = 'active' and query like ${`/* ${GATE_TAG} */%`}
+      ) as holding`)
+    if (rows[0]?.holding) return
+  }
+  throw new Error('the gate transaction never took the event lock')
 }

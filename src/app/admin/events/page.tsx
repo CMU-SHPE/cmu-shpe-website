@@ -12,7 +12,7 @@ import {
 } from '@/components/admin/styles'
 import { requireAdmin } from '@/lib/admin'
 import { eventSchedule, splitEvents, todayInDenver } from '@/lib/event-dates'
-import { storedEventFormValues } from '@/lib/event-form'
+import { eventDeleteWarning, storedEventFormValues } from '@/lib/event-form'
 import { type EventWithSlots, getEvents } from '@/lib/queries'
 import { rsvpCounts } from '@/lib/rsvp'
 import { createEvent, deleteEvent, updateEvent } from './actions'
@@ -73,7 +73,7 @@ function EventList({
                 <RsvpSummary event={event} going={counts.get(event.id) ?? 0} />
               </div>
               <form action={deleteEvent.bind(null, event.id)}>
-                <DeleteButton name={event.title} />
+                <DeleteButton name={event.title} warning={eventDeleteWarning(counts.get(event.id) ?? 0)} />
               </form>
             </div>
             <EditDetails name={event.title}>
