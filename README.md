@@ -69,8 +69,8 @@ locally: links in emails use `http://localhost:3000` under `npm run dev`, and a 
 
 Newsletters only reach `@resend.dev` test inboxes unless `VERCEL_ENV=production`. A
 `.env.local` pulled from Vercel's production environment (`vercel env pull`) contains
-`VERCEL_ENV=production`, which turns that guard off locally and would email real members;
-delete that line from `.env.local`.
+`VERCEL_ENV=production`, which turns that guard off locally and would email real members
+and let image cleanup delete files from the Blob store; delete that line from `.env.local`.
 
 ### First-time database setup
 

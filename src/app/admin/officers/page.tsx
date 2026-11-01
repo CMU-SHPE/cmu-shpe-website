@@ -31,6 +31,7 @@ const errorMessages: Record<string, string> = {
   invalid:
     'Please check the fields — name, role and the other required fields must be filled in, the email must be valid, LinkedIn must start with http:// or https://, and a photo path must start with a single / or https://.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
+  svg: "This SVG contains scripts or links and can't be used. Export it as PNG or a plain SVG.",
   missing: 'That person no longer exists.',
   storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
 }

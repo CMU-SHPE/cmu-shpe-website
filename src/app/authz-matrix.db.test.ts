@@ -24,7 +24,10 @@ vi.mock('next/navigation', () => ({
   },
 }))
 // No logo is uploaded anywhere here; this only keeps a delete from reaching Blob storage.
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 
 import { getDb } from '@/db'
 import { admins, eventRsvps, events, members, siteContent, sponsorEdits, sponsorReceipts, sponsors } from '@/db/schema'
