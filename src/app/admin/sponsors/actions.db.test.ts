@@ -1,7 +1,8 @@
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDb } from '@/db'
 import { admins, members, sponsorEdits, sponsorReceipts, sponsors, type Sponsor } from '@/db/schema'
+import { officerListingEdit } from '@/lib/sponsor-portal'
 import { createAdmin, createMember, createSponsor, resetDb } from '@/test/db'
 
 const mocks = vi.hoisted(() => {
@@ -209,6 +210,67 @@ describe('updateSponsor', () => {
     expect(await redirectOf(updateSponsor(listing.id, sponsorForm(listing, { name: 'Ghost' })))).toBe(
       '/admin/sponsors?error=missing',
     )
+    expect(await editLog()).toEqual([])
+  })
+
+  it('saves nothing and reports it when the officer’s account is deleted mid-request, removing only the new logo', async () => {
+    const newLogo = 'https://blob.example/new.png'
+    const [officer, listing] = await Promise.all([
+      createAdmin(),
+      createSponsor({ name: 'Acme', logoUrl: 'https://blob.example/old.png' }),
+    ])
+    mocks.adminId = String(officer.id)
+    await getDb().delete(admins).where(eq(admins.id, officer.id))
+
+    const form = sponsorForm(listing, { name: 'Renamed', logoUrl: newLogo })
+    expect(await redirectOf(updateSponsor(listing.id, form))).toBe('/admin/sponsors?error=not-saved')
+
+    const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+    expect(row).toEqual(listing)
+    expect(await editLog()).toEqual([])
+    expect(mocks.cleanupBlobs).toHaveBeenCalledWith(newLogo)
+  })
+})
+
+describe('officerListingEdit', () => {
+  it('writes nothing for a listing id that does not exist', async () => {
+    const [officer, other] = await Promise.all([createAdmin(), createSponsor({ name: 'Untouched' })])
+    const db = getDb()
+
+    const [updated] = await db.batch(officerListingEdit(db, officer.id, 999_999, { name: 'Ghost' }, ['name']))
+
+    expect(updated).toEqual([])
+    expect(await editLog()).toEqual([])
+    const [row] = await db.select().from(sponsors).where(eq(sponsors.id, other.id))
+    expect(row.name).toBe('Untouched')
+  })
+
+  it('writes nothing when the officer does not exist, even with no fields to log', async () => {
+    const listing = await createSponsor({ name: 'Acme' })
+    const db = getDb()
+
+    const [logged] = await db.batch(officerListingEdit(db, 999_999, listing.id, { name: 'Ghost' }, ['name']))
+    const [unlogged] = await db.batch(officerListingEdit(db, 999_999, listing.id, { name: 'Ghost' }, []))
+
+    expect(logged).toEqual([])
+    expect(unlogged).toEqual([])
+    expect(await editLog()).toEqual([])
+    const [row] = await db.select().from(sponsors).where(eq(sponsors.id, listing.id))
+    expect(row.name).toBe('Acme')
+  })
+
+  it('rolls the update back when the log row cannot be written', async () => {
+    const [officer, listing] = await Promise.all([createAdmin(), createSponsor({ name: 'Acme' })])
+    const db = getDb()
+    await db.execute(sql`alter table sponsor_edits add constraint test_reject_log check (false) not valid`)
+    try {
+      await expect(db.batch(officerListingEdit(db, officer.id, listing.id, { name: 'Renamed' }, ['name']))).rejects.toThrow()
+    } finally {
+      await db.execute(sql`alter table sponsor_edits drop constraint test_reject_log`)
+    }
+
+    const [row] = await db.select().from(sponsors).where(eq(sponsors.id, listing.id))
+    expect(row.name).toBe('Acme')
     expect(await editLog()).toEqual([])
   })
 })

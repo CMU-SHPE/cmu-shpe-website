@@ -1,6 +1,6 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, exists, sql } from 'drizzle-orm'
 import type { Db } from '@/db'
 import { type Sponsor, type SponsorTier, admins, members, sponsorEdits, sponsors } from '@/db/schema'
 import { type MemberSession, currentMember } from '@/lib/member'
@@ -103,8 +103,8 @@ export function listingEdit(
 }
 
 /**
- * The officer's name is read from the admins row inside the batch, not from the session. A listing
- * deleted since the caller read it matches no row, so the update and the log both write nothing.
+ * The officer's name is read from the admins row inside the batch, not from the session. If the
+ * listing or the officer's account is gone, the update returns no row and neither statement writes.
  */
 export function officerListingEdit(
   db: Db,
@@ -113,7 +113,12 @@ export function officerListingEdit(
   values: Partial<typeof sponsors.$inferInsert>,
   fields: readonly OfficerListingField[],
 ) {
-  const update = db.update(sponsors).set(values).where(eq(sponsors.id, listingId)).returning({ id: sponsors.id })
+  const officerExists = exists(db.select({ id: admins.id }).from(admins).where(eq(admins.id, adminId)))
+  const update = db
+    .update(sponsors)
+    .set(values)
+    .where(and(eq(sponsors.id, listingId), officerExists))
+    .returning({ id: sponsors.id })
   if (fields.length === 0) return [update] as const
 
   const auditColumns = columnList([

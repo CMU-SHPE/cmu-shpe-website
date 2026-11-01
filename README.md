@@ -472,9 +472,8 @@ New default text in `src/db/seed-data/content.ts` never reaches production on it
 `scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`; for the
 sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
 committed first; for the UI clarity release, `2026-10-30-privacy-ui-clarity.sql`, which needs
-the sponsor portal one committed first). Run it
-with the production connection string after the code deploys and before the first
-newsletter goes out. It backs the old rows up, only replaces text still matching the old
+the sponsor portal one committed first). Run it with the production connection string at the
+point that release's own production steps and the script's header give. It backs the old rows up, only replaces text still matching the old
 default, and rolls back unless run with `-v commit=1`: run it once without, check the
 report at the end, then run `psql -v commit=1 "$DATABASE_URL" -f <file>`. The comments at
 the top explain each step. The fallback is editing the text in

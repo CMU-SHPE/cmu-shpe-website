@@ -88,7 +88,7 @@ export async function updateSponsor(id: number, formData: FormData) {
       : { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
 
   const values = { ...fields, ...logoColumns(logo) }
-  await db.batch(
+  const [updated] = await db.batch(
     officerListingEdit(
       db,
       Number(session.user.id),
@@ -97,6 +97,10 @@ export async function updateSponsor(id: number, formData: FormData) {
       changedOfficerFields(row, values),
     ),
   )
+  if (updated.length === 0) {
+    await cleanupBlobs(...orphanedBlobs(logo, existing))
+    redirect('/admin/sponsors?error=not-saved')
+  }
   await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/admin/sponsors?saved=1')

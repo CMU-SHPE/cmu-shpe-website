@@ -31,6 +31,7 @@ const errorMessages: Record<string, string> = {
     'Please check the fields — the name is required, the website must start with http:// or https://, and a logo path must start with a single / or https://.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
   missing: 'That sponsor no longer exists.',
+  'not-saved': "That change couldn't be saved, so nothing was changed. Refresh the page and try again.",
   storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
 }
 

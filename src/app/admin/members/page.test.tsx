@@ -170,7 +170,7 @@ describe('AdminMembersPage', () => {
     await renderPage()
     await userEvent.click(screen.getByRole('button', { name: 'Delete Ana <b>Lopez</b>' }))
     expect(confirm).toHaveBeenCalledWith(
-      'Delete Ana <b>Lopez</b>? This removes their account, sign-in and password reset links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name. This can\'t be undone.',
+      'Delete Ana <b>Lopez</b>? This removes their account, email confirmation and password reset links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name. This can\'t be undone.',
     )
     expect(mocks.deleteMember).not.toHaveBeenCalled()
   })

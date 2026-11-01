@@ -167,7 +167,7 @@ export default async function AdminMembersPage(props: {
                       <form action={deleteMember.bind(null, member.id)}>
                         <DeleteButton
                           name={member.name}
-                          warning="This removes their account, sign-in and password reset links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name."
+                          warning="This removes their account, email confirmation and password reset links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name."
                         />
                       </form>
                     </div>
