@@ -109,6 +109,7 @@ describe('deleteSponsor', () => {
 })
 
 const OLD_LOGO = 'https://store.public.blob.vercel-storage.com/sponsors/old.png'
+const LOGO_SOURCE = 'https://store.public.blob.vercel-storage.com/sponsors/source.png'
 const logoFile = () => new File([new Uint8Array(10)], 'new.png', { type: 'image/png' })
 
 function sponsorForm(listing: Sponsor, overrides: Record<string, string> = {}) {
@@ -241,8 +242,11 @@ describe('updateSponsor', () => {
     expect(mocks.cleanupBlobs).not.toHaveBeenCalled()
   })
 
-  it('keeps the fresh upload, cleans up the old logo and logs it when the save succeeds', async () => {
-    const [officer, listing] = await Promise.all([createAdmin({ name: 'Jayden' }), createSponsor({ logoUrl: OLD_LOGO })])
+  it('keeps the fresh crop, cleans up the old one and logs it when the save succeeds', async () => {
+    const [officer, listing] = await Promise.all([
+      createAdmin({ name: 'Jayden' }),
+      createSponsor({ logoUrl: OLD_LOGO, logoOriginalUrl: LOGO_SOURCE }),
+    ])
     mocks.adminId = String(officer.id)
 
     const form = sponsorForm(listing)
@@ -251,7 +255,7 @@ describe('updateSponsor', () => {
 
     const { url } = await mocks.put.mock.results[0].value
     const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
-    expect(row.logoUrl).toBe(url)
+    expect(row).toMatchObject({ logoUrl: url, logoOriginalUrl: LOGO_SOURCE })
     expect((await editLog()).map((edit) => edit.fields)).toEqual([['logo']])
     expect(mocks.del).not.toHaveBeenCalled()
     expect(mocks.cleanupBlobs).toHaveBeenCalledWith(OLD_LOGO)
