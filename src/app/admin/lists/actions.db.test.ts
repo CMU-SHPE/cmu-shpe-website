@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
       super(`REDIRECT ${url}`)
     }
   }
-  return { Redirect }
+  return { Redirect, requireAdmin: vi.fn() }
 })
 
 vi.mock('next/navigation', () => ({
@@ -19,7 +19,7 @@ vi.mock('next/navigation', () => ({
     throw new mocks.Redirect(url)
   },
 }))
-vi.mock('@/lib/admin', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: '1', kind: 'admin' } })) }))
+vi.mock('@/lib/admin', () => ({ requireAdmin: mocks.requireAdmin }))
 
 import {
   createHomePillar,
@@ -69,6 +69,40 @@ function benefitForm(label: string, cells: Partial<Record<'platinum' | 'gold' | 
 
 beforeEach(async () => {
   await resetDb()
+  mocks.requireAdmin.mockReset()
+  mocks.requireAdmin.mockResolvedValue({ user: { id: '1', kind: 'admin' } })
+})
+
+describe('someone who is not an admin', () => {
+  it('is refused by every action before anything is written', async () => {
+    const [stat] = await getDb().insert(homeStats).values({ value: '1', label: 'One' }).returning()
+    const [pillar] = await getDb().insert(homePillars).values({ icon: '1', title: 'One' }).returning()
+    const [national] = await getDb().insert(nationalStats).values({ value: '1', label: 'One' }).returning()
+    const [benefit] = await getDb().insert(sponsorBenefits).values({ label: 'One' }).returning()
+    const snapshot = () => Promise.all(Object.values(rows).map((read) => read()))
+    const before = await snapshot()
+
+    const attempts = {
+      createHomeStat: () => createHomeStat(form({ value: '2', label: 'Two' })),
+      updateHomeStat: () => updateHomeStat(stat.id, form({ value: '2', label: 'Two' })),
+      createHomePillar: () => createHomePillar(form({ icon: '2', title: 'Two', description: '' })),
+      updateHomePillar: () => updateHomePillar(pillar.id, form({ icon: '2', title: 'Two', description: '' })),
+      createNationalStat: () => createNationalStat(form({ value: '2', label: 'Two', description: '' })),
+      updateNationalStat: () => updateNationalStat(national.id, form({ value: '2', label: 'Two', description: '' })),
+      createSponsorBenefit: () => createSponsorBenefit(benefitForm('Two')),
+      updateSponsorBenefit: () => updateSponsorBenefit(benefit.id, benefitForm('Two')),
+      deleteListItem: () => deleteListItem('homeStats', stat.id),
+      moveListItem: () => moveListItem('homeStats', stat.id, 'down'),
+    }
+    for (const [name, attempt] of Object.entries(attempts)) {
+      mocks.requireAdmin.mockRejectedValueOnce(new mocks.Redirect('/login'))
+      expect(await redirectOf(attempt()), name).toBe('/login')
+      expect(mocks.requireAdmin, name).toHaveBeenCalledTimes(1)
+      mocks.requireAdmin.mockClear()
+    }
+
+    expect(await snapshot()).toEqual(before)
+  })
 })
 
 describe('create and update', () => {

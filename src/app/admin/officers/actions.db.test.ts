@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => {
       super(`REDIRECT ${url}`)
     }
   }
-  return { Redirect, cleanupBlobs: vi.fn<(...urls: (string | null | undefined)[]) => Promise<void>>(async () => {}) }
+  return {
+    Redirect,
+    requireAdmin: vi.fn(),
+    cleanupBlobs: vi.fn<(...urls: (string | null | undefined)[]) => Promise<void>>(async () => {}),
+  }
 })
 
 vi.mock('next/navigation', () => ({
@@ -18,7 +22,7 @@ vi.mock('next/navigation', () => ({
     throw new mocks.Redirect(url)
   },
 }))
-vi.mock('@/lib/admin', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: '1', kind: 'admin' } })) }))
+vi.mock('@/lib/admin', () => ({ requireAdmin: mocks.requireAdmin }))
 vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
 
 import {
@@ -26,6 +30,7 @@ import {
   createOfficer,
   deleteAdvisor,
   deleteOfficer,
+  moveAdvisor,
   moveOfficer,
   updateAdvisor,
   updateOfficer,
@@ -80,6 +85,36 @@ const advisorRows = () => getDb().select().from(advisors).orderBy(asc(advisors.s
 beforeEach(async () => {
   await resetDb()
   mocks.cleanupBlobs.mockClear()
+  mocks.requireAdmin.mockReset()
+  mocks.requireAdmin.mockResolvedValue({ user: { id: '1', kind: 'admin' } })
+})
+
+describe('someone who is not an admin', () => {
+  it('is refused by every action before anything is written', async () => {
+    const [officer] = await getDb().insert(officers).values({ name: 'Ana', role: 'President', major: 'ME', year: 'Senior' }).returning()
+    const [advisor] = await getDb().insert(advisors).values({ name: 'Dr. Lee', role: 'Advisor', department: 'Eng' }).returning()
+    const before = [await officerRows(), await advisorRows()]
+
+    const attempts = {
+      createOfficer: () => createOfficer(officerForm()),
+      updateOfficer: () => updateOfficer(officer.id, officerForm({ name: 'Changed' })),
+      deleteOfficer: () => deleteOfficer(officer.id),
+      moveOfficer: () => moveOfficer(officer.id, 'down'),
+      createAdvisor: () => createAdvisor(advisorForm()),
+      updateAdvisor: () => updateAdvisor(advisor.id, advisorForm({ name: 'Changed' })),
+      deleteAdvisor: () => deleteAdvisor(advisor.id),
+      moveAdvisor: () => moveAdvisor(advisor.id, 'down'),
+    }
+    for (const [name, attempt] of Object.entries(attempts)) {
+      mocks.requireAdmin.mockRejectedValueOnce(new mocks.Redirect('/login'))
+      expect(await redirectOf(attempt()), name).toBe('/login')
+      expect(mocks.requireAdmin, name).toHaveBeenCalledTimes(1)
+      mocks.requireAdmin.mockClear()
+    }
+
+    expect([await officerRows(), await advisorRows()]).toEqual(before)
+    expect(mocks.cleanupBlobs).not.toHaveBeenCalled()
+  })
 })
 
 describe('officers', () => {
