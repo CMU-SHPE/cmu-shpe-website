@@ -9,8 +9,8 @@ import { getDb } from '@/db'
 import { memberTopicSubscriptions, members } from '@/db/schema'
 import { parsePasswordChange } from '@/lib/admin-account'
 import { clearLoginAttempts, recordLoginAttempt } from '@/lib/authorize'
-import { sendEmail } from '@/lib/email'
-import { passwordChanged } from '@/lib/email-templates'
+import { EmailSendError, sendEmail } from '@/lib/email'
+import { confirmNewEmail, passwordChanged } from '@/lib/email-templates'
 import { clientIp } from '@/lib/login-throttle'
 import { requireMember } from '@/lib/member'
 import {
@@ -23,8 +23,16 @@ import {
   parseTopicSelection,
 } from '@/lib/member-account'
 import { memberDeletion } from '@/lib/member-admin'
+import {
+  deletePendingEmailChange,
+  newEmailChange,
+  parseEmailChange,
+  purgeExpiredEmailChanges,
+  savePendingEmailChange,
+} from '@/lib/member-email-change'
 import { deleteMemberTokens } from '@/lib/member-tokens'
 import { countExistingTopics } from '@/lib/newsletter-topics'
+import { recordRequest } from '@/lib/request-throttle'
 import { siteUrl } from '@/lib/site-url'
 
 async function currentMemberRow() {
@@ -58,6 +66,37 @@ async function notifyPasswordChanged(member: { email: string; name: string }) {
   }
 }
 
+/**
+ * Nothing changes until the link sent to the new address is used. Whether that address is
+ * already taken is only checked then, so this answers the same way for a free address and a
+ * taken one. Its own request limit keeps typos here from counting against sign-in.
+ */
+export async function requestEmailChange(formData: FormData) {
+  const member = await currentMemberRow()
+  const parsed = parseEmailChange(formData)
+  if (!parsed.success) redirect(accountResultPath({ error: parsed.code }))
+  const { newEmail, currentPassword } = parsed.data
+  if (newEmail === member.email) redirect(accountResultPath({ error: 'email-same' }))
+
+  const ip = clientIp((await headers()).get('x-forwarded-for'))
+  const { throttled } = await recordRequest('change_email', member.email, ip)
+  if (throttled) redirect(accountResultPath({ error: 'email-throttled' }))
+  if (!(await bcrypt.compare(currentPassword, member.passwordHash))) {
+    redirect(accountResultPath({ error: 'email-current' }))
+  }
+
+  const db = getDb()
+  const { token, row } = newEmailChange(member.id, newEmail)
+  await db.batch([purgeExpiredEmailChanges(db), savePendingEmailChange(db, row)])
+  try {
+    await sendEmail({ to: newEmail, ...confirmNewEmail(`${siteUrl()}/account/confirm-email?token=${token}`) })
+  } catch (error) {
+    if (!(error instanceof EmailSendError)) throw error
+    redirect(accountResultPath({ error: 'email-send' }))
+  }
+  redirect(accountResultPath({ saved: 'email' }))
+}
+
 export async function changePassword(formData: FormData) {
   const member = await currentMemberRow()
 
@@ -75,10 +114,11 @@ export async function changePassword(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12)
   const db = getDb()
-  // A reset link emailed before this change would otherwise still set a password for the next hour.
+  // Links issued under the old password would otherwise keep working: a reset for the next hour, an email change for a day.
   await db.batch([
     db.update(members).set({ passwordHash, passwordChangedAt: new Date() }).where(eq(members.id, member.id)),
     deleteMemberTokens(db, member.id, 'reset_password'),
+    deletePendingEmailChange(db, member.id),
   ])
   await clearLoginAttempts(member.email)
   await notifyPasswordChanged(member)

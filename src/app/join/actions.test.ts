@@ -257,14 +257,16 @@ describe('signUp branches', () => {
     expect(sentText()).toContain('https://shpe.test/forgot-password')
   })
 
-  it('leaves an admin alone and sends the admin version, without a reset link', async () => {
+  it('leaves an admin alone and sends the admin version, pointing at the shared reset page without a token', async () => {
     branches.admin()
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
     expect(mocks.state.ops.filter((op) => op.startsWith('find')).sort()).toEqual(['find admins', 'find members'])
     expect(mocks.state.batches).toEqual([])
     expect(sentText()).toContain('Hi Stored Admin,')
-    expect(sentText()).toContain('master admin')
-    expect(sentText()).not.toContain('forgot-password')
+    expect(sentText()).toContain('already belongs to a site admin')
+    expect(sentText()).toMatch(/\/forgot-password\n/)
+    expect(sentText()).not.toContain('master admin')
+    expect(sentText()).not.toContain('token=')
   })
 
   it('purges stale unconfirmed accounts before looking the email up', async () => {

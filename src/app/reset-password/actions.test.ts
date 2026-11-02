@@ -88,6 +88,7 @@ describe('resetMemberPassword', () => {
     )
     expect(text).toContain("delete from member_tokens t using updated where t.member_id = updated.id and t.purpose = 'reset_password' and t.token_hash <> $4")
     expect(text).toContain('delete from login_attempts l using updated where l.email = updated.email')
+    expect(text).toContain('delete from member_email_changes e using updated where e.member_id = updated.id')
     expect(text).toMatch(/select email, name from updated$/)
     expect(params[0]).toBe(hashToken(TOKEN))
     expect(params[1]).toBe('$2b$12$new')

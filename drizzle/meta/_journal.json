@@ -57,6 +57,13 @@
       "when": 1793393617712,
       "tag": "0007_steady_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793575594695,
+      "tag": "0008_narrow_guardsmen",
+      "breakpoints": true
     }
   ]
 }

@@ -45,6 +45,7 @@ beforeEach(() => {
   mocks.batchSend.mockReset().mockResolvedValue({ data: { data: [{ id: 'b_0' }, { id: 'b_1' }], errors: [] }, error: null, headers: null })
   mocks.getSiteSettings.mockReset().mockResolvedValue({ contactEmail: 'shpe@cmu.edu' })
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.stubEnv('VERCEL_ENV', 'production')
 })
 
 afterEach(() => {
@@ -55,6 +56,51 @@ afterEach(() => {
 function logged(): string {
   return JSON.stringify(consoleError.mock.calls)
 }
+
+describe('sendEmail outside production', () => {
+  let consoleWarn: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    configure()
+    consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    consoleWarn.mockRestore()
+  })
+
+  it.each([
+    ['unset', ''],
+    ['preview', 'preview'],
+    ['development', 'development'],
+  ])('with VERCEL_ENV %s skips real addresses without failing or logging the address', async (_label, vercelEnv) => {
+    vi.stubEnv('VERCEL_ENV', vercelEnv)
+    const { sendEmail } = await load()
+    for (const to of ['ana@example.com', 'x@resend.dev.evil.com', 'resend.dev@example.com']) {
+      await expect(sendEmail({ ...message, to })).resolves.toBeUndefined()
+    }
+    expect(mocks.send).not.toHaveBeenCalled()
+    expect(consoleWarn).toHaveBeenCalledWith('EMAIL SKIPPED: only @resend.dev addresses are emailed outside production')
+    const warned = JSON.stringify(consoleWarn.mock.calls)
+    expect(warned).not.toContain('example.com')
+    expect(warned).not.toContain('evil')
+  })
+
+  it.each(['delivered+e2e@resend.dev', 'Delivered+E2E@Resend.DEV'])('still sends to the test inbox %s', async (to) => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    const { sendEmail } = await load()
+    await sendEmail({ ...message, to })
+    expect(mocks.send).toHaveBeenCalledTimes(1)
+    expect(mocks.send.mock.calls[0][0].to).toBe(to)
+    expect(consoleWarn).not.toHaveBeenCalled()
+  })
+
+  it('sends to every address in production', async () => {
+    const { sendEmail } = await load()
+    await sendEmail(message)
+    expect(mocks.send).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('sendEmail', () => {
   it('imports without env and does not build a client until a send', async () => {
