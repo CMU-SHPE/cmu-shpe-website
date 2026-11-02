@@ -39,6 +39,12 @@ async function resetMaster(): Promise<string> {
       throw new Error(`${email} ${MEMBER_EMAIL_TAKEN}`)
   }
 
+  if (result.sharedWithMember) {
+    console.warn(
+      `Warning: a member account also uses ${email}. Sign-in picks the master, so that member can't sign in until the member is deleted or changes to another address.`,
+    )
+  }
+
   const length = `${Array.from(password).length}-character password`
   return result.previousEmail === email
     ? `Set a new ${length} for the master account ${email}.`

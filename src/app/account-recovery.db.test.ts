@@ -242,7 +242,7 @@ describe('db:reset-master', () => {
     const masterToken = await issueAdminToken(master.id)
     const otherToken = await issueAdminToken(other.id)
 
-    expect(await resetMasterAccount(db, 'new-max@shpe.test', 'new hash')).toEqual({ status: 'reset', previousEmail: 'max@shpe.test' })
+    expect(await resetMasterAccount(db, 'new-max@shpe.test', 'new hash')).toEqual({ status: 'reset', previousEmail: 'max@shpe.test', sharedWithMember: false })
 
     expect(await db.select({ adminId: adminTokens.adminId }).from(adminTokens)).toEqual([{ adminId: other.id }])
     await expect(resetAdminPasswordWithLink({}, resetForm(masterToken))).resolves.toEqual({

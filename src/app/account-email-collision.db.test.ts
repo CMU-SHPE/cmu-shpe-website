@@ -36,6 +36,7 @@ vi.mock('@/lib/admin', async (importOriginal) => ({
 import { getDb } from '@/db'
 import { resetMasterAccount } from '@/db/reset-master-writes'
 import { adminTokens, admins, loginAttempts, members, memberTokens } from '@/db/schema'
+import { lockAccountEmails } from '@/lib/account-email-lock'
 import { currentAdmin } from '@/lib/admin'
 import { newAdminResetToken } from '@/lib/admin-tokens'
 import { authorizeCredentials } from '@/lib/authorize'
@@ -224,11 +225,11 @@ describe('db:reset-master', () => {
     expect(await holders('mia@shpe.test')).toEqual({ admins: 0, members: 1 })
   })
 
-  it('still resets the password of a master whose own address a member already shares', async () => {
+  it('still resets a master whose own address a member already shares, and reports that member', async () => {
     const row = await master()
     await createMember({ email: 'max@shpe.test' })
     const result = await resetMasterAccount(getDb(), 'max@shpe.test', await bcrypt.hash(NEW_PASSWORD, 4))
-    expect(result).toEqual({ status: 'reset', previousEmail: 'max@shpe.test' })
+    expect(result).toEqual({ status: 'reset', previousEmail: 'max@shpe.test', sharedWithMember: true })
     expect(await bcrypt.compare(NEW_PASSWORD, (await adminRow(row.id)).passwordHash)).toBe(true)
   })
 
@@ -247,7 +248,7 @@ describe('db:reset-master', () => {
 
     const result = await resetMasterAccount(db, 'new-max@shpe.test', await bcrypt.hash(NEW_PASSWORD, 4))
 
-    expect(result).toEqual({ status: 'reset', previousEmail: 'max@shpe.test' })
+    expect(result).toEqual({ status: 'reset', previousEmail: 'max@shpe.test', sharedWithMember: false })
     expect(await db.select({ email: loginAttempts.email }).from(loginAttempts)).toEqual([{ email: other.email }])
     expect(await db.select({ adminId: adminTokens.adminId }).from(adminTokens)).toEqual([{ adminId: other.id }])
     expect((await adminRow(row.id)).role).toBe('master')
@@ -261,6 +262,21 @@ describe('db:reset-master', () => {
     expect(signedIn).toMatchObject({ kind: 'admin', role: 'master' })
     mocks.auth.mockResolvedValue({ ...session, authTime: signedIn!.authTime })
     expect(await currentAdmin()).not.toBeNull()
+  })
+
+  it('dates the password change after the wait for the lock, not when the reset started', async () => {
+    const row = await master()
+    let releasedAfter = new Date(0)
+    await raceInOrderBehindAccountEmailLock<unknown>([
+      () => resetMasterAccount(getDb(), 'max@shpe.test', 'new hash'),
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        const { rows } = await getDb().execute<{ at: string }>(sql`select clock_timestamp()::text as at`)
+        releasedAfter = new Date(rows[0].at)
+        return getDb().batch([getDb().execute(lockAccountEmails), getDb().execute(sql`select 1`)])
+      },
+    ])
+    expect((await adminRow(row.id)).passwordChangedAt!.getTime()).toBeGreaterThanOrEqual(releasedAfter.getTime())
   })
 
   it('refuses an address a sign-up committed after the reset started', async () => {
@@ -280,7 +296,7 @@ describe('db:reset-master', () => {
       () => resetMasterAccount(getDb(), 'race@shpe.test', 'new hash'),
       () => outcome(signUp({}, signUpForm('race@shpe.test'))),
     ])
-    expect(results).toEqual([{ status: 'reset', previousEmail: 'max@shpe.test' }, '/join/check-email'])
+    expect(results).toEqual([{ status: 'reset', previousEmail: 'max@shpe.test', sharedWithMember: false }, '/join/check-email'])
     expect(await holders('race@shpe.test')).toEqual({ admins: 1, members: 0 })
     expect(mocks.sendEmail.mock.calls[0][0].text).toContain('already belongs to a site admin')
   })
