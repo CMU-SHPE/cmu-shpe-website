@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
 
-type Write = { kind: 'insert' | 'update' | 'delete'; table: string; values?: Record<string, unknown>; where?: SQL }
+type Write = { kind: 'insert' | 'update' | 'delete' | 'execute'; table: string; values?: Record<string, unknown>; where?: SQL }
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     ops: [] as string[],
     batches: [] as Write[][],
     batchError: null as null | (() => unknown),
+    adminTakesAddress: null as null | (() => void),
     throttled: false,
     rounds: 0,
     inFlight: 0,
@@ -66,6 +67,7 @@ const mocks = vi.hoisted(() => {
           roundTrip(() => {
             state.ops.push(`purge ${tableName(table)}`)
           }).then(resolve, reject),
+        returning: () => ({ kind: 'delete', table: tableName(table), where }),
       }),
     }),
     batch: (writes: Write[]) =>
@@ -77,12 +79,25 @@ const mocks = vi.hoisted(() => {
           throw error
         }
         state.batches.push(writes)
+        const adminTakesAddress = state.adminTakesAddress
+        state.adminTakesAddress = null
+        adminTakesAddress?.()
+        return writes.map((write) =>
+          write.kind === 'delete' && write.table === 'members' && adminTakesAddress ? [{ id: 9 }] : [],
+        )
       }),
-    execute: (statement: SQL) =>
-      roundTrip(() => {
-        state.ops.push(`execute ${new PgDialect().sqlToQuery(statement).sql}`)
-        return { rows: [] }
-      }),
+    execute: (statement: SQL) => {
+      const text = new PgDialect().sqlToQuery(statement).sql
+      return {
+        kind: 'execute',
+        table: text,
+        then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) =>
+          roundTrip(() => {
+            state.ops.push(`execute ${text}`)
+            return { rows: [] }
+          }).then(resolve, reject),
+      }
+    },
   }
   return {
     state,
@@ -159,6 +174,7 @@ beforeEach(() => {
     ops: [],
     batches: [],
     batchError: null,
+    adminTakesAddress: null,
     throttled: false,
     rounds: 0,
     inFlight: 0,
@@ -211,8 +227,15 @@ describe('signUp branches', () => {
   it('creates a new member and their confirmation token in one batch', async () => {
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
     const [batch] = mocks.state.batches
-    expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual(['insert members', 'insert member_tokens'])
-    expect(batch[0].values).toMatchObject({
+    expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual([
+      'execute lock table admins in share row exclusive mode',
+      'insert members',
+      'insert member_tokens',
+      'delete members',
+    ])
+    expect(render(batch[3].where!).sql).toBe('("members"."email" = $1 and exists $2)')
+    expect(render(batch[3].where!).params[0]).toBe('mia@example.com')
+    expect(batch[1].values).toMatchObject({
       email: 'mia@example.com',
       name: 'New Name',
       passwordHash: '$2b$12$hashed',
@@ -220,7 +243,7 @@ describe('signUp branches', () => {
       ageConfirmedAt: expect.any(Date),
       termsAcceptedAt: expect.any(Date),
     })
-    expect(batch[1].values).toMatchObject({ purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(batch[2].values).toMatchObject({ purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
     expect(mocks.sendEmail.mock.calls[0][0]).toMatchObject({ subject: 'Confirm your email for SHPE @ CMU' })
     expect(sentText()).toMatch(/https:\/\/shpe\.test\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
     expect(sentText().startsWith('Hi,\n')).toBe(true)
@@ -287,6 +310,17 @@ describe('signUp branches', () => {
       'insert member_tokens',
     ])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers as for an admin when an admin takes the address after the lookup, still sending one email', async () => {
+    mocks.state.adminTakesAddress = () => {
+      mocks.state.admin = { name: 'Racing Admin' }
+    }
+    await expect(signUp({}, form())).rejects.toThrow('REDIRECT /join/check-email')
+    expect(mocks.state.batches).toHaveLength(1)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    expect(sentText()).toContain('Hi Racing Admin,')
+    expect(sentText()).toContain('already belongs to a site admin')
   })
 })
 

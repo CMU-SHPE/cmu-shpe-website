@@ -12,7 +12,7 @@ type MemberRow = {
 }
 type TokenRow = { memberId: number; purpose: string; tokenHash: string; expiresAt: Date }
 type ThrottleRow = { action: string; email: string; ip: string | null; createdAt: Date }
-type Write = () => void
+type Write = () => unknown
 
 const fake = vi.hoisted(() => {
   const state = {
@@ -152,22 +152,30 @@ function createDb() {
           throw new Error(`unexpected delete from ${name}`)
         }
       }
+      const undoIfAdminHolds: Write = () => {
+        const [email] = params(condition)
+        if (!state.admins.some((row) => row.email.toLowerCase() === email)) return []
+        const undone = state.members.filter((row) => row.email === email)
+        state.members = state.members.filter((row) => row.email !== email)
+        return undone.map((row) => ({ id: row.id }))
+      }
+      const consumeToken = async () => {
+        if (name !== 'member_tokens') throw new Error('unexpected returning')
+        const [tokenHash, purpose] = params(condition)
+        const now = Date.now()
+        const match = state.tokens.find(
+          (row) => row.tokenHash === tokenHash && row.purpose === purpose && row.expiresAt.getTime() > now,
+        )
+        if (!match) return []
+        state.tokens = state.tokens.filter((row) => row !== match)
+        const hook = state.afterConsume
+        state.afterConsume = null
+        await hook?.()
+        return [{ memberId: match.memberId }]
+      }
       return Object.assign(apply, {
         then: (resolve: (value: unknown) => void) => resolve(apply()),
-        returning: async () => {
-          if (name !== 'member_tokens') throw new Error('unexpected returning')
-          const [tokenHash, purpose] = params(condition)
-          const now = Date.now()
-          const match = state.tokens.find(
-            (row) => row.tokenHash === tokenHash && row.purpose === purpose && row.expiresAt.getTime() > now,
-          )
-          if (!match) return []
-          state.tokens = state.tokens.filter((row) => row !== match)
-          const hook = state.afterConsume
-          state.afterConsume = null
-          await hook?.()
-          return [{ memberId: match.memberId }]
-        },
+        returning: () => (name === 'members' ? undoIfAdminHolds : consumeToken()),
       })
     },
   })
@@ -220,11 +228,11 @@ function createDb() {
     update,
     delete: remove,
     select,
-    execute: async () => ({ rows: [] }),
+    execute: () => Object.assign(() => ({ rows: [] }), { then: (resolve: (value: unknown) => void) => resolve({ rows: [] }) }),
     batch: async (writes: Write[]) => {
       const snapshot = structuredClone({ members: fake.state.members, tokens: fake.state.tokens })
       try {
-        for (const write of writes) write()
+        return writes.map((write) => write())
       } catch (error) {
         Object.assign(fake.state, snapshot)
         throw error

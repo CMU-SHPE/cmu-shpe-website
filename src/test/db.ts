@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs'
 import { eq, sql } from 'drizzle-orm'
-import { getDb } from '@/db'
+import { getDb, type Db } from '@/db'
 import { admins, events, members, sponsors, type MemberRole } from '@/db/schema'
+import { lockAccountEmails } from '@/lib/account-email-lock'
 
 export const TEST_PASSWORD = 'correct horse battery'
 
@@ -106,8 +107,26 @@ export async function createEvent(overrides: Partial<typeof events.$inferInsert>
  */
 export async function raceBehindLockedEvent<T>(eventId: number, racers: (() => Promise<T>)[]): Promise<T[]> {
   const db = getDb()
+  return raceBehindGate(db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).for('update'), racers)
+}
+
+/**
+ * Holds the lock every admin and member email write takes, as raceBehindLockedEvent holds an event
+ * row. Each racer has done its reads before it queues, and Postgres grants the lock in queue order,
+ * so racers run their writes in the order given, each after everything before it committed.
+ */
+export async function raceInOrderBehindAccountEmailLock<T>(racers: (() => Promise<T>)[]): Promise<T[]> {
+  return raceBehindGate(getDb().execute(lockAccountEmails), racers, { inOrder: true })
+}
+
+async function raceBehindGate<T>(
+  lock: Parameters<Db['batch']>[0][number],
+  racers: (() => Promise<T>)[],
+  { inOrder = false } = {},
+): Promise<T[]> {
+  const db = getDb()
   const gate = db.batch([
-    db.select({ id: events.id }).from(events).where(eq(events.id, eventId)).for('update'),
+    lock,
     db.execute(
       sql.raw(`/* ${GATE_TAG} */ do $$
         declare deadline timestamptz := clock_timestamp() + interval '${GATE_TIMEOUT_SECONDS} seconds';
@@ -120,9 +139,29 @@ export async function raceBehindLockedEvent<T>(eventId: number, racers: (() => P
     ),
   ])
   await waitForGateToHoldLock()
-  const results = Promise.all(racers.map((race) => race()))
+  const started: Promise<T>[] = []
+  for (const race of racers) {
+    const running = race()
+    running.catch(() => {})
+    started.push(running)
+    // The gate lets everyone through once the last racer queues, so only the earlier ones can be seen waiting.
+    if (inOrder && started.length < racers.length) await waitForQueuedRacers(started.length)
+  }
+  const results = Promise.all(started)
   await gate
   return results
+}
+
+async function waitForQueuedRacers(count: number) {
+  const deadline = Date.now() + GATE_TIMEOUT_SECONDS * 1000
+  while (Date.now() < deadline) {
+    const { rows } = await getDb().execute<{ waiting: number }>(
+      sql`select count(*)::int as waiting from pg_locks where not granted`,
+    )
+    if ((rows[0]?.waiting ?? 0) >= count) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error(`racer ${count} never queued behind the gate`)
 }
 
 async function waitForGateToHoldLock() {
@@ -135,5 +174,5 @@ async function waitForGateToHoldLock() {
       ) as holding`)
     if (rows[0]?.holding) return
   }
-  throw new Error('the gate transaction never took the event lock')
+  throw new Error('the gate transaction never took its lock')
 }
