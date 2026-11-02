@@ -68,11 +68,22 @@ describe('writeOrDiscardUploads', () => {
     'deletes the fresh uploads when the write matches no row (VERCEL_ENV %j)',
     async (vercelEnv) => {
       vi.stubEnv('VERCEL_ENV', vercelEnv)
+      vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'vercel_blob_rw_PreviewStore_secret')
+      vi.stubEnv('PRODUCTION_BLOB_STORE_ID', 'store_ProdStore')
       await expect(writeOrDiscardUploads([photo, original], async () => [])).resolves.toBe(false)
       expect(mocks.del.mock.calls).toEqual([[photo], [original]])
       expect(mocks.findReferencedImageUrls).not.toHaveBeenCalled()
     },
   )
+
+  it('deletes nothing from a preview still on the production store', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'vercel_blob_rw_ProdStore_secret')
+    vi.stubEnv('PRODUCTION_BLOB_STORE_ID', 'store_ProdStore')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(writeOrDiscardUploads([photo], async () => [])).resolves.toBe(false)
+    expect(mocks.del).not.toHaveBeenCalled()
+  })
 
   it('deletes the fresh uploads and rethrows when the write fails', async () => {
     const failure = new Error('connection reset')

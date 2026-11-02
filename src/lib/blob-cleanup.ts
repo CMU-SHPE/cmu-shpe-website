@@ -1,8 +1,9 @@
 import { findReferencedImageUrls } from '@/lib/image-references'
 import { deleteUploadedBlob, isBlobUrl } from '@/lib/uploads'
 
-// Previews and local runs share production's Blob store and often a copy of its rows, so deleting
-// from them could break the live site. Outside production a superseded image is simply left behind.
+// Previews and local runs hold copies of production's rows, and local runs also use production's
+// Blob store, so deleting from them could break the live site. Outside production a superseded image
+// is simply left behind.
 // Run this after the write that dropped the URLs, so the reference check sees the new rows.
 export async function cleanupBlobs(...urls: (string | null | undefined)[]) {
   const candidates = [...new Set(urls)].filter((url): url is string => typeof url === 'string' && isBlobUrl(url))
@@ -19,7 +20,7 @@ export async function cleanupBlobs(...urls: (string | null | undefined)[]) {
 
 /**
  * Runs the write that stores freshly uploaded blobs. When it matches no row, the uploads are deleted
- * again: they carry a random suffix, so nothing else can point at them, in any environment. When it
+ * again: they carry a random suffix, so nothing else can point at them. When it
  * throws, the write may still have committed with only its response lost, so uploads that a row now
  * shows are kept, and all of them are kept if that can't be checked.
  */
