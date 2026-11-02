@@ -4,101 +4,60 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
 
-const fake = vi.hoisted(() => {
-  const state = {
-    ops: [] as string[],
-    counts: { perEmailAndIp: 1, perEmail: 1, perIp: 1 } as Record<string, number>,
-    inserted: [] as unknown[],
-    countWheres: [] as SQL[],
-    purgeWhere: null as SQL | null,
-  }
-  const db = {
-    insert: () => ({
-      values: (values: unknown) => ({
-        returning: async () => {
-          state.inserted.push(values)
-          state.ops.push('insert request')
-          return [{ id: 1 }]
-        },
-      }),
-    }),
-    delete: () => ({
-      where: async (condition: SQL) => {
-        state.purgeWhere ??= condition
-        state.ops.push(state.ops.includes('count requests') ? 'delete refused request' : 'purge expired requests')
-      },
-    }),
-    select: () => {
-      const query = {
-        from: () => query,
-        where: (condition: SQL) => {
-          state.countWheres.push(condition)
-          state.ops.push('count requests')
-          return Promise.resolve([state.counts])
-        },
-      }
-      return query
-    },
-  }
-  return { state, db }
-})
+const fake = vi.hoisted(() => ({
+  storeIfAllowed: vi.fn<(attempt: unknown) => Promise<{ throttled: boolean }>>(async () => ({ throttled: false })),
+}))
 
-vi.mock('@/db', () => ({ getDb: () => fake.db }))
+vi.mock('@/lib/throttle-store', () => ({ storeIfAllowed: fake.storeIfAllowed }))
 
-import { LOGIN_LIMITS, type ThrottleLimits } from './login-throttle'
-import { REQUEST_LIMITS, recordRequest, type ThrottledAction } from './request-throttle'
+import { LOGIN_LIMITS } from './login-throttle'
+import { REQUEST_LIMITS, recordRequest } from './request-throttle'
 
 const render = (condition: SQL) => new PgDialect().sqlToQuery(condition)
 
+type StoredAttempt = { lockKey: string; scope: SQL; columns: unknown; email: string; ip: string | null; limits: unknown }
+const lastAttempt = () => fake.storeIfAllowed.mock.calls.at(-1)![0] as StoredAttempt
+
 beforeEach(() => {
-  fake.state.ops = []
-  fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
-  fake.state.inserted = []
-  fake.state.countWheres = []
-  fake.state.purgeWhere = null
+  fake.storeIfAllowed.mockClear()
 })
 
 describe('recordRequest', () => {
-  it('records, purges everything older than the window, then counts', async () => {
-    await expect(recordRequest('signup', 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: false })
-    expect(fake.state.ops).toEqual(['insert request', 'purge expired requests', 'count requests'])
-    expect(fake.state.inserted).toEqual([{ action: 'signup', email: 'mia@example.com', ip: '203.0.113.7' }])
-    expect(render(fake.state.purgeWhere!).sql).toBe('"request_throttle"."created_at" < $1')
+  it('stores the request under its own action, lock and limits', async () => {
+    await expect(recordRequest('forgot_password', 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: false })
+    const attempt = lastAttempt()
+    expect(attempt).toMatchObject({
+      lockKey: 'forgot_password:mia@example.com',
+      columns: { action: 'forgot_password', email: 'mia@example.com', ip: '203.0.113.7' },
+      email: 'mia@example.com',
+      ip: '203.0.113.7',
+      limits: REQUEST_LIMITS.forgot_password,
+    })
+    expect(render(attempt.scope)).toMatchObject({ sql: '"request_throttle"."action" = $1', params: ['forgot_password'] })
   })
 
-  it('counts per action, so one flow cannot use up another', async () => {
-    await recordRequest('forgot_password', 'mia@example.com', '203.0.113.7')
-    const counted = render(fake.state.countWheres[0])
-    expect(counted.sql).toContain('"request_throttle"."action" = $1')
-    expect(counted.params[0]).toBe('forgot_password')
+  it('passes on a refusal', async () => {
+    fake.storeIfAllowed.mockResolvedValueOnce({ throttled: true })
+    await expect(recordRequest('signup', 'mia@example.com', null)).resolves.toEqual({ throttled: true })
   })
 
-  it('keeps no row for a refused request', async () => {
-    fake.state.counts.perEmailAndIp = REQUEST_LIMITS.signup.perEmailAndIp + 1
-    await expect(recordRequest('signup', 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: true })
-    expect(fake.state.ops.at(-1)).toBe('delete refused request')
-  })
-
-  it('records an IPv6 source as its /64', async () => {
+  it('records an IPv6 source as its /64 and anything that is not an address as unknown', async () => {
     await recordRequest('signup', 'mia@example.com', '2001:db8:1:2:aaaa:bbbb:cccc:dddd')
-    expect(fake.state.inserted).toEqual([{ action: 'signup', email: 'mia@example.com', ip: '2001:db8:1:2::/64' }])
+    expect(lastAttempt()).toMatchObject({ ip: '2001:db8:1:2::/64', columns: { ip: '2001:db8:1:2::/64' } })
+    await recordRequest('signup', 'mia@example.com', 'not an address')
+    expect(lastAttempt()).toMatchObject({ ip: null, columns: { ip: null } })
   })
 
-  it('does not take any limit from the login lockout', async () => {
+  it('does not take any limit from the login lockout', () => {
     for (const limits of Object.values(REQUEST_LIMITS)) expect(limits).not.toBe(LOGIN_LIMITS)
     const source = readFileSync(path.join(__dirname, 'request-throttle.ts'), 'utf8')
     expect(source).not.toContain('LOGIN_LIMITS')
   })
 
-  it.each(Object.entries(REQUEST_LIMITS) as [ThrottledAction, ThrottleLimits][])(
-    'applies each of the limits of %s at its boundary',
-    async (action, limits) => {
-      fake.state.counts = { ...limits }
-      await expect(recordRequest(action, 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: false })
-      for (const key of ['perEmailAndIp', 'perEmail', 'perIp'] as const) {
-        fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1, [key]: limits[key] + 1 }
-        await expect(recordRequest(action, 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: true })
-      }
-    },
-  )
+  it('needs several sources to reach any per-email ceiling a stranger can trigger', () => {
+    for (const action of ['signup', 'resend_confirmation', 'forgot_password', 'admin_password_reset', 'contact'] as const) {
+      const { perEmailAndIp, perEmail } = REQUEST_LIMITS[action]
+      expect(perEmail / perEmailAndIp, action).toBeGreaterThanOrEqual(3)
+    }
+  })
 })

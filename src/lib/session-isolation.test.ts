@@ -26,24 +26,16 @@ const fake = vi.hoisted(() => {
     admins: [] as AdminRow[],
     members: [] as MemberRow[],
     counts: { perEmailAndIp: 1, perEmail: 1, perIp: 1 } as Record<string, number>,
+    stored: [] as unknown[],
     ops: [] as string[],
   }
   const db = {
-    insert: () => ({
-      values: () => ({
-        returning: async () => {
-          state.ops.push('insert attempt')
-          return [{ id: 1 }]
-        },
-      }),
-    }),
     delete: () => ({
-      where: async (condition: { expiredBefore?: unknown }) => {
-        state.ops.push(condition?.expiredBefore ? 'purge expired attempts' : 'clear email attempts')
+      where: async () => {
+        state.ops.push('clear email attempts')
       },
     }),
     select: (fields: Record<string, unknown>) => {
-      const [key] = Object.keys(fields)
       let table = ''
       const query = {
         from: (source: Record<symbol, string>) => {
@@ -51,10 +43,6 @@ const fake = vi.hoisted(() => {
           return query
         },
         where: (condition: { lookup?: { column: string; value: unknown } }) => {
-          if (key in state.counts) {
-            state.ops.push('count attempts')
-            return Promise.resolve([state.counts])
-          }
           const lookup = condition?.lookup
           return {
             limit: async () => {
@@ -83,13 +71,20 @@ const fake = vi.hoisted(() => {
 
 vi.mock('@/auth', () => ({ auth: fake.auth }))
 vi.mock('@/db', () => ({ getDb: fake.getDb }))
+vi.mock('@/lib/throttle-store', () => ({
+  storeIfAllowed: async (attempt: { limits: Record<string, number>; skipEmailCeiling?: boolean }) => {
+    fake.state.ops.push('store attempt')
+    fake.state.stored.push(attempt)
+    const over = (key: string) => fake.state.counts[key] > attempt.limits[key]
+    return { throttled: over('perEmailAndIp') || (!attempt.skipEmailCeiling && over('perEmail')) || over('perIp') }
+  },
+}))
 vi.mock('next/navigation', () => ({ redirect: fake.redirect }))
 vi.mock('bcryptjs', () => ({ default: { compare: fake.compare } }))
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>()
   return {
     ...actual,
-    lt: (_column: unknown, value: unknown) => ({ expiredBefore: value }),
     eq: (column: { name: string }, value: unknown) => ({
       lookup: { column: column.name.replace(/_(\w)/g, (_, c: string) => c.toUpperCase()), value },
     }),
@@ -183,6 +178,7 @@ beforeEach(() => {
   fake.state.admins = []
   fake.state.members = []
   fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
+  fake.state.stored = []
   fake.state.ops = []
   fake.auth.mockReset()
   fake.getDb.mockClear()

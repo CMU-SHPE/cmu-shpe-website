@@ -20,7 +20,6 @@ const fake = vi.hoisted(() => {
     members: [] as MemberRow[],
     tokens: [] as TokenRow[],
     throttle: [] as ThrottleRow[],
-    nextThrottleId: 1,
     nextMemberId: 1,
     hashes: 0,
     accountLookups: 0,
@@ -45,6 +44,27 @@ const fake = vi.hoisted(() => {
 })
 
 vi.mock('@/db', () => ({ getDb: fake.getDb }))
+// The counting SQL runs against real Postgres in throttles.db.test.ts; this keeps the same limits in memory.
+vi.mock('@/lib/throttle-store', () => ({
+  storeIfAllowed: async (attempt: {
+    columns: { action: string }
+    email: string
+    ip: string | null
+    limits: { perEmailAndIp: number; perEmail: number; perIp: number }
+  }) => {
+    const { columns, email, ip, limits } = attempt
+    const windowStart = Date.now() - 15 * 60 * 1000
+    fake.state.throttle = fake.state.throttle.filter((row) => row.createdAt.getTime() >= windowStart)
+    const inWindow = fake.state.throttle.filter((row) => row.action === columns.action)
+    const count = (match: (row: ThrottleRow) => boolean) => inWindow.filter(match).length
+    const allowed =
+      count((row) => row.email === email && row.ip === ip) < limits.perEmailAndIp &&
+      count((row) => row.email === email) < limits.perEmail &&
+      (ip === null || count((row) => row.ip === ip) < limits.perIp)
+    if (allowed) fake.state.throttle.push({ action: columns.action, email, ip, createdAt: new Date() })
+    return { throttled: !allowed }
+  },
+}))
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendEmail: fake.sendEmail,
@@ -56,9 +76,9 @@ vi.mock('@/lib/queries', () => ({ getPrivacyPolicyVersion: async () => 'October 
 vi.mock('next/headers', () => ({ headers: fake.headers }))
 vi.mock('next/navigation', () => ({ redirect: fake.redirect }))
 
-import { members, memberTokens, requestThrottle } from '@/db/schema'
+import { members, memberTokens } from '@/db/schema'
 import { hashToken, newMemberToken } from '@/lib/member-tokens'
-import { REQUEST_LIMITS, recordRequest, type ThrottledAction } from '@/lib/request-throttle'
+import { REQUEST_LIMITS } from '@/lib/request-throttle'
 import { confirmMemberEmail } from './confirm/actions'
 import { signUp } from './actions'
 
@@ -102,24 +122,11 @@ function createDb() {
             tokenHash: values.tokenHash as string,
             expiresAt: values.expiresAt as Date,
           })
-        } else if (name === 'request_throttle') {
-          const row = {
-            action: values.action as string,
-            email: values.email as string,
-            ip: (values.ip as string | null) ?? null,
-            createdAt: new Date(),
-          }
-          Object.defineProperty(row, 'id', { value: state.nextThrottleId++, enumerable: false })
-          state.throttle.push(row)
-          return [{ id: (row as ThrottleRow & { id: number }).id }]
         } else {
           throw new Error(`unexpected insert into ${name}`)
         }
       }
-      return Object.assign(apply, {
-        then: (resolve: (value: unknown) => void) => resolve(apply()),
-        returning: async () => apply(),
-      })
+      return Object.assign(apply, { then: (resolve: (value: unknown) => void) => resolve(apply()) })
     },
   })
 
@@ -153,11 +160,6 @@ function createDb() {
         if (name === 'member_tokens') {
           const [memberId, purpose] = params(condition)
           state.tokens = state.tokens.filter((row) => !(row.memberId === memberId && row.purpose === purpose))
-        } else if (name === 'request_throttle') {
-          const [value] = params(condition)
-          state.throttle = state.throttle.filter((row) =>
-            typeof value === 'number' ? (row as ThrottleRow & { id: number }).id !== value : row.createdAt >= asDate(value),
-          )
         } else if (name !== 'members') {
           throw new Error(`unexpected delete from ${name}`)
         }
@@ -182,7 +184,7 @@ function createDb() {
     },
   })
 
-  const select = (fields: Record<string, unknown>) => {
+  const select = () => {
     let table = ''
     const query = {
       from: (source: unknown) => {
@@ -190,18 +192,6 @@ function createDb() {
         return query
       },
       where: (condition: SQL) => {
-        if (table === 'request_throttle') {
-          const [action, since, email, ip = null] = params(condition)
-          const inWindow = state.throttle.filter((row) => row.action === action && row.createdAt >= asDate(since))
-          const count = (match: (row: ThrottleRow) => boolean) => inWindow.filter(match).length
-          return Promise.resolve([
-            {
-              perEmailAndIp: count((row) => row.email === email && row.ip === ip),
-              perEmail: count((row) => row.email === email),
-              perIp: ip === null ? 0 : count((row) => row.ip === ip),
-            },
-          ])
-        }
         if (table === 'member_tokens') {
           const [tokenHash, purpose] = params(condition)
           return {
@@ -317,7 +307,6 @@ beforeEach(() => {
     members: [],
     tokens: [],
     throttle: [],
-    nextThrottleId: 1,
     nextMemberId: 1,
     hashes: 0,
     accountLookups: 0,
@@ -588,59 +577,9 @@ describe('sign-up refuses bad input before doing anything', () => {
   })
 })
 
-describe('recordRequest against stored rows', () => {
-  const record = (action: ThrottledAction, email: string, ip: string | null = null) =>
-    recordRequest(action, email, ip).then((result) => result.throttled)
-
-  it('allows 3 sign-ups per address from one source in 15 minutes and refuses the 4th', async () => {
-    for (let n = 1; n <= 3; n += 1) await expect(record('signup', 'mia@example.com')).resolves.toBe(false)
-    await expect(record('signup', 'mia@example.com')).resolves.toBe(true)
-  })
-
-  it('counts each action separately', async () => {
-    for (let n = 1; n <= 6; n += 1) await record('signup', 'mia@example.com', '203.0.113.7')
-    await expect(record('forgot_password', 'mia@example.com', '203.0.113.7')).resolves.toBe(false)
-    await expect(record('resend_confirmation', 'mia@example.com', '203.0.113.7')).resolves.toBe(false)
-    await expect(record('confirm_email', 'mia@example.com', '203.0.113.7')).resolves.toBe(false)
-  })
-
-  it('allows 50 requests per ip across addresses and refuses the 51st', async () => {
-    for (let n = 1; n <= 50; n += 1) {
-      await expect(record('signup', `person${n}@example.com`, '203.0.113.7')).resolves.toBe(false)
-    }
-    await expect(record('signup', 'someone-new@example.com', '203.0.113.7')).resolves.toBe(true)
-    await expect(record('signup', 'someone-new@example.com', '198.51.100.4')).resolves.toBe(false)
-  })
-
-  it('does not lump together requests whose ip is unknown', async () => {
-    for (let n = 1; n <= 25; n += 1) {
-      await expect(record('signup', `person${n}@example.com`, null)).resolves.toBe(false)
-    }
-  })
-
-  it('forgets requests older than the window and purges them, whatever their action', async () => {
-    for (let n = 1; n <= 6; n += 1) await record('signup', 'mia@example.com')
-    await record('forgot_password', 'other@example.com')
-    expect(fake.state.throttle).toHaveLength(4)
-
-    vi.setSystemTime(SIGN_UP_TIME.getTime() + 15 * 60 * 1000 + 1)
-    await expect(record('signup', 'mia@example.com')).resolves.toBe(false)
-    expect(fake.state.throttle).toEqual([
-      { action: 'signup', email: 'mia@example.com', ip: null, createdAt: new Date(SIGN_UP_TIME.getTime() + 15 * 60 * 1000 + 1) },
-    ])
-  })
-
-  it('still counts a request made exactly 15 minutes ago', async () => {
-    for (let n = 1; n <= 3; n += 1) await record('signup', 'mia@example.com')
-    vi.setSystemTime(SIGN_UP_TIME.getTime() + 15 * 60 * 1000)
-    await expect(record('signup', 'mia@example.com')).resolves.toBe(true)
-  })
-})
-
 describe('the fake database used above', () => {
   it('reads the same columns the product code filters on', () => {
     expect(tableName(members)).toBe('members')
     expect(tableName(memberTokens)).toBe('member_tokens')
-    expect(tableName(requestThrottle)).toBe('request_throttle')
   })
 })

@@ -1,10 +1,11 @@
 import bcrypt from 'bcryptjs'
-import { and, eq, isNull, lt } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb } from '@/db'
 import { admins, loginAttempts, members, type AdminRole, type MemberRole } from '@/db/schema'
-import { LOGIN_LIMITS, WINDOW_MINUTES, clientIp, isOverLimit, throttleIp } from '@/lib/login-throttle'
-import { attemptCounts } from '@/lib/throttle-counts'
+import { isKnownDevice } from '@/lib/known-device'
+import { LOGIN_LIMITS, clientIp, throttleIp } from '@/lib/login-throttle'
+import { storeIfAllowed } from '@/lib/throttle-store'
 
 const credentialsSchema = z.object({
   email: z.email(),
@@ -27,21 +28,26 @@ export type AuthorizedUser =
   | (AuthorizedAccount & { kind: 'member'; role: MemberRole })
 
 /**
- * Records a password attempt and reports whether it is over a limit. The row is written before
- * counting so concurrent attempts see each other, and a refused attempt keeps no row, so one
- * source can never count for more than its own allowance towards the per-email ceiling.
+ * Records a password attempt and reports whether it is over a limit. Counting and storing happen
+ * under one lock in one transaction, and a refused attempt is never stored, so one source can't
+ * count for more than its own allowance towards the per-email ceiling.
  */
-export async function recordLoginAttempt(email: string, ip: string | null): Promise<{ throttled: boolean }> {
-  const db = getDb()
-  const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000)
+export async function recordLoginAttempt(
+  email: string,
+  ip: string | null,
+  { knownDevice = false }: { knownDevice?: boolean } = {},
+): Promise<{ throttled: boolean }> {
   const source = throttleIp(ip)
-
-  const [recorded] = await db.insert(loginAttempts).values({ email, ip: source }).returning({ id: loginAttempts.id })
-  await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, windowStart))
-  const counts = await attemptCounts(loginAttempts, undefined, email, source, windowStart)
-  const throttled = isOverLimit(counts, LOGIN_LIMITS)
-  if (throttled) await db.delete(loginAttempts).where(eq(loginAttempts.id, recorded.id))
-  return { throttled }
+  return storeIfAllowed({
+    table: loginAttempts,
+    lockKey: `login:${email}`,
+    scope: undefined,
+    columns: { email, ip: source },
+    email,
+    ip: source,
+    limits: LOGIN_LIMITS,
+    skipEmailCeiling: knownDevice,
+  })
 }
 
 /** With an ip, clears only that source, so the owner signing in doesn't refund a stranger's guesses. */
@@ -92,11 +98,13 @@ async function findAccount(email: string) {
 /**
  * An admin row wins over a member row with the same email. Every
  * path runs exactly one bcrypt compare, and an unconfirmed member gets the same
- * generic failure as a wrong password.
+ * generic failure as a wrong password. knownDeviceCookie is the browser's known_device
+ * cookie; it only counts for the email it was issued to.
  */
 export async function authorizeCredentials(
   credentials: unknown,
   forwardedFor: string | null,
+  knownDeviceCookie?: string,
 ): Promise<AuthorizedUser | null> {
   const parsed = credentialsSchema.safeParse(credentials)
   if (!parsed.success) return null
@@ -104,7 +112,7 @@ export async function authorizeCredentials(
   const email = parsed.data.email.toLowerCase()
   const ip = clientIp(forwardedFor)
 
-  const { throttled } = await recordLoginAttempt(email, ip)
+  const { throttled } = await recordLoginAttempt(email, ip, { knownDevice: isKnownDevice(knownDeviceCookie, email) })
   if (throttled) {
     console.warn(`LOGIN THROTTLED: ${email} from ${ip ?? 'unknown ip'}`)
     return null

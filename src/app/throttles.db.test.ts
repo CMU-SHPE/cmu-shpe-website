@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     signIn: vi.fn(),
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string }) => Promise<void>>(async () => {}),
     afterCallbacks: [] as (() => Promise<void>)[],
+    cookies: new Map<string, string>(),
   }
 })
 
@@ -27,7 +28,13 @@ vi.mock('next/navigation', () => ({
     throw error
   },
 }))
-vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': mocks.ip }) }))
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ 'x-forwarded-for': mocks.ip }),
+  cookies: async () => ({
+    get: (name: string) => (mocks.cookies.has(name) ? { name, value: mocks.cookies.get(name)! } : undefined),
+    set: (name: string, value: string) => mocks.cookies.set(name, value),
+  }),
+}))
 vi.mock('next/server', () => ({ after: (callback: () => Promise<void>) => mocks.afterCallbacks.push(callback) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/site-url', () => ({ siteUrl: () => 'https://shpe.test' }))
@@ -38,15 +45,18 @@ vi.mock('@/lib/email', async (importOriginal) => ({
 
 import { getDb } from '@/db'
 import { loginAttempts, requestThrottle } from '@/db/schema'
-import { authorizeCredentials } from '@/lib/authorize'
+import { newAdminResetToken, replaceAdminResetTokens } from '@/lib/admin-tokens'
+import { authorizeCredentials, recordLoginAttempt } from '@/lib/authorize'
+import { KNOWN_DEVICE_COOKIE, withKnownDevice } from '@/lib/known-device'
 import { LOGIN_LIMITS } from '@/lib/login-throttle'
-import { REQUEST_LIMITS } from '@/lib/request-throttle'
+import { REQUEST_LIMITS, recordRequest, type ThrottledAction } from '@/lib/request-throttle'
 import { TEST_PASSWORD, createAdmin, createMember, resetDb } from '@/test/db'
 import { changePassword as changeMemberPassword } from './account/actions'
 import { changePassword as changeAdminPassword } from './admin/account/actions'
 import { requestPasswordReset } from './forgot-password/actions'
 import { signUp } from './join/actions'
 import { resendConfirmation } from './join/resend/actions'
+import { resetAdminPasswordWithLink } from './reset-password/admin/actions'
 
 const OWNER_IP = '192.0.2.10'
 const STRANGER_IP = '203.0.113.66'
@@ -103,6 +113,8 @@ beforeEach(async () => {
   mocks.signIn.mockReset()
   mocks.auth.mockReset()
   mocks.afterCallbacks.length = 0
+  mocks.cookies.clear()
+  vi.stubEnv('AUTH_SECRET', 'a test secret for known devices')
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
@@ -289,5 +301,160 @@ describe('sign-up and resend', () => {
     const sent = emailsTo('sam@shpe.test').length
     await resend(OWNER_IP)
     expect(emailsTo('sam@shpe.test')).toHaveLength(sent + 1)
+  })
+})
+
+async function fillCeiling(action: ThrottledAction, email: string) {
+  const { perEmail, perEmailAndIp } = REQUEST_LIMITS[action]
+  await getDb()
+    .insert(requestThrottle)
+    .values(Array.from({ length: perEmail }, (_, n) => ({ action, email, ip: strangerIp(Math.floor(n / perEmailAndIp)) })))
+}
+
+describe('per-email ceilings on requests that send email', () => {
+  it('stops /forgot-password emails once many sources fill the ceiling', async () => {
+    await createMember({ email: 'mia@shpe.test' })
+    await fillCeiling('forgot_password', 'mia@shpe.test')
+    expect(await forgotPassword('mia@shpe.test', OWNER_IP)).toBe('/forgot-password?sent=1')
+    expect(emailsTo('mia@shpe.test')).toHaveLength(0)
+  })
+
+  it('stops sign-up emails once many sources fill the ceiling', async () => {
+    await fillCeiling('signup', 'sam@shpe.test')
+    mocks.ip = OWNER_IP
+    expect(await redirectOf(signUp({}, signUpForm('sam@shpe.test', 'the owners own passphrase 1')))).toBe('/join/check-email')
+    expect(emailsTo('sam@shpe.test')).toHaveLength(0)
+  })
+
+  it('stops new confirmation links once many sources fill the ceiling', async () => {
+    await createMember({ email: 'sam@shpe.test', confirmed: false })
+    await fillCeiling('resend_confirmation', 'sam@shpe.test')
+    mocks.ip = OWNER_IP
+    await redirectOf(resendConfirmation({}, emailForm('sam@shpe.test')))
+    for (const callback of mocks.afterCallbacks.splice(0)) await callback()
+    expect(emailsTo('sam@shpe.test')).toHaveLength(0)
+  })
+})
+
+describe('storing and counting', () => {
+  it('lets exactly the allowance through when one source sends many at once', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () => recordRequest('signup', 'sam@shpe.test', STRANGER_IP)),
+    )
+    expect(results.filter(({ throttled }) => !throttled)).toHaveLength(REQUEST_LIMITS.signup.perEmailAndIp)
+    expect(await getDb().select().from(requestThrottle)).toHaveLength(REQUEST_LIMITS.signup.perEmailAndIp)
+  })
+
+  it('lets exactly the allowance of sign-in attempts through at once', async () => {
+    const results = await Promise.all(Array.from({ length: 12 }, () => recordLoginAttempt('max@shpe.test', STRANGER_IP)))
+    expect(results.filter(({ throttled }) => !throttled)).toHaveLength(LOGIN_LIMITS.perEmailAndIp)
+    expect(await getDb().select().from(loginAttempts)).toHaveLength(LOGIN_LIMITS.perEmailAndIp)
+  })
+
+  it('counts each action on its own', async () => {
+    for (let n = 0; n < REQUEST_LIMITS.signup.perEmailAndIp; n += 1) await recordRequest('signup', 'mia@shpe.test', STRANGER_IP)
+    await expect(recordRequest('signup', 'mia@shpe.test', STRANGER_IP)).resolves.toEqual({ throttled: true })
+    await expect(recordRequest('forgot_password', 'mia@shpe.test', STRANGER_IP)).resolves.toEqual({ throttled: false })
+  })
+
+  it('forgets and purges attempts older than the window, whatever the flow', async () => {
+    const old = new Date(Date.now() - 16 * 60 * 1000)
+    const recent = new Date(Date.now() - 14 * 60 * 1000)
+    await getDb()
+      .insert(requestThrottle)
+      .values([
+        ...Array.from({ length: 3 }, () => ({ action: 'signup', email: 'mia@shpe.test', ip: STRANGER_IP, createdAt: old })),
+        { action: 'contact', email: 'other@shpe.test', ip: null, createdAt: old },
+        { action: 'signup', email: 'mia@shpe.test', ip: STRANGER_IP, createdAt: recent },
+      ])
+    await expect(recordRequest('signup', 'mia@shpe.test', STRANGER_IP)).resolves.toEqual({ throttled: false })
+    const rows = await getDb().select().from(requestThrottle)
+    expect(rows).toHaveLength(2)
+    await expect(recordRequest('signup', 'mia@shpe.test', STRANGER_IP)).resolves.toEqual({ throttled: false })
+    await expect(recordRequest('signup', 'mia@shpe.test', STRANGER_IP)).resolves.toEqual({ throttled: true })
+  })
+
+  it('counts a header that is not an IP address as an unknown source', async () => {
+    for (let n = 0; n < LOGIN_LIMITS.perEmailAndIp; n += 1) await signIn('nobody@shpe.test', WRONG, `junk-${n}`)
+    await expect(signIn('nobody@shpe.test', WRONG, 'more-junk')).resolves.toBeNull()
+    expect(await getDb().select().from(loginAttempts)).toEqual(
+      Array.from({ length: LOGIN_LIMITS.perEmailAndIp }, () => expect.objectContaining({ ip: null })),
+    )
+  })
+
+  it('counts every spelling of an IPv4-mapped address as that IPv4 address', async () => {
+    await createAdmin({ email: 'max@shpe.test' })
+    const spellings = ['192.0.2.77', '::ffff:192.0.2.77', '::ffff:c000:24d', '0:0:0:0:0:ffff:192.0.2.77', '::FFFF:C000:024D']
+    for (const ip of spellings) await signIn('max@shpe.test', WRONG, ip)
+    await expect(signIn('max@shpe.test', TEST_PASSWORD, '::ffff:192.0.2.77')).resolves.toBeNull()
+  })
+})
+
+describe('the known-device cookie', () => {
+  async function fillLoginCeiling(email: string) {
+    await getDb()
+      .insert(loginAttempts)
+      .values(
+        Array.from({ length: LOGIN_LIMITS.perEmail }, (_, n) => ({
+          email,
+          ip: strangerIp(Math.floor(n / LOGIN_LIMITS.perEmailAndIp)),
+        })),
+      )
+  }
+
+  it("lets the owner's browser past a ceiling strangers keep full, and only for that account", async () => {
+    await createAdmin({ email: 'max@shpe.test', role: 'master' })
+    await createAdmin({ email: 'ada@shpe.test' })
+    await fillLoginCeiling('max@shpe.test')
+    await fillLoginCeiling('ada@shpe.test')
+
+    await expect(signIn('max@shpe.test', TEST_PASSWORD, OWNER_IP)).resolves.toBeNull()
+    const maxDevice = withKnownDevice(undefined, 'max@shpe.test')!
+    await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, OWNER_IP, maxDevice)).resolves.toMatchObject({
+      email: 'max@shpe.test',
+    })
+    await expect(authorizeCredentials({ email: 'ada@shpe.test', password: TEST_PASSWORD }, OWNER_IP, maxDevice)).resolves.toBeNull()
+  })
+
+  it('does nothing when forged or tampered with', async () => {
+    await createAdmin({ email: 'max@shpe.test' })
+    await fillLoginCeiling('max@shpe.test')
+    const real = withKnownDevice(undefined, 'max@shpe.test')!
+    const flipped = `${real.slice(0, 10)}${real[10] === 'A' ? 'B' : 'A'}${real.slice(11)}`
+    for (const cookie of [flipped, 'max@shpe.test', `${real}A`, `${real.slice(0, -1)}`]) {
+      await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, OWNER_IP, cookie)).resolves.toBeNull()
+    }
+    vi.stubEnv('AUTH_SECRET', 'a secret the attacker guessed')
+    const forged = withKnownDevice(undefined, 'max@shpe.test')!
+    vi.stubEnv('AUTH_SECRET', 'a test secret for known devices')
+    await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, OWNER_IP, forged)).resolves.toBeNull()
+  })
+
+  it('keeps the per-source limit, so the cookie is no help to a guesser', async () => {
+    await createAdmin({ email: 'max@shpe.test' })
+    const device = withKnownDevice(undefined, 'max@shpe.test')!
+    for (let attempt = 0; attempt < LOGIN_LIMITS.perEmailAndIp; attempt += 1) {
+      await authorizeCredentials({ email: 'max@shpe.test', password: WRONG }, STRANGER_IP, device)
+    }
+    await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, STRANGER_IP, device)).resolves.toBeNull()
+  })
+
+  it('is set when a reset link is used, so the next sign-in from that browser works', async () => {
+    const admin = await createAdmin({ email: 'max@shpe.test', role: 'master' })
+    const db = getDb()
+    const issued = newAdminResetToken(admin.id)
+    await db.batch(replaceAdminResetTokens(db, issued.row))
+    const form = new FormData()
+    form.set('token', issued.token)
+    form.set('password', NEW_PASSWORD)
+    form.set('confirmPassword', NEW_PASSWORD)
+    expect(await redirectOf(resetAdminPasswordWithLink({}, form))).toBe('/login?reset=1')
+
+    await fillLoginCeiling('max@shpe.test')
+    const cookie = mocks.cookies.get(KNOWN_DEVICE_COOKIE)
+    expect(cookie).toBeDefined()
+    await expect(authorizeCredentials({ email: 'max@shpe.test', password: NEW_PASSWORD }, OWNER_IP, cookie)).resolves.toMatchObject({
+      email: 'max@shpe.test',
+    })
   })
 })

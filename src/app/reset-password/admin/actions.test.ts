@@ -23,6 +23,9 @@ const mocks = vi.hoisted(() => {
       mocks.state.ops.push('hash')
       return '$2b$12$new'
     }),
+    rememberKnownDevice: vi.fn(async (email: string) => {
+      mocks.state.ops.push(`remember device for ${email}`)
+    }),
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string }) => Promise<void>>(async () => {
       mocks.state.ops.push('send')
     }),
@@ -48,6 +51,7 @@ vi.mock('@/lib/email', async (importOriginal) => ({
 vi.mock('bcryptjs', () => ({ default: { hash: mocks.hash } }))
 vi.mock('@/lib/site-url', () => ({ siteUrl: () => 'https://shpe.test' }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
+vi.mock('@/lib/known-device', () => ({ rememberKnownDevice: mocks.rememberKnownDevice }))
 
 import { EmailSendError } from '@/lib/email'
 import { hashToken } from '@/lib/member-tokens'
@@ -68,6 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.state.resetRows = [{ email: 'ada@example.org', name: 'Ada' }]
   mocks.state.ops = []
+  mocks.rememberKnownDevice.mockClear()
   mocks.state.statements = []
   mocks.find.mockResolvedValue(1)
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -85,7 +90,7 @@ describe('resetAdminPasswordWithLink', () => {
     expect(mocks.find).toHaveBeenCalledWith(TOKEN)
     expect(mocks.findMember).not.toHaveBeenCalled()
     expect(mocks.hash).toHaveBeenCalledWith(PASSWORD, 12)
-    expect(mocks.state.ops).toEqual(['hash', 'reset', 'send'])
+    expect(mocks.state.ops).toEqual(['hash', 'reset', 'remember device for ada@example.org', 'send'])
 
     const { text, params } = normalized(mocks.state.statements[0])
     expect(text).toMatch(
@@ -126,6 +131,7 @@ describe('resetAdminPasswordWithLink', () => {
     mocks.state.resetRows = []
     await expect(resetAdminPasswordWithLink({}, form())).resolves.toEqual({ formError: expect.stringContaining('expired') })
     expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(mocks.rememberKnownDevice).not.toHaveBeenCalled()
   })
 
   it('refuses a malformed token without touching the database', async () => {

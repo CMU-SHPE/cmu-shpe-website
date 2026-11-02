@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { EmailSendError, sendEmail } from '@/lib/email'
 import { passwordChanged } from '@/lib/email-templates'
+import { rememberKnownDevice } from '@/lib/known-device'
 import { parsePasswordReset, type FormState } from '@/lib/member-accounts'
 import { findMemberToken, hashToken } from '@/lib/member-tokens'
 import { siteUrl } from '@/lib/site-url'
@@ -68,6 +69,7 @@ export async function resetMemberPassword(_state: FormState, formData: FormData)
   }
   const [member] = result.rows
   if (!member) return { formError: INVALID_LINK }
+  await rememberKnownDevice(member.email)
 
   try {
     await sendEmail({ to: member.email, ...passwordChanged(member.name, `${base}/contact`) })

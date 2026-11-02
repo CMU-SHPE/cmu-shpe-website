@@ -7,6 +7,7 @@ import { getDb } from '@/db'
 import { findAdminResetToken } from '@/lib/admin-tokens'
 import { EmailSendError, sendEmail } from '@/lib/email'
 import { passwordChanged } from '@/lib/email-templates'
+import { rememberKnownDevice } from '@/lib/known-device'
 import { parsePasswordReset, type FormState } from '@/lib/member-accounts'
 import { hashToken } from '@/lib/member-tokens'
 import { siteUrl } from '@/lib/site-url'
@@ -62,6 +63,7 @@ export async function resetAdminPasswordWithLink(_state: FormState, formData: Fo
   }
   const [admin] = result.rows
   if (!admin) return { formError: INVALID_LINK }
+  await rememberKnownDevice(admin.email)
 
   try {
     await sendEmail({ to: admin.email, ...passwordChanged(admin.name, `${base}/contact`) })

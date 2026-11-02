@@ -1,8 +1,7 @@
-import { eq, lt } from 'drizzle-orm'
-import { getDb } from '@/db'
+import { eq } from 'drizzle-orm'
 import { requestThrottle } from '@/db/schema'
-import { WINDOW_MINUTES, isOverLimit, throttleIp, type ThrottleLimits } from '@/lib/login-throttle'
-import { attemptCounts } from '@/lib/throttle-counts'
+import { throttleIp, type ThrottleLimits } from '@/lib/login-throttle'
+import { storeIfAllowed } from '@/lib/throttle-store'
 
 export type ThrottledAction =
   | 'signup'
@@ -36,25 +35,22 @@ export const REQUEST_LIMITS: Record<ThrottledAction, ThrottleLimits> = {
 /**
  * Like recordLoginAttempt, but per action and in its own table, so emailing an admin's
  * address to /join can't lock that admin out of signing in. Rows older than the window
- * are purged on every call, which is what the privacy policy promises. A refused request
- * keeps no row, so one source can never count for more than its own allowance.
+ * are purged on every call, which is what the privacy policy promises. The count and the
+ * store happen under one lock in one transaction, and a refused request is never stored.
  */
 export async function recordRequest(
   action: ThrottledAction,
   email: string,
   ip: string | null,
 ): Promise<{ throttled: boolean }> {
-  const db = getDb()
-  const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000)
   const source = throttleIp(ip)
-
-  const [recorded] = await db
-    .insert(requestThrottle)
-    .values({ action, email, ip: source })
-    .returning({ id: requestThrottle.id })
-  await db.delete(requestThrottle).where(lt(requestThrottle.createdAt, windowStart))
-  const counts = await attemptCounts(requestThrottle, eq(requestThrottle.action, action), email, source, windowStart)
-  const throttled = isOverLimit(counts, REQUEST_LIMITS[action])
-  if (throttled) await db.delete(requestThrottle).where(eq(requestThrottle.id, recorded.id))
-  return { throttled }
+  return storeIfAllowed({
+    table: requestThrottle,
+    lockKey: `${action}:${email}`,
+    scope: eq(requestThrottle.action, action),
+    columns: { action, email, ip: source },
+    email,
+    ip: source,
+    limits: REQUEST_LIMITS[action],
+  })
 }

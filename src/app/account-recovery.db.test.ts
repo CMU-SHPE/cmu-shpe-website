@@ -24,7 +24,10 @@ vi.mock('next/navigation', () => ({
     throw new mocks.Redirect(url)
   },
 }))
-vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': '198.51.100.4' }) }))
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ 'x-forwarded-for': '198.51.100.4' }),
+  cookies: async () => ({ get: () => undefined, set: () => {} }),
+}))
 vi.mock('next/server', () => ({ after: (callback: () => Promise<void>) => mocks.afterCallbacks.push(callback) }))
 vi.mock('@/lib/site-url', () => ({ siteUrl: () => 'https://shpe.test' }))
 vi.mock('@/lib/email', async (importOriginal) => ({
