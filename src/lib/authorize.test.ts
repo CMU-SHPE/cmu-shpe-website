@@ -13,20 +13,23 @@ type MemberRow = {
 const fake = vi.hoisted(() => {
   const state = {
     ops: [] as string[],
-    counts: { emailAttempts: 1, ipAttempts: 1 } as Record<string, number>,
+    counts: { perEmailAndIp: 1, perEmail: 1, perIp: 1 } as Record<string, number>,
     admin: null as AdminRow | null,
     member: null as MemberRow | null,
     limitDelayMs: 0,
   }
   const db = {
     insert: () => ({
-      values: async () => {
-        state.ops.push('insert attempt')
-      },
+      values: () => ({
+        returning: async () => {
+          state.ops.push('insert attempt')
+          return [{ id: 1 }]
+        },
+      }),
     }),
     delete: () => ({
       where: async (condition: { expiredBefore?: unknown }) => {
-        state.ops.push(condition?.expiredBefore ? 'purge expired attempts' : 'clear email attempts')
+        state.ops.push(condition?.expiredBefore ? 'purge expired attempts' : 'delete attempts')
       },
     }),
     select: (fields: Record<string, unknown>) => {
@@ -39,8 +42,8 @@ const fake = vi.hoisted(() => {
         },
         where: () => {
           if (key in state.counts) {
-            state.ops.push(`count ${key}`)
-            return Promise.resolve([{ [key]: state.counts[key] }])
+            state.ops.push('count attempts')
+            return Promise.resolve([state.counts])
           }
           return query
         },
@@ -83,7 +86,7 @@ const miaCredentials = { email: 'Mia@Example.com', password: 'member horse batte
 
 beforeEach(() => {
   fake.state.ops = []
-  fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+  fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
   fake.state.admin = null
   fake.state.member = null
   fake.state.limitDelayMs = 0
@@ -99,24 +102,23 @@ afterEach(() => {
 describe('authorizeCredentials', () => {
   it('records the attempt and purges expired ones before counting', async () => {
     await authorizeCredentials(credentials, '203.0.113.7')
-    expect(fake.state.ops.slice(0, 4)).toEqual([
+    expect(fake.state.ops.slice(0, 3)).toEqual([
       'insert attempt',
       'purge expired attempts',
-      'count emailAttempts',
-      'count ipAttempts',
+      'count attempts',
     ])
   })
 
   it('stops before the password check once throttled, after still purging expired attempts', async () => {
-    fake.state.counts.emailAttempts = 6
+    fake.state.counts.perEmailAndIp = 6
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
-    expect(fake.state.ops).toEqual(['insert attempt', 'purge expired attempts', 'count emailAttempts', 'count ipAttempts'])
+    expect(fake.state.ops).toEqual(['insert attempt', 'purge expired attempts', 'count attempts', 'delete attempts'])
     expect(fake.compare).not.toHaveBeenCalled()
   })
 
   it('purges expired attempts exactly once on every path', async () => {
     const scenarios: (() => void)[] = [
-      () => (fake.state.counts.emailAttempts = 6),
+      () => (fake.state.counts.perEmailAndIp = 6),
       () => (fake.state.admin = null),
       () => (fake.state.admin = ana),
       () => {
@@ -126,7 +128,7 @@ describe('authorizeCredentials', () => {
     ]
     for (const arrange of scenarios) {
       fake.state.ops = []
-      fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+      fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
       fake.state.admin = null
       fake.compare.mockResolvedValue(false)
       arrange()
@@ -158,7 +160,7 @@ describe('authorizeCredentials', () => {
       role: 'admin',
       authTime: expect.any(Number),
     })
-    expect(fake.state.ops.at(-1)).toBe('clear email attempts')
+    expect(fake.state.ops.at(-1)).toBe('delete attempts')
   })
 
   it('takes authTime before reading the admin row, not after the slow password check', async () => {
@@ -177,25 +179,34 @@ describe('authorizeCredentials', () => {
 
   it('lets the 5th attempt with the right password through after 4 failures', async () => {
     fake.state.admin = ana
-    fake.state.counts.emailAttempts = 5
+    fake.state.counts.perEmailAndIp = 5
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(credentials, null)).resolves.toMatchObject({ id: '2' })
   })
 
   it('throttles the 6th attempt after 5 failures even with the right password', async () => {
     fake.state.admin = ana
-    fake.state.counts.emailAttempts = 6
+    fake.state.counts.perEmailAndIp = 6
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(credentials, null)).resolves.toBeNull()
     expect(fake.compare).not.toHaveBeenCalled()
   })
 
+  it('applies the much higher per-email ceiling across sources', async () => {
+    fake.state.admin = ana
+    fake.compare.mockResolvedValue(true)
+    fake.state.counts.perEmail = 50
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
+    fake.state.counts.perEmail = 51
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
+  })
+
   it('applies the same boundary to the per-ip count', async () => {
     fake.state.admin = ana
     fake.compare.mockResolvedValue(true)
-    fake.state.counts.ipAttempts = 20
+    fake.state.counts.perIp = 50
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
-    fake.state.counts.ipAttempts = 21
+    fake.state.counts.perIp = 51
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
   })
 
@@ -217,7 +228,7 @@ describe('authorizeCredentials', () => {
     })
     expect(fake.compare).toHaveBeenCalledTimes(1)
     expect(fake.compare).toHaveBeenCalledWith('member horse battery', mia.passwordHash)
-    expect(fake.state.ops.at(-1)).toBe('clear email attempts')
+    expect(fake.state.ops.at(-1)).toBe('delete attempts')
   })
 
   it('signs in as the admin when a member row has the same email', async () => {
@@ -245,14 +256,14 @@ describe('authorizeCredentials', () => {
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
     expect(fake.compare).toHaveBeenCalledTimes(1)
-    expect(fake.state.ops).not.toContain('clear email attempts')
+    expect(fake.state.ops).not.toContain('delete attempts')
   })
 
   it('refuses a member with a wrong password, keeping the attempt', async () => {
     fake.state.member = mia
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
     expect(fake.compare).toHaveBeenCalledTimes(1)
-    expect(fake.state.ops).not.toContain('clear email attempts')
+    expect(fake.state.ops).not.toContain('delete attempts')
   })
 
   it('checks both tables and runs exactly one bcrypt compare against the dummy hash for an unknown email', async () => {
@@ -264,7 +275,7 @@ describe('authorizeCredentials', () => {
 
   it('throttles members with the same login attempt limits as admins', async () => {
     fake.state.member = mia
-    fake.state.counts.emailAttempts = 6
+    fake.state.counts.perEmailAndIp = 6
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
     expect(fake.compare).not.toHaveBeenCalled()

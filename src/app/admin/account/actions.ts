@@ -10,8 +10,9 @@ import { admins } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { parsePasswordChange } from '@/lib/admin-account'
 import { deleteAdminTokens } from '@/lib/admin-tokens'
-import { clearLoginAttempts, recordLoginAttempt } from '@/lib/authorize'
+import { clearLoginAttempts } from '@/lib/authorize'
 import { clientIp } from '@/lib/login-throttle'
+import { recordRequest } from '@/lib/request-throttle'
 
 export async function changePassword(formData: FormData) {
   const session = await requireAdmin()
@@ -32,7 +33,7 @@ export async function changePassword(formData: FormData) {
   if (!admin) redirect('/login')
 
   const ip = clientIp((await headers()).get('x-forwarded-for'))
-  const { throttled } = await recordLoginAttempt(admin.email, ip)
+  const { throttled } = await recordRequest('account_password_check', admin.email, ip)
   if (throttled) redirect('/admin/account?error=throttled')
 
   const currentMatches = await bcrypt.compare(parsed.data.currentPassword, admin.passwordHash)

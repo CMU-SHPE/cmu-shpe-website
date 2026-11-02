@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs'
-import { and, count, eq, gte, lt } from 'drizzle-orm'
+import { and, eq, isNull, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb } from '@/db'
 import { admins, loginAttempts, members, type AdminRole, type MemberRole } from '@/db/schema'
-import { WINDOW_MINUTES, clientIp, isThrottled } from '@/lib/login-throttle'
+import { LOGIN_LIMITS, WINDOW_MINUTES, clientIp, isOverLimit, throttleIp } from '@/lib/login-throttle'
+import { attemptCounts } from '@/lib/throttle-counts'
 
 const credentialsSchema = z.object({
   email: z.email(),
@@ -26,33 +27,33 @@ export type AuthorizedUser =
   | (AuthorizedAccount & { kind: 'member'; role: MemberRole })
 
 /**
- * Records a password attempt and reports whether the email or IP is over its
- * limit. The row is written before counting so concurrent attempts see each
- * other; a correct password should be followed by clearLoginAttempts.
+ * Records a password attempt and reports whether it is over a limit. The row is written before
+ * counting so concurrent attempts see each other, and a refused attempt keeps no row, so one
+ * source can never count for more than its own allowance towards the per-email ceiling.
  */
 export async function recordLoginAttempt(email: string, ip: string | null): Promise<{ throttled: boolean }> {
   const db = getDb()
   const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000)
+  const source = throttleIp(ip)
 
-  await db.insert(loginAttempts).values({ email, ip })
+  const [recorded] = await db.insert(loginAttempts).values({ email, ip: source }).returning({ id: loginAttempts.id })
   await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, windowStart))
-  const [[{ emailAttempts }], [{ ipAttempts }]] = await Promise.all([
-    db
-      .select({ emailAttempts: count() })
-      .from(loginAttempts)
-      .where(and(eq(loginAttempts.email, email), gte(loginAttempts.createdAt, windowStart))),
-    ip
-      ? db
-          .select({ ipAttempts: count() })
-          .from(loginAttempts)
-          .where(and(eq(loginAttempts.ip, ip), gte(loginAttempts.createdAt, windowStart)))
-      : Promise.resolve([{ ipAttempts: 0 }]),
-  ])
-  return { throttled: isThrottled(emailAttempts, ipAttempts) }
+  const counts = await attemptCounts(loginAttempts, undefined, email, source, windowStart)
+  const throttled = isOverLimit(counts, LOGIN_LIMITS)
+  if (throttled) await db.delete(loginAttempts).where(eq(loginAttempts.id, recorded.id))
+  return { throttled }
 }
 
-export async function clearLoginAttempts(email: string) {
-  await getDb().delete(loginAttempts).where(eq(loginAttempts.email, email))
+/** With an ip, clears only that source, so the owner signing in doesn't refund a stranger's guesses. */
+export async function clearLoginAttempts(email: string, ip?: string | null) {
+  if (ip === undefined) {
+    await getDb().delete(loginAttempts).where(eq(loginAttempts.email, email))
+    return
+  }
+  const source = throttleIp(ip)
+  await getDb()
+    .delete(loginAttempts)
+    .where(and(eq(loginAttempts.email, email), source ? eq(loginAttempts.ip, source) : isNull(loginAttempts.ip)))
 }
 
 // Both tables are always queried, so the response time doesn't show whether an email is an admin's.
@@ -118,7 +119,7 @@ export async function authorizeCredentials(
     return null
   }
 
-  await clearLoginAttempts(email)
+  await clearLoginAttempts(email, ip)
   const signedIn = { id: String(account.id), email: account.email, name: account.name, authTime: checkedAt }
   return account.kind === 'admin'
     ? { ...signedIn, kind: 'admin', role: account.role }

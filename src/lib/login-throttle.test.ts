@@ -1,23 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import {
-  MAX_FAILURES_PER_EMAIL,
-  MAX_FAILURES_PER_IP,
-  clientIp,
-  isThrottled,
-} from './login-throttle'
+import { LOGIN_LIMITS, clientIp, isOverLimit, throttleIp } from './login-throttle'
 
-describe('isThrottled', () => {
-  it('allows attempts up to both limits, counting the current attempt', () => {
-    expect(isThrottled(1, 1)).toBe(false)
-    expect(isThrottled(MAX_FAILURES_PER_EMAIL, MAX_FAILURES_PER_IP)).toBe(false)
+const under = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
+
+describe('isOverLimit', () => {
+  it('allows attempts up to every limit, counting the current attempt', () => {
+    expect(isOverLimit(under, LOGIN_LIMITS)).toBe(false)
+    expect(isOverLimit(LOGIN_LIMITS, LOGIN_LIMITS)).toBe(false)
   })
 
-  it('throttles once the per-email limit is passed', () => {
-    expect(isThrottled(MAX_FAILURES_PER_EMAIL + 1, 1)).toBe(true)
+  it.each(['perEmailAndIp', 'perEmail', 'perIp'] as const)('throttles once %s is passed', (key) => {
+    expect(isOverLimit({ ...under, [key]: LOGIN_LIMITS[key] + 1 }, LOGIN_LIMITS)).toBe(true)
   })
 
-  it('throttles once the per-ip limit is passed even for fresh emails', () => {
-    expect(isThrottled(1, MAX_FAILURES_PER_IP + 1)).toBe(true)
+  it('takes many sources to reach the per-email ceiling', () => {
+    expect(LOGIN_LIMITS.perEmail / LOGIN_LIMITS.perEmailAndIp).toBeGreaterThanOrEqual(10)
+  })
+})
+
+describe('throttleIp', () => {
+  it('leaves IPv4 and an unknown source alone', () => {
+    expect(throttleIp('203.0.113.7')).toBe('203.0.113.7')
+    expect(throttleIp(null)).toBeNull()
+  })
+
+  it('counts an IPv4-mapped address as IPv4', () => {
+    expect(throttleIp('::ffff:203.0.113.7')).toBe('203.0.113.7')
+  })
+
+  it('groups every spelling of an IPv6 network under its /64', () => {
+    const network = '2001:db8:1:2::/64'
+    expect(throttleIp('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe(network)
+    expect(throttleIp('2001:0DB8:0001:0002::1')).toBe(network)
+    expect(throttleIp('2001:db8::')).toBe('2001:db8:0:0::/64')
+    expect(throttleIp('::1')).toBe('0:0:0:0::/64')
   })
 })
 

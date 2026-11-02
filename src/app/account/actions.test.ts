@@ -212,13 +212,14 @@ describe('changePassword', () => {
   it('rejects a wrong current password as a throttled attempt and changes nothing', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?error=password-current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('mia@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
     expect(mocks.state.updates).toEqual([])
     expect(mocks.sendEmail).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?error=password-throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
   })
@@ -384,13 +385,14 @@ describe('deleteAccount', () => {
   it('refuses a wrong password and keeps the account', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(deleteAccount(deleteForm('guess')))).toBe('/account?error=delete-current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('mia@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
     expect(mocks.state.batches).toEqual([])
     expect(mocks.signOut).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(deleteAccount(deleteForm()))).toBe('/account?error=delete-throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
   })
