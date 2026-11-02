@@ -12,7 +12,7 @@ type MemberRow = {
 }
 type TokenRow = { memberId: number; purpose: string; tokenHash: string; expiresAt: Date }
 type ThrottleRow = { action: string; email: string; ip: string | null; createdAt: Date }
-type Write = () => void
+type Write = () => unknown
 
 const fake = vi.hoisted(() => {
   const state = {
@@ -133,7 +133,8 @@ function createDb() {
           for (const row of changed) Object.assign(row, values)
           return changed.map((row) => ({ id: row.id }))
         }
-        return Object.assign(apply, { returning: async () => apply() })
+        const thenable = { then: (resolve: (value: unknown) => void) => resolve(apply()) }
+        return Object.assign(apply, { returning: () => Object.assign(apply, thenable) })
       },
     }),
   })
@@ -220,11 +221,27 @@ function createDb() {
     update,
     delete: remove,
     select,
-    execute: async () => ({ rows: [] }),
+    execute: (statement: SQL) => {
+      const apply: Write = () => {
+        if (!/insert into member_tokens/.test(sqlText(statement))) return { rows: [] }
+        const [purpose, tokenHash, expiresAt, memberId] = params(statement)
+        const unconfirmed = state.members.some((row) => row.id === memberId && row.emailConfirmedAt === null)
+        if (unconfirmed) {
+          state.tokens.push({
+            memberId: memberId as number,
+            purpose: purpose as string,
+            tokenHash: tokenHash as string,
+            expiresAt: asDate(expiresAt),
+          })
+        }
+        return { rows: [] }
+      }
+      return Object.assign(apply, { then: (resolve: (value: unknown) => void) => resolve(apply()) })
+    },
     batch: async (writes: Write[]) => {
       const snapshot = structuredClone({ members: fake.state.members, tokens: fake.state.tokens })
       try {
-        for (const write of writes) write()
+        return writes.map((write) => write())
       } catch (error) {
         Object.assign(fake.state, snapshot)
         throw error
