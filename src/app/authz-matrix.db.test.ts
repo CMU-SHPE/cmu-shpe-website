@@ -31,6 +31,7 @@ vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
 
 import { getDb } from '@/db'
 import { admins, eventRsvps, events, members, siteContent, sponsorEdits, sponsorReceipts, sponsors } from '@/db/schema'
+import { LOADED_LISTING_FIELD, listingSnapshot } from '@/lib/sponsor-schema'
 import { TEST_PASSWORD, resetDb } from '@/test/db'
 import bcrypt from 'bcryptjs'
 import { deleteMember, linkMemberToSponsor, removeSponsorAccess } from './admin/members/actions'
@@ -253,7 +254,7 @@ const eventForm = (title: string) =>
 type Expectation = { outcome: string; effect?: (world: World, before: Snapshot, after: Snapshot, persona: Persona) => void }
 type Target = {
   name: string
-  run: (world: World) => Promise<unknown>
+  run: (world: World, persona: Persona) => Promise<unknown>
   expect: Record<Persona, Expectation>
 }
 
@@ -326,7 +327,11 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action updateSponsor(B)',
-    run: (w) => updateSponsor(w.listingB.id, sponsorForm('Renamed B')),
+    run: (w) => {
+      const data = sponsorForm('Renamed B')
+      data.set(LOADED_LISTING_FIELD, listingSnapshot(w.listingB))
+      return updateSponsor(w.listingB.id, null, data)
+    },
     expect: adminOnly({
       outcome: '→ /admin/sponsors?saved=1',
       effect: (w, before, after, persona) => {
@@ -428,9 +433,11 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action updateListing (with B’s id in id/sponsorId/listingId, plus tier, logo and order)',
-    run: (w) =>
+    run: (w, persona) =>
       updateListing(
+        null,
         form({
+          [LOADED_LISTING_FIELD]: listingSnapshot(persona === 'sponsor B' ? w.listingB : w.listingA),
           name: 'Edited by sponsor',
           website: '',
           description: 'New description',
@@ -607,7 +614,7 @@ describe('stage 3 authorization matrix', () => {
           cleanWorld = undefined
           signInAs(world.sessions[persona])
 
-          expect(await outcomeOf(() => target.run(world))).toBe(expectation.outcome)
+          expect(await outcomeOf(() => target.run(world, persona))).toBe(expectation.outcome)
 
           const after = await snapshot()
           if (expectation.effect) {

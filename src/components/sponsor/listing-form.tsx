@@ -1,23 +1,35 @@
+'use client'
+
 import ImageCropField from '@/components/image-crop-field'
+import ListingRefusalNotice from '@/components/sponsor/listing-refusal-notice'
+import { useListingSave } from '@/components/sponsor/use-listing-save'
 import SubmitButton from '@/components/submit-button'
 import { focusRingClass, inputClass, labelClass, primaryButtonClass } from '@/components/admin/styles'
-import type { Sponsor } from '@/db/schema'
 import { DEFAULT_LOGO_BACKGROUND } from '@/lib/colors'
 import { HTTP_URL_INPUT } from '@/lib/form-fields'
-import { LOGO_FIELD_NAMES, MAX_SPONSOR_DESCRIPTION_LENGTH } from '@/lib/sponsor-schema'
+import {
+  LOADED_LISTING_FIELD,
+  LOGO_FIELD_NAMES,
+  type ListingSaveState,
+  type LoadedListing,
+  MAX_SPONSOR_DESCRIPTION_LENGTH,
+} from '@/lib/sponsor-schema'
 
 const logoHelp =
   'Trim and straighten your logo — pick a shape, then drag, zoom and rotate. Logos are scaled to fit their tile, so the whole framed area stays visible.'
 
 export default function ListingForm({
-  listing,
+  listing: saved,
   action,
 }: {
-  listing: Sponsor
-  action: (formData: FormData) => Promise<void>
+  listing: LoadedListing
+  action: (previous: ListingSaveState, formData: FormData) => Promise<ListingSaveState>
 }) {
+  const { formAction, formKey, refusal, shown: listing, loaded } = useListingSave(saved, action)
   return (
-    <form action={action} className="mt-4 max-w-md space-y-4">
+    <form key={formKey} action={formAction} className="mt-4 max-w-md space-y-4">
+      <ListingRefusalNotice refusal={refusal} />
+      <input type="hidden" name={LOADED_LISTING_FIELD} value={loaded} />
       <label className={labelClass}>
         Name
         <input name="name" required maxLength={200} defaultValue={listing.name} className={inputClass} />

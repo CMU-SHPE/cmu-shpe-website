@@ -54,3 +54,51 @@ export function logoImage(row: LogoColumns): CroppedImage {
 export function logoColumns(image: CroppedImage): LogoColumns {
   return { logoUrl: image.imageUrl, logoOriginalUrl: image.originalUrl, logoCrop: image.crop }
 }
+
+export const LOADED_LISTING_FIELD = 'loadedListing'
+
+const loadedListingSchema = z.object({
+  name: z.string(),
+  tier: z.enum(SPONSOR_TIERS),
+  website: z.string().nullable(),
+  bgColor: z.string(),
+  description: z.string(),
+  logoUrl: z.string().nullable(),
+  logoOriginalUrl: z.string().nullable(),
+  logoCrop: z.string().nullable(),
+})
+
+/** A listing's editable columns as they stood when a form was rendered. */
+export type LoadedListing = z.infer<typeof loadedListingSchema>
+
+export function listingSnapshot(listing: LoadedListing) {
+  return JSON.stringify(loadedListingSchema.parse(listing))
+}
+
+/** Forms opened before this field existed, or with a damaged one, give null. */
+export function parseLoadedListing(formData: FormData): LoadedListing | null {
+  const value = formData.get(LOADED_LISTING_FIELD)
+  if (typeof value !== 'string') return null
+  try {
+    const parsed = loadedListingSchema.safeParse(JSON.parse(value))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+export type ListingConflict = { field: string; saved: string | null }
+
+/**
+ * Answers a save that collided with someone else's edit. `shown` is what the form displays next: the
+ * latest row with this editor's own changes on top. `loaded` is that latest row, so saving again only
+ * writes those changes.
+ */
+export type ListingSaveRefusal = {
+  shown: LoadedListing
+  loaded: string
+  conflicts: ListingConflict[]
+  logoDropped: boolean
+}
+
+export type ListingSaveState = ListingSaveRefusal | null
