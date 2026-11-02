@@ -313,7 +313,7 @@ describe('updateSponsor', () => {
       const refused = (await updateSponsor(listing.id, null, form)) as ListingSaveRefusal
 
       const { url } = await mocks.put.mock.results[0].value
-      expect(refused.conflicts).toEqual([{ field: 'Logo', saved: null }])
+      expect(refused.conflicts).toEqual([])
       expect(refused.logoDropped).toBe(true)
       expect(refused.shown).toMatchObject({ name: 'Officer name', logoUrl: sponsorLogo })
       const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))

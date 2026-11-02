@@ -38,10 +38,11 @@ describe('ListingForm', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save listing' }))
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Someone else changed this listing while you were editing, so nothing was saved.')
-    expect(alert).toHaveTextContent('Description, saved version: Officer words')
-    expect(alert).toHaveTextContent('choose yours again before saving')
+    const notice = await screen.findByRole('group', { name: 'Nothing was saved' })
+    expect(notice).toHaveFocus()
+    expect(notice).toHaveTextContent('Someone else changed this listing while you were editing, so nothing was saved.')
+    expect(notice).toHaveTextContent('Description, saved version: Officer words')
+    expect(notice).toHaveTextContent('choose yours again before saving')
     expect(screen.getByLabelText('Name')).toHaveValue('Officer name')
     expect(screen.getByLabelText('Description (optional)')).toHaveValue('Sponsor words')
     expect(loadedField(container)).toBe(listingSnapshot(latest))
@@ -58,13 +59,13 @@ describe('ListingForm', () => {
     const action = vi.fn(async () => refusal)
     const { container, rerender } = render(<ListingForm listing={LISTING} action={action} />)
     await user.click(screen.getByRole('button', { name: 'Save listing' }))
-    await screen.findByRole('alert')
+    await screen.findByRole('group', { name: 'Nothing was saved' })
     await user.type(screen.getByLabelText('Name'), ' typed')
 
     const newer = { ...LISTING, name: 'Newer' }
     rerender(<ListingForm listing={newer} action={action} />)
 
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Nothing was saved' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveValue('Newer')
     expect(loadedField(container)).toBe(listingSnapshot(newer))
   })

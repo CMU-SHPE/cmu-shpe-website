@@ -103,12 +103,11 @@ function stillAsLoaded(loaded: OfficerListingValues, fields: readonly OfficerLis
   )
 }
 
-const FIELD_LABELS: Record<OfficerListingField, string> = {
+const FIELD_LABELS: Record<Exclude<OfficerListingField, 'logo'>, string> = {
   name: 'Name',
   website: 'Website',
   description: 'Description',
   bgColor: 'Logo background color',
-  logo: 'Logo',
   tier: 'Tier',
 }
 
@@ -123,10 +122,9 @@ function refusal(
   return {
     shown,
     loaded: listingSnapshot(current),
-    conflicts: contested.map((field) => ({
-      field: FIELD_LABELS[field],
-      saved: field === 'logo' ? null : current[field],
-    })),
+    conflicts: contested
+      .filter((field) => field !== 'logo')
+      .map((field) => ({ field: FIELD_LABELS[field], saved: current[field] })),
     logoDropped: own.includes('logo'),
   }
 }
