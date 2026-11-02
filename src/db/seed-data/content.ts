@@ -13,6 +13,8 @@ export const contentDefaults = {
     "Through professional development events, industry networking, and community service, our members grow into the engineers and scientists who will shape tomorrow's world.",
   'home.events.eyebrow': "What's Coming Up",
   'home.events.heading': 'Upcoming Events',
+  'home.gallery.eyebrow': 'In Pictures',
+  'home.gallery.heading': 'Our Chapter in Action',
   'home.sponsors.eyebrow': 'Our Partners',
   'home.sponsors.heading': 'Sponsors & Partners',
   'home.sponsors.intro':

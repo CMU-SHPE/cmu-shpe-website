@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { getDb } from '@/db'
-import { advisors, officers } from '@/db/schema'
+import { advisors, galleryPhotos, officers } from '@/db/schema'
 import { createSponsor, resetDb } from '@/test/db'
 import { findReferencedImageUrls } from './image-references'
 
@@ -9,7 +9,7 @@ const url = (name: string) => `https://store.public.blob.vercel-storage.com/${na
 beforeEach(resetDb)
 
 describe('findReferencedImageUrls', () => {
-  it('finds a URL in any image column of officers, advisors and sponsors', async () => {
+  it('finds a URL in any image column of officers, advisors, sponsors and gallery photos', async () => {
     const db = getDb()
     await db.insert(officers).values([
       { name: 'A', role: 'R', major: 'M', year: 'Y', photoUrl: url('1'), photoOriginalUrl: url('2') },
@@ -18,8 +18,9 @@ describe('findReferencedImageUrls', () => {
       { name: 'B', role: 'R', department: 'D', photoUrl: url('3'), photoOriginalUrl: url('4') },
     ])
     await createSponsor({ logoUrl: url('5'), logoOriginalUrl: url('6') })
+    await db.insert(galleryPhotos).values([{ imageUrl: url('7'), imageOriginalUrl: url('8'), altText: 'A' }])
 
-    const all = ['1', '2', '3', '4', '5', '6'].map(url)
+    const all = ['1', '2', '3', '4', '5', '6', '7', '8'].map(url)
     expect(await findReferencedImageUrls([...all, url('unused')])).toEqual(new Set(all))
   })
 

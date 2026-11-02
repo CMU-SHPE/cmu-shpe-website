@@ -15,6 +15,8 @@ export const CONTENT_KEYS = [
   { key: 'home.mission.paragraph2', label: 'Home: mission second paragraph', multiline: false },
   { key: 'home.events.eyebrow', label: 'Home: events label', multiline: false },
   { key: 'home.events.heading', label: 'Home: events heading', multiline: false },
+  { key: 'home.gallery.eyebrow', label: 'Home: photo gallery label', multiline: false },
+  { key: 'home.gallery.heading', label: 'Home: photo gallery heading', multiline: false },
   { key: 'home.sponsors.eyebrow', label: 'Home: sponsors label', multiline: false },
   { key: 'home.sponsors.heading', label: 'Home: sponsors heading', multiline: false },
   { key: 'home.sponsors.intro', label: 'Home: sponsors paragraph', multiline: false },

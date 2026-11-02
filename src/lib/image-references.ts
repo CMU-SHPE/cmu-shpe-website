@@ -1,7 +1,7 @@
 import { isNotNull } from 'drizzle-orm'
 import { unionAll } from 'drizzle-orm/pg-core'
 import { getDb } from '@/db'
-import { advisors, officers, sponsors } from '@/db/schema'
+import { advisors, galleryPhotos, officers, sponsors } from '@/db/schema'
 
 /** Every column that can hold a public image URL; an admin can paste one row's URL into another. */
 const IMAGE_URL_COLUMNS = [
@@ -11,6 +11,8 @@ const IMAGE_URL_COLUMNS = [
   advisors.photoOriginalUrl,
   sponsors.logoUrl,
   sponsors.logoOriginalUrl,
+  galleryPhotos.imageUrl,
+  galleryPhotos.imageOriginalUrl,
 ] as const
 
 // Deleting by URL removes the stored file, so a copy with a query string or fragment still counts.

@@ -150,6 +150,7 @@ describe('admin server action discovery', () => {
         'admin/account/actions.ts',
         'admin/admins/actions.ts',
         'admin/events/actions.ts',
+        'admin/gallery/actions.ts',
         'admin/lists/actions.ts',
         'admin/newsletters/actions.ts',
         'admin/officers/actions.ts',

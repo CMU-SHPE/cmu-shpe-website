@@ -119,6 +119,17 @@ export const advisors = pgTable('advisors', {
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
+export const galleryPhotos = pgTable('gallery_photos', {
+  id: serial('id').primaryKey(),
+  imageUrl: text('image_url').notNull(),
+  imageOriginalUrl: text('image_original_url'),
+  imageCrop: text('image_crop'),
+  altText: text('alt_text').notNull(),
+  caption: text('caption').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+})
+
 export const events = pgTable(
   'events',
   {
@@ -399,6 +410,7 @@ export type SiteSettings = typeof siteSettings.$inferSelect
 export type Sponsor = typeof sponsors.$inferSelect
 export type Officer = typeof officers.$inferSelect
 export type Advisor = typeof advisors.$inferSelect
+export type GalleryPhoto = typeof galleryPhotos.$inferSelect
 export type ClubEvent = typeof events.$inferSelect
 export type EventTimeSlot = typeof eventTimeSlots.$inferSelect
 export type HomeStat = typeof homeStats.$inferSelect
