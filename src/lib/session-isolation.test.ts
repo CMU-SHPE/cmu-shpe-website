@@ -25,14 +25,17 @@ const fake = vi.hoisted(() => {
   const state = {
     admins: [] as AdminRow[],
     members: [] as MemberRow[],
-    counts: { emailAttempts: 1, ipAttempts: 1 } as Record<string, number>,
+    counts: { perEmailAndIp: 1, perEmail: 1, perIp: 1 } as Record<string, number>,
     ops: [] as string[],
   }
   const db = {
     insert: () => ({
-      values: async () => {
-        state.ops.push('insert attempt')
-      },
+      values: () => ({
+        returning: async () => {
+          state.ops.push('insert attempt')
+          return [{ id: 1 }]
+        },
+      }),
     }),
     delete: () => ({
       where: async (condition: { expiredBefore?: unknown }) => {
@@ -49,8 +52,8 @@ const fake = vi.hoisted(() => {
         },
         where: (condition: { lookup?: { column: string; value: unknown } }) => {
           if (key in state.counts) {
-            state.ops.push(`count ${key}`)
-            return Promise.resolve([{ [key]: state.counts[key] }])
+            state.ops.push('count attempts')
+            return Promise.resolve([state.counts])
           }
           const lookup = condition?.lookup
           return {
@@ -179,7 +182,7 @@ async function expectRefusedByEveryAdminGuard() {
 beforeEach(() => {
   fake.state.admins = []
   fake.state.members = []
-  fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+  fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
   fake.state.ops = []
   fake.auth.mockReset()
   fake.getDb.mockClear()
@@ -393,8 +396,9 @@ describe('authorizeCredentials', () => {
     fake.state.members = [mia]
     fake.compare.mockResolvedValue(true)
     for (const counts of [
-      { emailAttempts: 6, ipAttempts: 1 },
-      { emailAttempts: 1, ipAttempts: 21 },
+      { perEmailAndIp: 6, perEmail: 6, perIp: 6 },
+      { perEmailAndIp: 1, perEmail: 51, perIp: 1 },
+      { perEmailAndIp: 1, perEmail: 1, perIp: 51 },
     ]) {
       fake.state.counts = counts
       for (const email of [max.email, mia.email, 'nobody@example.com']) {
