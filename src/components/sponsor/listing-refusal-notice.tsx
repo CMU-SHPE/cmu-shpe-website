@@ -23,7 +23,11 @@ export default function ListingRefusalNotice({ refusal }: { refusal: ListingSave
       className={`rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400 ${focusRingClass}`}
     >
       <div id={contentId} className="space-y-2">
-        <p>Someone else changed this listing while you were editing, so nothing was saved.</p>
+        <p>
+          {refusal.reason === 'outdated'
+            ? 'This page was out of date, so nothing was saved.'
+            : 'Someone else changed this listing while you were editing, so nothing was saved.'}
+        </p>
         {refusal.conflicts.length > 0 && (
           <>
             <p>

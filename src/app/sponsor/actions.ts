@@ -15,8 +15,9 @@ import {
 import {
   changedListingFields,
   listingEdit,
+  logoFileChosen,
+  outdatedRefusal,
   refusalForMissedSave,
-  refusalWithoutSnapshot,
   requireSponsor,
 } from '@/lib/sponsor-portal'
 import { findOwnListing } from '@/lib/sponsor-portal-listing'
@@ -39,9 +40,7 @@ export async function updateListing(_previous: ListingSaveState, formData: FormD
   const loaded = parseLoadedListing(formData)
   if (!loaded) {
     const submitted = { ...listing, ...parsed.data }
-    const own = changedListingFields(listing, submitted)
-    if (own.length === 0) redirect('/sponsor?saved=unchanged')
-    return refusalWithoutSnapshot(listing, submitted, own)
+    return outdatedRefusal(listing, submitted, changedListingFields(listing, submitted), logoFileChosen(formData))
   }
 
   const existing = logoImage(loaded)
@@ -68,9 +67,8 @@ export async function updateListing(_previous: ListingSaveState, formData: FormD
   })
   if (!saved) {
     const current = await findOwnListing(Number(member.user.id))
-    const refused = current?.id === listing.id ? refusalForMissedSave(current, loaded, values, fields) : null
-    if (refused) return refused
-    redirect('/sponsor?error=missing')
+    if (current?.id !== listing.id) redirect('/sponsor?error=missing')
+    return refusalForMissedSave(current, loaded, values, fields) ?? outdatedRefusal(current, values, fields)
   }
   await cleanupBlobs(...orphanedBlobs(existing, logo))
 

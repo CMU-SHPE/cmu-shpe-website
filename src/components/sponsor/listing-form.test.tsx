@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LOADED_LISTING_FIELD, type ListingSaveRefusal, type LoadedListing, listingSnapshot } from '@/lib/sponsor-schema'
 import ListingForm from './listing-form'
@@ -28,6 +28,7 @@ describe('ListingForm', () => {
   it('after a refusal shows the notice, the typed text and the latest row as the new baseline', async () => {
     const latest = { ...LISTING, name: 'Officer name', description: 'Officer words' }
     const refusal: ListingSaveRefusal = {
+      reason: 'conflict',
       shown: { ...latest, description: 'Sponsor words' },
       loaded: listingSnapshot(latest),
       conflicts: [{ field: 'Description', saved: 'Officer words' }],
@@ -48,25 +49,47 @@ describe('ListingForm', () => {
     expect(loadedField(container)).toBe(listingSnapshot(latest))
   })
 
-  it('drops a dirty field and any refusal when the page brings a newer listing', async () => {
+  it('keeps typed text and the listing it showed when the page brings a newer one', async () => {
+    const user = userEvent.setup()
+    const { container, rerender } = render(<ListingForm listing={LISTING} action={vi.fn()} />)
+    await user.type(screen.getByLabelText('Name'), ' typed')
+
+    rerender(<ListingForm listing={{ ...LISTING, name: 'Newer' }} action={vi.fn()} />)
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Acme typed')
+    expect(loadedField(container)).toBe(listingSnapshot(LISTING))
+  })
+
+  it('moves to the newer listing once its own save has gone through', async () => {
+    const user = userEvent.setup()
+    let finish = () => {}
+    const action = vi.fn(() => new Promise<null>((resolve) => (finish = () => resolve(null))))
+    const { container, rerender } = render(<ListingForm listing={LISTING} action={action} />)
+    await user.click(screen.getByRole('button', { name: 'Save listing' }))
+
+    const newer = { ...LISTING, name: 'Newer' }
+    rerender(<ListingForm listing={newer} action={action} />)
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Newer')
+    expect(loadedField(container)).toBe(listingSnapshot(newer))
+    await act(async () => finish())
+  })
+
+  it('says the page was out of date when no field can be named', async () => {
     const refusal: ListingSaveRefusal = {
+      reason: 'outdated',
       shown: LISTING,
       loaded: listingSnapshot(LISTING),
       conflicts: [],
       logoDropped: false,
     }
     const user = userEvent.setup()
-    const action = vi.fn(async () => refusal)
-    const { container, rerender } = render(<ListingForm listing={LISTING} action={action} />)
+    render(<ListingForm listing={LISTING} action={vi.fn(async () => refusal)} />)
     await user.click(screen.getByRole('button', { name: 'Save listing' }))
-    await screen.findByRole('group', { name: 'Nothing was saved' })
-    await user.type(screen.getByLabelText('Name'), ' typed')
 
-    const newer = { ...LISTING, name: 'Newer' }
-    rerender(<ListingForm listing={newer} action={action} />)
-
-    expect(screen.queryByRole('group', { name: 'Nothing was saved' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Name')).toHaveValue('Newer')
-    expect(loadedField(container)).toBe(listingSnapshot(newer))
+    const notice = await screen.findByRole('group', { name: 'Nothing was saved' })
+    expect(notice).toHaveTextContent('This page was out of date, so nothing was saved.')
+    expect(notice).toHaveTextContent('Check the form and save again.')
+    expect(notice).not.toHaveTextContent('Someone else')
   })
 })

@@ -71,8 +71,12 @@ const loadedListingSchema = z.object({
 /** A listing's editable columns as they stood when a form was rendered. */
 export type LoadedListing = z.infer<typeof loadedListingSchema>
 
+export function loadedListing(row: LoadedListing): LoadedListing {
+  return loadedListingSchema.parse(row)
+}
+
 export function listingSnapshot(listing: LoadedListing) {
-  return JSON.stringify(loadedListingSchema.parse(listing))
+  return JSON.stringify(loadedListing(listing))
 }
 
 /** Forms opened before this field existed, or with a damaged one, give null. */
@@ -95,6 +99,8 @@ export type ListingConflict = { field: string; saved: string | null }
  * writes those changes.
  */
 export type ListingSaveRefusal = {
+  /** `outdated` when the form can't be matched to a contested field, as with a page from an older deploy. */
+  reason: 'conflict' | 'outdated'
   shown: LoadedListing
   loaded: string
   conflicts: ListingConflict[]

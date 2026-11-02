@@ -19,9 +19,10 @@ import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
 import {
   changedOfficerFields,
+  logoFileChosen,
   officerListingEdit,
+  outdatedRefusal,
   refusalForMissedSave,
-  refusalWithoutSnapshot,
 } from '@/lib/sponsor-portal'
 import {
   LOGO_FIELD_NAMES,
@@ -114,9 +115,7 @@ export async function updateSponsor(
   if (!loaded) {
     const { logo } = await resolveLogo(new FormData(), logoUrl, logoImage(row))
     const submitted = { ...fields, ...logoColumns(logo) }
-    const own = changedOfficerFields(row, submitted)
-    if (own.length === 0) redirect('/admin/sponsors?saved=1')
-    return refusalWithoutSnapshot(row, submitted, own)
+    return outdatedRefusal(row, submitted, changedOfficerFields(row, submitted), logoFileChosen(formData))
   }
 
   const existing = logoImage(loaded)

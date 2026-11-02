@@ -356,7 +356,7 @@ describe('updateSponsor', () => {
 
       const refused = (await updateSponsor(listing.id, null, form)) as ListingSaveRefusal
 
-      expect(refused.conflicts).toEqual([{ field: 'Name', saved: 'Acme' }])
+      expect(refused).toMatchObject({ reason: 'outdated', conflicts: [], shown: { name: 'Officer name' } })
       const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
       expect(row).toEqual(listing)
       expect(await editLog()).toEqual([])

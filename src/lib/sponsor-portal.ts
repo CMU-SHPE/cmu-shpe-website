@@ -6,13 +6,16 @@ import { type Sponsor, type SponsorTier, admins, members, sponsorEdits, sponsors
 import { type MemberSession, currentMember } from '@/lib/member'
 import { findOwnListing } from '@/lib/sponsor-portal-listing'
 import {
+  LOGO_FIELD_NAMES,
   type ListingSaveRefusal,
   type LogoColumns,
   type SponsorListingFields,
+  loadedListing,
   listingSnapshot,
 } from '@/lib/sponsor-schema'
 import { qualified } from '@/lib/qualified-column'
 import { normalizeNewlines } from '@/lib/text'
+import { isUploadedImage } from '@/lib/uploads'
 
 export type SponsorAccess = { member: MemberSession; listing: Sponsor }
 
@@ -112,30 +115,40 @@ const FIELD_LABELS: Record<Exclude<OfficerListingField, 'logo'>, string> = {
 }
 
 function refusal(
+  reason: ListingSaveRefusal['reason'],
   current: OfficerListingValues,
   submitted: OfficerListingValues,
   own: readonly OfficerListingField[],
   contested: readonly OfficerListingField[],
+  logoChosen = false,
 ): ListingSaveRefusal {
   const typed = own.filter((field) => field !== 'logo')
-  const shown = { ...current, ...changedColumns(submitted, typed) }
   return {
-    shown,
+    reason,
+    shown: loadedListing({ ...current, ...changedColumns(submitted, typed) }),
     loaded: listingSnapshot(current),
     conflicts: contested
       .filter((field) => field !== 'logo')
       .map((field) => ({ field: FIELD_LABELS[field], saved: current[field] })),
-    logoDropped: own.includes('logo'),
+    logoDropped: logoChosen || own.includes('logo'),
   }
 }
 
-/** A form with no snapshot can't show which edits are its own, so each difference counts as contested. */
-export function refusalWithoutSnapshot(
+export function logoFileChosen(formData: FormData) {
+  return isUploadedImage(formData.get(LOGO_FIELD_NAMES.file)) || isUploadedImage(formData.get(LOGO_FIELD_NAMES.original))
+}
+
+/**
+ * For a form that can't say what it was loaded with, or a save that missed for a reason other than a
+ * contested field. Its typed changes are kept, but none is called a conflict.
+ */
+export function outdatedRefusal(
   current: OfficerListingValues,
   submitted: OfficerListingValues,
   own: readonly OfficerListingField[],
+  logoChosen = false,
 ) {
-  return refusal(current, submitted, own, own)
+  return refusal('outdated', current, submitted, own, [], logoChosen)
 }
 
 /** Null when the columns this save wanted to write are unchanged: something else stopped it. */
@@ -147,7 +160,7 @@ export function refusalForMissedSave(
 ): ListingSaveRefusal | null {
   const changedSinceLoad = changedOfficerFields(loaded, current)
   const contested = own.filter((field) => changedSinceLoad.includes(field))
-  return contested.length === 0 ? null : refusal(current, submitted, own, contested)
+  return contested.length === 0 ? null : refusal('conflict', current, submitted, own, contested)
 }
 
 /**

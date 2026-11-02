@@ -233,7 +233,7 @@ describe('updateListing', () => {
 
       const refused = (await updateListing(null, form)) as ListingSaveRefusal
 
-      expect(refused.conflicts).toEqual([{ field: 'Description', saved: 'Officer words' }])
+      expect(refused).toMatchObject({ reason: 'conflict', conflicts: [{ field: 'Description', saved: 'Officer words' }] })
       expect(refused.logoDropped).toBe(true)
       expect(refused.shown).toMatchObject({ name: 'Sponsor name', description: 'Sponsor words', logoUrl: OLD_LOGO })
       expect(await listingRow(listing.id)).toMatchObject({ name: 'Acme', description: 'Officer words', logoUrl: OLD_LOGO })
@@ -260,8 +260,39 @@ describe('updateListing', () => {
 
       const refused = (await updateListing(null, form)) as ListingSaveRefusal
 
-      expect(refused.conflicts).toEqual([{ field: 'Description', saved: 'Old words' }])
+      expect(refused).toMatchObject({ reason: 'outdated', conflicts: [], logoDropped: false })
+      expect(refused.shown.description).toBe('Sponsor words')
       expect(await listingRow(listing.id)).toEqual(listing)
+      expect(await auditRows()).toEqual([])
+    })
+
+    it('refuses a form with no loaded values even when only a logo was chosen, and uploads nothing', async () => {
+      const form = listingForm(listing)
+      form.delete(LOADED_LISTING_FIELD)
+      form.set('logoOriginalFile', new File(['png'], 'logo.png', { type: 'image/png' }))
+
+      const refused = (await updateListing(null, form)) as ListingSaveRefusal
+
+      expect(refused).toMatchObject({ reason: 'outdated', conflicts: [], logoDropped: true })
+      expect(Object.keys(refused.shown).sort()).toEqual(
+        ['bgColor', 'description', 'logoCrop', 'logoOriginalUrl', 'logoUrl', 'name', 'tier', 'website'],
+      )
+      expect(mocks.uploadImage).not.toHaveBeenCalled()
+      expect(await listingRow(listing.id)).toEqual(listing)
+    })
+
+    it('calls a missed save with no contested field out of date rather than lost access', async () => {
+      const db = getDb()
+      await db.update(sponsors).set({ description: 'One\nTwo' }).where(eq(sponsors.id, listing.id))
+      const current = await listingRow(listing.id)
+      const form = listingForm(current, { description: 'Sponsor words' })
+      form.set(LOADED_LISTING_FIELD, listingSnapshot({ ...current, description: 'One\r\nTwo' }))
+
+      const refused = (await updateListing(null, form)) as ListingSaveRefusal
+
+      expect(refused).toMatchObject({ reason: 'outdated', conflicts: [] })
+      expect(refused.shown.description).toBe('Sponsor words')
+      expect(await listingRow(listing.id)).toEqual(current)
       expect(await auditRows()).toEqual([])
     })
 
