@@ -90,7 +90,8 @@ the schema change, then apply it with `npm run db:push`.
 
 ### Recovering the master account
 
-If the master admin forgets their password or loses access to their email, someone with
+If the master admin forgets their password, they reset it by email like any admin: **Forgot
+password?** on the sign-in page. If they have also lost access to that email, someone with
 the database connection string puts the new values in `.env.local`, with the password in
 single quotes so characters such as `#` are kept (the password itself can't contain `'`):
 
@@ -106,8 +107,8 @@ npm run db:reset-master
 ```
 
 It moves the master account to `MASTER_EMAIL`, sets its password to `MASTER_PASSWORD`,
-clears the failed sign-ins recorded against both emails and signs out every existing
-master session. It reports the new password's length; if that doesn't match what you
+clears the failed sign-ins recorded against both emails, cancels its emailed reset links and
+signs out every existing master session. It reports the new password's length; if that doesn't match what you
 typed, fix the quoting and run it again. Variables already set in the shell take
 precedence over `.env.local`. Other admins are left alone; the master resets their
 passwords from **Admin accounts**.
@@ -133,9 +134,12 @@ connection string, edits made locally change the live site.
    accounts: edit them to keep them accurate, but never blank a section.
 3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
    lists, site settings, members, newsletter topics and newsletters.
-4. Choose **Change password** in the admin sidebar to change your own password. The master
-   admin can reset another admin's password from **Admin accounts** and share it with them
-   directly. Either change signs that account out on every other device.
+4. Choose **Change password** in the admin sidebar to change your own password. Forgot it?
+   Choose **Forgot password?** on the sign-in page and enter your admin email: the link it
+   sends works for 30 minutes, once. This works for every admin, the master included. The
+   master admin can also reset another admin's password from **Admin accounts** and share it
+   with them directly. Every change signs that account out on every other device, and a reset
+   by email also clears any sign-in lockout on it.
 5. **Admin accounts** appears in the sidebar for the master and for any admin the master has
    allowed to create accounts. The master turns that on or off per admin with the **Can
    create accounts** button next to their name; the change applies on that admin's next
@@ -160,15 +164,30 @@ to RSVP to events.
   up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
   sponsors land on `/sponsor` instead.
-- **`/account`:** change name and password, choose newsletter topics, see and cancel
+- **`/account`:** change name, email and password, choose newsletter topics, see and cancel
   upcoming RSVPs, and **Delete my account** (asks for the password and the word DELETE;
   it removes the account, its newsletter choices, its newsletter send and unsubscribe
   records and its RSVPs right away). Sponsors also get a **Sponsor portal** link here.
 - **RSVPs:** any signed-in member with a confirmed email can RSVP to an upcoming event on
   `/events` and cancel before it happens. See [Sponsor portal](#sponsor-portal) for
   capacity and the attendee CSV.
-- **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour.
-  Admins don't get one; the master resets admin passwords from **Admin accounts**.
+- **Forgot password:** `/forgot-password` emails a reset link that works for 1 hour, once.
+  The same page serves admins: an admin's email gets a link to `/reset-password/admin` that
+  works for 30 minutes. The page answers the same way whether or not the address has an
+  account. Member and admin links are stored separately, so neither can reset the other kind
+  of account.
+- **Changing email:** **Change email** on `/account` asks for the new address and the current
+  password, then emails a confirmation link to the new address that works for 24 hours, once.
+  Nothing changes until it is used, and a newer request or a password change or reset cancels
+  the pending link. Opening the link shows the new address and asks for the account's current
+  password, so someone else's account can't be moved onto an address just because its owner
+  clicked; a wrong password leaves the link working and changes nothing. Confirming then
+  re-checks that no admin or other member has the address (an unconfirmed sign-up holding it
+  is deleted), changes the email, signs the member out everywhere and tells the old address
+  (showing the new one as `n***@domain`, with the club's contact email). The account keeps
+  its id, so RSVPs, newsletter choices, the sponsor link and old unsubscribe links all keep
+  working. The form says the same thing whether or not the new address is taken; a taken
+  address only shows up when the link is used.
 - **Removing a member:** in the admin, **Members** → **Delete** next to their name. This
   also removes their newsletter choices, newsletter send and unsubscribe records, RSVPs and
   pending email links. Any sponsor listing edits they made stay in that listing's history
@@ -435,7 +454,10 @@ Preview and local databases are copies of production, so anywhere except product
 to confirmed accounts whose address ends in `@resend.dev` (Resend's test inboxes), even
 when it continues a send that production started and the database copy still holds;
 everyone else is skipped. The composer and the send confirmation say so, and their
-recipient counts leave everyone else out. Test sends to yourself are not restricted. To get a token:
+recipient counts leave everyone else out. Test sends to yourself are not restricted. Every
+other email (confirmation, password reset, email change and security notices) follows the
+same rule: outside production `sendEmail` skips any address not ending in `@resend.dev`,
+logging `EMAIL SKIPPED` without the address, and the flow carries on as if it had sent. To get a token:
 
 1. On the preview, create an account with an address like
    `delivered+unsubscribe-e2e@resend.dev`, open its confirmation email in the Resend
@@ -475,6 +497,29 @@ In Vercel's project settings (**Build and Deployment**), leave **Build Command**
 override. Vercel then runs `npm run vercel-build`, which preview deployments need to apply
 the schema; an override would skip it.
 
+### Production steps for the account recovery release
+
+Do these in order, all *before* merging to `main`, after the UI clarity release's steps,
+because the new code reads and writes the new tables and the policy should match what the site
+does once it deploys.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** apply the additive `admin_tokens` and `member_email_changes` tables (reviewed in
+   `drizzle/0008_narrow_guardsmen.sql`; it only adds) to production with `npm run db:push`, as
+   described under [Preview databases](#preview-databases).
+3. **Policy text (required):** run `scripts/sql/2026-10-31-privacy-account-recovery.sql` as
+   described under
+   [Releasing a change to the Privacy Policy or Terms](#releasing-a-change-to-the-privacy-policy-or-terms):
+   once without `-v commit=1`, check that every key shows `applied now` or `already new`,
+   then again with `-v commit=1`. It updates `privacy.collect.items`, `privacy.use.items`,
+   `privacy.retention.items` and `privacy.choices.items`, then "Last updated", which only moves
+   once all four hold the new text. It expects the UI clarity release's text: if any key shows
+   `older`, commit `2026-10-30-privacy-ui-clarity.sql` first and run this one again (for
+   `privacy.collect.items`, which that script doesn't change, commit
+   `2026-10-27-privacy-sponsor-portal.sql`). A key shown as `changed elsewhere` is left alone and
+   holds back the date: after the COMMIT, work this release's wording into it by hand on
+   `/privacy`, then change **Last updated** by hand, last.
+
 ### Releasing a change to the Privacy Policy or Terms
 
 New default text in `src/db/seed-data/content.ts` never reaches production on its own:
@@ -482,7 +527,8 @@ New default text in `src/db/seed-data/content.ts` never reaches production on it
 `scripts/sql/` (for the newsletter release, `2026-10-26-privacy-newsletters.sql`; for the
 sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
 committed first; for the UI clarity release, `2026-10-30-privacy-ui-clarity.sql`, which needs
-the sponsor portal one committed first). Run it with the production connection string at the
+the sponsor portal one committed first; for the account recovery release,
+`2026-10-31-privacy-account-recovery.sql`, which needs the UI clarity one committed first). Run it with the production connection string at the
 point that release's own production steps and the script's header give. It backs the old rows up, only replaces text still matching the old
 default, and rolls back unless run with `-v commit=1`: run it once without, check the
 report at the end, then run `psql -v commit=1 "$DATABASE_URL" -f <file>`. The comments at
@@ -506,9 +552,18 @@ git branch's previews share one Neon branch, `preview/<git-branch>`: a copy of
 production's data taken at that branch's first preview, so editing a preview never
 changes the live site.
 
-- **Images:** previews upload to production's Blob store and never delete images, because
-  their copied rows still point at production's images. Images uploaded from previews
-  are left behind.
+- **Images:** connect a separate Blob store to the Preview environment and set
+  `PRODUCTION_BLOB_STORE_ID` there to production's store ID. A preview refuses to upload or
+  delete, showing the "couldn't be saved" message, if that variable is missing or its token
+  belongs to production's store. Previews never clean up replaced images, because their
+  copied rows still point at production's images.
+- **Database guard:** set `PRODUCTION_DATABASE_HOST` in the Preview environment to the host
+  from production's `DATABASE_URL`. The preview build fails without pushing if the variable
+  is missing or `DATABASE_URL` is on that host, pooled or not.
+- **Contact form:** only production sends messages to the club, through Formspree
+  (`CONTACT_FORM_ENDPOINT` overrides the address). Everywhere else the form reports success
+  and sends nothing, unless `CONTACT_FORM_TEST_ENDPOINT` is set. Submissions are limited per
+  email address and IP address in every environment.
 - **Sign-in:** Preview must have its own `AUTH_SECRET`. A preview's copy can hold an old
   password hash, and a session signed with production's secret would be accepted by
   production.

@@ -7,6 +7,7 @@ import { getDb } from '@/db'
 import { admins, members } from '@/db/schema'
 import { requireAccountCreator, requireMaster } from '@/lib/admin'
 import { accountCreatorGrant, adminId, parseAdminAccount, parsePasswordReset } from '@/lib/admin-account'
+import { deleteAdminTokens } from '@/lib/admin-tokens'
 import { clearLoginAttempts } from '@/lib/authorize'
 
 export async function createAdmin(formData: FormData) {
@@ -93,6 +94,7 @@ export async function resetAdminPassword(id: number, formData: FormData) {
     .where(and(eq(admins.id, parsed.data.id), eq(admins.role, 'admin')))
     .returning({ email: admins.email })
   if (!updated) redirect('/admin/admins?error=missing')
+  await deleteAdminTokens(db, parsed.data.id)
   await clearLoginAttempts(updated.email)
 
   redirect('/admin/admins?saved=reset')

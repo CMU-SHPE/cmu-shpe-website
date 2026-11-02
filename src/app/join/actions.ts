@@ -3,7 +3,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { type SQL, and, eq, isNull, sql } from 'drizzle-orm'
 import { getDb, type Db } from '@/db'
 import { admins, members } from '@/db/schema'
 import { isUniqueViolation } from '@/lib/db-errors'
@@ -24,12 +24,24 @@ import { siteUrl } from '@/lib/site-url'
 
 const CHECK_EMAIL_PATH = '/join/check-email'
 
+type MemberTokenRow = ReturnType<typeof newMemberToken>['row']
+
 type SignUp = {
   name: string
   email: string
   passwordHash: string
   privacyPolicyVersion: string
   base: string
+}
+
+// A plain INSERT could not depend on the row: selecting from it adds nothing once it is confirmed.
+function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row: MemberTokenRow) {
+  return db.execute(sql`
+    insert into member_tokens (member_id, purpose, token_hash, expires_at)
+    select ${members.id}, ${row.purpose}::member_token_purpose, ${row.tokenHash}, ${row.expiresAt.toISOString()}::timestamptz
+    from ${members}
+    where ${stillUnconfirmed}
+  `)
 }
 
 function confirmLink(base: string, token: string) {
@@ -62,7 +74,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
   ])
   if (admin) {
     await matchWriteRoundTrip(db)
-    return adminAccountExists(admin.name, `${base}/login`)
+    return adminAccountExists(admin.name, `${base}/login`, `${base}/forgot-password`)
   }
   if (member?.emailConfirmedAt) {
     await matchWriteRoundTrip(db)
@@ -74,12 +86,14 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
 
   if (member) {
     const { token, row } = newMemberToken(member.id, 'confirm_email')
-    await db.batch([
-      // A confirmation landing since the lookup above must not let this sign-up replace the password.
-      db.update(members).set(details).where(and(eq(members.id, member.id), isNull(members.emailConfirmedAt))),
+    // A confirmation landing since the lookup above must not let this sign-up replace the password or get a new link.
+    const stillUnconfirmed = and(eq(members.id, member.id), isNull(members.emailConfirmedAt))
+    const [takenOver] = await db.batch([
+      db.update(members).set(details).where(stillUnconfirmed).returning({ id: members.id }),
       deleteMemberTokens(db, member.id, 'confirm_email'),
-      insertMemberToken(db, row),
+      insertTokenIfUnconfirmed(db, stillUnconfirmed, row),
     ])
+    if (takenOver.length === 0) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
     return confirmEmail(confirmLink(base, token))
   }
 

@@ -36,6 +36,9 @@ function resetPasswordWithToken(token: string, passwordHash: string) {
       delete from member_tokens t using updated
       where t.member_id = updated.id and t.purpose = 'reset_password' and t.token_hash <> ${tokenHash}
     ),
+    pending_email_change as (
+      delete from member_email_changes e using updated where e.member_id = updated.id
+    ),
     cleared as (
       delete from login_attempts l using updated where l.email = updated.email
     )

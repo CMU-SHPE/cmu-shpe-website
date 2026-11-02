@@ -20,6 +20,16 @@ export function eventFormValues(formData: FormData): EventFormValues {
   }
 }
 
+// Capacity is at least 1, so a capacity below the count always means two or more RSVPs.
+export function capacityBelowRsvpsMessage(going: number) {
+  return `This event already has ${going} RSVPs, so the capacity can't be lower than ${going}.`
+}
+
+export function eventDeleteWarning(going: number) {
+  if (going === 0) return 'It has no RSVPs to remove.'
+  return `This also removes its ${going} ${going === 1 ? 'RSVP' : 'RSVPs'}.`
+}
+
 // Postgres returns `time` as HH:MM:SS, but a native time input only shows HH:MM without a step.
 export function storedEventFormValues(event: ClubEvent & { slots: EventTimeSlot[] }): EventFormValues {
   return {
