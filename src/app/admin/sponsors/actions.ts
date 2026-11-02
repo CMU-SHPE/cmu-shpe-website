@@ -17,13 +17,40 @@ import {
 } from '@/lib/crop-upload'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
-import { changedOfficerFields, officerListingEdit } from '@/lib/sponsor-portal'
-import { LOGO_FIELD_NAMES, logoColumns, logoImage, parseSponsorForm } from '@/lib/sponsor-schema'
+import {
+  changedOfficerFields,
+  logoFileChosen,
+  officerListingEdit,
+  outdatedRefusal,
+  refusalForMissedSave,
+} from '@/lib/sponsor-portal'
+import {
+  LOGO_FIELD_NAMES,
+  type ListingSaveState,
+  logoColumns,
+  logoImage,
+  parseLoadedListing,
+  parseSponsorForm,
+} from '@/lib/sponsor-schema'
 
 const logoFields = {
   logoUrl: sponsors.logoUrl,
   logoOriginalUrl: sponsors.logoOriginalUrl,
   logoCrop: sponsors.logoCrop,
+}
+
+const editableFields = {
+  name: sponsors.name,
+  tier: sponsors.tier,
+  website: sponsors.website,
+  description: sponsors.description,
+  bgColor: sponsors.bgColor,
+  ...logoFields,
+}
+
+async function readEditableFields(id: number) {
+  const [row] = await getDb().select(editableFields).from(sponsors).where(eq(sponsors.id, id)).limit(1)
+  return row
 }
 
 async function resolveLogo(
@@ -68,49 +95,51 @@ export async function createSponsor(formData: FormData) {
   redirect('/admin/sponsors?saved=1')
 }
 
-export async function updateSponsor(id: number, formData: FormData) {
+// Bound to the sponsor id and used with useActionState, so the previous state comes before the form.
+export async function updateSponsor(
+  id: number,
+  _previous: ListingSaveState,
+  formData: FormData,
+): Promise<ListingSaveState> {
   const session = await requireAdmin()
 
   const sponsorId = recordId.safeParse(id)
   const parsed = parseSponsorForm(formData)
   if (!sponsorId.success || !parsed.success) redirect('/admin/sponsors?error=invalid')
 
-  const db = getDb()
-  const [row] = await db
-    .select({
-      name: sponsors.name,
-      tier: sponsors.tier,
-      website: sponsors.website,
-      description: sponsors.description,
-      bgColor: sponsors.bgColor,
-      ...logoFields,
-    })
-    .from(sponsors)
-    .where(eq(sponsors.id, sponsorId.data))
-    .limit(1)
+  const row = await readEditableFields(sponsorId.data)
   if (!row) redirect('/admin/sponsors?error=missing')
 
-  const existing = logoImage(row)
   const { logoUrl, ...fields } = parsed.data
+  const loaded = parseLoadedListing(formData)
+  if (!loaded) {
+    const { logo } = await resolveLogo(new FormData(), logoUrl, logoImage(row))
+    const submitted = { ...fields, ...logoColumns(logo) }
+    return outdatedRefusal(row, submitted, changedOfficerFields(row, submitted), logoFileChosen(formData))
+  }
+
+  const existing = logoImage(loaded)
   const { logo, uploads } = await resolveLogo(formData, logoUrl, existing)
+  const values = { ...fields, ...logoColumns(logo) }
+  const changed = changedOfficerFields(loaded, values)
+  if (changed.length === 0) redirect('/admin/sponsors?saved=1')
+
+  const db = getDb()
   const saved = await writeOrDiscardUploads(uploads, async () => {
-    const tierChange =
-      fields.tier === row.tier
-        ? {}
-        : { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
-    const values = { ...fields, ...logoColumns(logo) }
-    const [updated] = await db.batch(
-      officerListingEdit(
-        db,
-        Number(session.user.id),
-        sponsorId.data,
-        { ...values, ...tierChange },
-        changedOfficerFields(row, values),
-      ),
+    const tierChange = changed.includes('tier')
+      ? { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
+      : {}
+    const [edit] = await db.batch(
+      officerListingEdit(db, Number(session.user.id), sponsorId.data, loaded, values, changed, tierChange),
     )
-    return updated
+    return edit.rows
   })
-  if (!saved) redirect('/admin/sponsors?error=not-saved')
+  if (!saved) {
+    const current = await readEditableFields(sponsorId.data)
+    const refused = current ? refusalForMissedSave(current, loaded, values, changed) : null
+    if (refused) return refused
+    redirect('/admin/sponsors?error=not-saved')
+  }
   await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/admin/sponsors?saved=1')
