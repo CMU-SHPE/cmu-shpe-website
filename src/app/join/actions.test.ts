@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
 
-type Write = { kind: 'insert' | 'update' | 'delete' | 'execute'; table: string; values?: Record<string, unknown>; where?: SQL }
+type Write = {
+  kind: 'insert' | 'update' | 'delete' | 'execute'
+  table: string
+  values?: Record<string, unknown>
+  where?: SQL
+  statement?: SQL
+}
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -12,6 +18,7 @@ const mocks = vi.hoisted(() => {
     batches: [] as Write[][],
     batchError: null as null | (() => unknown),
     adminTakesAddress: null as null | (() => void),
+    confirmedDuringBatch: false,
     throttled: false,
     rounds: 0,
     inFlight: 0,
@@ -55,7 +62,10 @@ const mocks = vi.hoisted(() => {
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
-        where: (where: SQL) => ({ kind: 'update', table: tableName(table), values, where }),
+        where: (where: SQL) => {
+          const write = { kind: 'update', table: tableName(table), values, where }
+          return { ...write, returning: () => write }
+        },
       }),
     }),
     delete: (table: unknown) => ({
@@ -82,22 +92,21 @@ const mocks = vi.hoisted(() => {
         const adminTakesAddress = state.adminTakesAddress
         state.adminTakesAddress = null
         adminTakesAddress?.()
-        return writes.map((write) =>
-          write.kind === 'delete' && write.table === 'members' && adminTakesAddress ? [{ id: 9 }] : [],
-        )
+        return writes.map((write) => {
+          if (write.kind === 'update') return state.confirmedDuringBatch ? [] : [{ id: 7 }]
+          return write.kind === 'delete' && write.table === 'members' && adminTakesAddress ? [{ id: 9 }] : []
+        })
       }),
-    execute: (statement: SQL) => {
-      const text = new PgDialect().sqlToQuery(statement).sql
-      return {
-        kind: 'execute',
-        table: text,
-        then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) =>
-          roundTrip(() => {
-            state.ops.push(`execute ${text}`)
-            return { rows: [] }
-          }).then(resolve, reject),
-      }
-    },
+    execute: (statement: SQL) => ({
+      kind: 'execute',
+      table: '',
+      statement,
+      then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) =>
+        roundTrip(() => {
+          state.ops.push(`execute ${new PgDialect().sqlToQuery(statement).sql}`)
+          return { rows: [] }
+        }).then(resolve, reject),
+    }),
   }
   return {
     state,
@@ -175,6 +184,7 @@ beforeEach(() => {
     batches: [],
     batchError: null,
     adminTakesAddress: null,
+    confirmedDuringBatch: false,
     throttled: false,
     rounds: 0,
     inFlight: 0,
@@ -228,11 +238,12 @@ describe('signUp branches', () => {
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
     const [batch] = mocks.state.batches
     expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual([
-      'execute lock table admins in share row exclusive mode',
+      'execute ',
       'insert members',
       'insert member_tokens',
       'delete members',
     ])
+    expect(render(batch[0].statement!).sql).toBe('lock table admins in share row exclusive mode')
     expect(render(batch[3].where!).sql).toBe('("members"."email" = $1 and exists $2)')
     expect(render(batch[3].where!).params[0]).toBe('mia@example.com')
     expect(batch[1].values).toMatchObject({
@@ -257,7 +268,7 @@ describe('signUp branches', () => {
     expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual([
       'update members',
       'delete member_tokens',
-      'insert member_tokens',
+      'execute ',
     ])
     expect(batch[0].values).toMatchObject({ name: 'New Name', passwordHash: '$2b$12$hashed', privacyPolicyVersion: 'October 2026' })
     expect(render(batch[0].where!)).toMatchObject({
@@ -265,10 +276,24 @@ describe('signUp branches', () => {
       params: [7],
     })
     expect(render(batch[1].where!).params).toEqual([7, 'confirm_email'])
-    expect(batch[2].values).toMatchObject({ memberId: 7, purpose: 'confirm_email' })
+    const tokenInsert = render(batch[2].statement!)
+    expect(tokenInsert.sql).toContain('insert into member_tokens')
+    expect(tokenInsert.sql).toContain('("members"."id" = $4 and "members"."email_confirmed_at" is null)')
+    expect(tokenInsert.params).toEqual(['confirm_email', expect.any(String), expect.any(String), 7])
     expect(sentText()).toContain('/join/confirm?token=')
     expect(sentText().startsWith('Hi,\n')).toBe(true)
     expect(sentText()).not.toMatch(/New Name|Stored Name/)
+  })
+
+  it('sends the account-exists email when a confirmation lands during the batch, in the same round trips', async () => {
+    branches.unconfirmed()
+    mocks.state.confirmedDuringBatch = true
+    await expect(signUp({}, form())).rejects.toThrow('REDIRECT /join/check-email')
+    expect(mocks.state.rounds).toBe(3)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    expect(sentText()).toContain('Hi Stored Name,')
+    expect(sentText()).toContain('https://shpe.test/forgot-password')
+    expect(sentText()).not.toContain('/join/confirm?token=')
   })
 
   it('leaves a confirmed account alone and emails its owner by their stored name', async () => {
@@ -307,7 +332,7 @@ describe('signUp branches', () => {
     expect(mocks.state.batches[0].map((write) => `${write.kind} ${write.table}`)).toEqual([
       'update members',
       'delete member_tokens',
-      'insert member_tokens',
+      'execute ',
     ])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
   })

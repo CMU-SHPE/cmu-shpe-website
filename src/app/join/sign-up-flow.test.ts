@@ -133,7 +133,8 @@ function createDb() {
           for (const row of changed) Object.assign(row, values)
           return changed.map((row) => ({ id: row.id }))
         }
-        return Object.assign(apply, { returning: async () => apply() })
+        const thenable = { then: (resolve: (value: unknown) => void) => resolve(apply()) }
+        return Object.assign(apply, { returning: () => Object.assign(apply, thenable) })
       },
     }),
   })
@@ -228,7 +229,23 @@ function createDb() {
     update,
     delete: remove,
     select,
-    execute: () => Object.assign(() => ({ rows: [] }), { then: (resolve: (value: unknown) => void) => resolve({ rows: [] }) }),
+    execute: (statement: SQL) => {
+      const apply: Write = () => {
+        if (!/insert into member_tokens/.test(sqlText(statement))) return { rows: [] }
+        const [purpose, tokenHash, expiresAt, memberId] = params(statement)
+        const unconfirmed = state.members.some((row) => row.id === memberId && row.emailConfirmedAt === null)
+        if (unconfirmed) {
+          state.tokens.push({
+            memberId: memberId as number,
+            purpose: purpose as string,
+            tokenHash: tokenHash as string,
+            expiresAt: asDate(expiresAt),
+          })
+        }
+        return { rows: [] }
+      }
+      return Object.assign(apply, { then: (resolve: (value: unknown) => void) => resolve(apply()) })
+    },
     batch: async (writes: Write[]) => {
       const snapshot = structuredClone({ members: fake.state.members, tokens: fake.state.tokens })
       try {
