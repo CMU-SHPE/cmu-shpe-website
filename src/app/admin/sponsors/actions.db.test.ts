@@ -2,7 +2,8 @@ import { asc, eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDb } from '@/db'
 import { admins, members, sponsorEdits, sponsorReceipts, sponsors, type Sponsor } from '@/db/schema'
-import { officerListingEdit } from '@/lib/sponsor-portal'
+import { listingEdit, officerListingEdit } from '@/lib/sponsor-portal'
+import { LOADED_LISTING_FIELD, type ListingSaveRefusal, listingSnapshot } from '@/lib/sponsor-schema'
 import { createAdmin, createMember, createSponsor, resetDb } from '@/test/db'
 
 const mocks = vi.hoisted(() => {
@@ -124,6 +125,7 @@ function sponsorForm(listing: Sponsor, overrides: Record<string, string> = {}) {
     ...overrides,
   }
   for (const [name, value] of Object.entries(values)) form.set(name, value)
+  form.set(LOADED_LISTING_FIELD, listingSnapshot(listing))
   return form
 }
 
@@ -151,7 +153,7 @@ describe('updateSponsor', () => {
     mocks.adminId = String(officer.id)
 
     const form = sponsorForm(listing, { tier: 'Platinum', description: 'New words', bgColor: '#abcdef' })
-    expect(await redirectOf(updateSponsor(listing.id, form))).toBe('/admin/sponsors?saved=1')
+    expect(await redirectOf(updateSponsor(listing.id, null, form))).toBe('/admin/sponsors?saved=1')
 
     const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
     expect(row).toMatchObject({ tier: 'Platinum', description: 'New words', logoUrl: '/images/acme.png' })
@@ -172,7 +174,7 @@ describe('updateSponsor', () => {
     const [officer, listing] = await Promise.all([createAdmin(), createSponsor({ logoUrl: '/images/acme.png' })])
     mocks.adminId = String(officer.id)
 
-    expect(await redirectOf(updateSponsor(listing.id, sponsorForm(listing)))).toBe('/admin/sponsors?saved=1')
+    expect(await redirectOf(updateSponsor(listing.id, null, sponsorForm(listing)))).toBe('/admin/sponsors?saved=1')
     expect(await editLog()).toEqual([])
   })
 
@@ -188,7 +190,7 @@ describe('updateSponsor', () => {
       bgColor: '#000000',
       description: 'Changed',
     })
-    await redirectOf(updateSponsor(listing.id, form))
+    await redirectOf(updateSponsor(listing.id, null, form))
     expect((await editLog()).map((edit) => edit.fields)).toEqual([
       ['name', 'website', 'description', 'logo', 'bgColor', 'tier'],
     ])
@@ -198,7 +200,7 @@ describe('updateSponsor', () => {
     const [officer, listing] = await Promise.all([createAdmin({ name: 'Former Officer' }), createSponsor()])
     mocks.adminId = String(officer.id)
 
-    await redirectOf(updateSponsor(listing.id, sponsorForm(listing, { name: 'New name' })))
+    await redirectOf(updateSponsor(listing.id, null, sponsorForm(listing, { name: 'New name' })))
     await getDb().delete(admins).where(eq(admins.id, officer.id))
 
     expect(await editLog()).toEqual([
@@ -219,7 +221,7 @@ describe('updateSponsor', () => {
     const listing = await createSponsor()
     await getDb().delete(sponsors).where(eq(sponsors.id, listing.id))
 
-    expect(await redirectOf(updateSponsor(listing.id, sponsorForm(listing, { name: 'Ghost' })))).toBe(
+    expect(await redirectOf(updateSponsor(listing.id, null, sponsorForm(listing, { name: 'Ghost' })))).toBe(
       '/admin/sponsors?error=missing',
     )
     expect(await editLog()).toEqual([])
@@ -232,7 +234,7 @@ describe('updateSponsor', () => {
 
     const form = sponsorForm(listing, { name: 'Renamed' })
     form.set('logoFile', logoFile())
-    expect(await redirectOf(updateSponsor(listing.id, form))).toBe('/admin/sponsors?error=not-saved')
+    expect(await redirectOf(updateSponsor(listing.id, null, form))).toBe('/admin/sponsors?error=not-saved')
 
     const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
     expect(row).toEqual(listing)
@@ -251,7 +253,7 @@ describe('updateSponsor', () => {
 
     const form = sponsorForm(listing)
     form.set('logoFile', logoFile())
-    expect(await redirectOf(updateSponsor(listing.id, form))).toBe('/admin/sponsors?saved=1')
+    expect(await redirectOf(updateSponsor(listing.id, null, form))).toBe('/admin/sponsors?saved=1')
 
     const { url } = await mocks.put.mock.results[0].value
     const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
@@ -260,6 +262,106 @@ describe('updateSponsor', () => {
     expect(mocks.del).not.toHaveBeenCalled()
     expect(mocks.cleanupBlobs).toHaveBeenCalledWith(OLD_LOGO)
   })
+
+  describe('when someone else edited the listing after this form loaded', () => {
+    async function linkedSetup(listingValues: Parameters<typeof createSponsor>[0]) {
+      const [officer, listing] = await Promise.all([createAdmin({ name: 'Olive Officer' }), createSponsor(listingValues)])
+      mocks.adminId = String(officer.id)
+      const member = await createMember({ name: 'Sam Sponsor', role: 'sponsor', sponsorId: listing.id })
+      return { listing, member }
+    }
+
+    function sponsorSaves(memberId: number, listing: Sponsor, changes: Partial<Sponsor>, fields: ('name' | 'description' | 'logo')[]) {
+      const db = getDb()
+      return db.batch(listingEdit(db, memberId, listing.id, listing, { ...listing, ...changes }, fields))
+    }
+
+    function logoSubmittedDuring(sponsorSave: () => Promise<unknown>) {
+      mocks.put.mockImplementationOnce(async (pathname: string) => {
+        await sponsorSave()
+        return { url: `https://store.public.blob.vercel-storage.com/${pathname}` }
+      })
+    }
+
+    it('keeps a sponsor’s edit made during the officer’s upload and logs each side’s own field', async () => {
+      const { listing, member } = await linkedSetup({ description: 'Old words', logoUrl: OLD_LOGO })
+      logoSubmittedDuring(() => sponsorSaves(member.id, listing, { description: 'Sponsor words' }, ['description']))
+      const form = sponsorForm(listing)
+      form.set('logoFile', logoFile())
+
+      expect(await redirectOf(updateSponsor(listing.id, null, form))).toBe('/admin/sponsors?saved=1')
+
+      const { url } = await mocks.put.mock.results[0].value
+      const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+      expect(row).toMatchObject({ description: 'Sponsor words', logoUrl: url })
+      expect((await editLog()).map(({ editorKind, fields }) => [editorKind, fields])).toEqual([
+        ['sponsor', ['description']],
+        ['officer', ['logo']],
+      ])
+      expect(mocks.del).not.toHaveBeenCalled()
+    })
+
+    it('refuses an upload when the sponsor replaced the logo first and discards the fresh file', async () => {
+      const { listing, member } = await linkedSetup({ logoUrl: OLD_LOGO })
+      const sponsorLogo = 'https://store.public.blob.vercel-storage.com/sponsors/sponsor.png'
+      logoSubmittedDuring(() =>
+        sponsorSaves(member.id, listing, { logoUrl: sponsorLogo, logoOriginalUrl: null, logoCrop: null }, ['logo']),
+      )
+      const form = sponsorForm(listing, { name: 'Officer name' })
+      form.set('logoFile', logoFile())
+
+      const refused = (await updateSponsor(listing.id, null, form)) as ListingSaveRefusal
+
+      const { url } = await mocks.put.mock.results[0].value
+      expect(refused.conflicts).toEqual([])
+      expect(refused.logoDropped).toBe(true)
+      expect(refused.shown).toMatchObject({ name: 'Officer name', logoUrl: sponsorLogo })
+      const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+      expect(row).toMatchObject({ name: listing.name, logoUrl: sponsorLogo })
+      expect((await editLog()).map(({ editorKind, fields }) => [editorKind, fields])).toEqual([['sponsor', ['logo']]])
+      expect(mocks.del.mock.calls).toEqual([[url]])
+      expect(mocks.cleanupBlobs).not.toHaveBeenCalled()
+    })
+
+    it('does not put the old logo back from a stale form’s logo path field', async () => {
+      const { listing, member } = await linkedSetup({ logoUrl: OLD_LOGO })
+      const sponsorLogo = 'https://store.public.blob.vercel-storage.com/sponsors/sponsor.png'
+      await sponsorSaves(member.id, listing, { logoUrl: sponsorLogo, logoOriginalUrl: null, logoCrop: null }, ['logo'])
+
+      const form = sponsorForm(listing, { description: 'Officer words' })
+      expect(await redirectOf(updateSponsor(listing.id, null, form))).toBe('/admin/sponsors?saved=1')
+
+      const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+      expect(row).toMatchObject({ description: 'Officer words', logoUrl: sponsorLogo })
+      expect((await editLog()).map((edit) => edit.fields)).toEqual([['logo'], ['description']])
+    })
+
+    it('refuses an edit to the field the sponsor just changed and keeps the typed text', async () => {
+      const { listing, member } = await linkedSetup({ name: 'Acme' })
+      await sponsorSaves(member.id, listing, { name: 'Sponsor name' }, ['name'])
+
+      const refused = (await updateSponsor(listing.id, null, sponsorForm(listing, { name: 'Officer name' }))) as ListingSaveRefusal
+
+      expect(refused.conflicts).toEqual([{ field: 'Name', saved: 'Sponsor name' }])
+      expect(refused.shown.name).toBe('Officer name')
+      const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+      expect(row.name).toBe('Sponsor name')
+      expect((await editLog()).map(({ editorKind }) => editorKind)).toEqual(['sponsor'])
+    })
+
+    it('refuses a form with no loaded values', async () => {
+      const { listing } = await linkedSetup({ name: 'Acme' })
+      const form = sponsorForm(listing, { name: 'Officer name' })
+      form.delete(LOADED_LISTING_FIELD)
+
+      const refused = (await updateSponsor(listing.id, null, form)) as ListingSaveRefusal
+
+      expect(refused).toMatchObject({ reason: 'outdated', conflicts: [], shown: { name: 'Officer name' } })
+      const [row] = await getDb().select().from(sponsors).where(eq(sponsors.id, listing.id))
+      expect(row).toEqual(listing)
+      expect(await editLog()).toEqual([])
+    })
+  })
 })
 
 describe('officerListingEdit', () => {
@@ -267,23 +369,21 @@ describe('officerListingEdit', () => {
     const [officer, other] = await Promise.all([createAdmin(), createSponsor({ name: 'Untouched' })])
     const db = getDb()
 
-    const [updated] = await db.batch(officerListingEdit(db, officer.id, 999_999, { name: 'Ghost' }, ['name']))
+    const [updated] = await db.batch(officerListingEdit(db, officer.id, 999_999, other, { ...other, name: 'Ghost' }, ['name']))
 
-    expect(updated).toEqual([])
+    expect(updated.rows).toEqual([])
     expect(await editLog()).toEqual([])
     const [row] = await db.select().from(sponsors).where(eq(sponsors.id, other.id))
     expect(row.name).toBe('Untouched')
   })
 
-  it('writes nothing when the officer does not exist, even with no fields to log', async () => {
+  it('writes nothing when the officer does not exist', async () => {
     const listing = await createSponsor({ name: 'Acme' })
     const db = getDb()
 
-    const [logged] = await db.batch(officerListingEdit(db, 999_999, listing.id, { name: 'Ghost' }, ['name']))
-    const [unlogged] = await db.batch(officerListingEdit(db, 999_999, listing.id, { name: 'Ghost' }, []))
+    const [logged] = await db.batch(officerListingEdit(db, 999_999, listing.id, listing, { ...listing, name: 'Ghost' }, ['name']))
 
-    expect(logged).toEqual([])
-    expect(unlogged).toEqual([])
+    expect(logged.rows).toEqual([])
     expect(await editLog()).toEqual([])
     const [row] = await db.select().from(sponsors).where(eq(sponsors.id, listing.id))
     expect(row.name).toBe('Acme')
@@ -294,7 +394,7 @@ describe('officerListingEdit', () => {
     const db = getDb()
     await db.execute(sql`alter table sponsor_edits add constraint test_reject_log check (false) not valid`)
     try {
-      await expect(db.batch(officerListingEdit(db, officer.id, listing.id, { name: 'Renamed' }, ['name']))).rejects.toThrow()
+      await expect(db.batch(officerListingEdit(db, officer.id, listing.id, listing, { ...listing, name: 'Renamed' }, ['name']))).rejects.toThrow()
     } finally {
       await db.execute(sql`alter table sponsor_edits drop constraint test_reject_log`)
     }
