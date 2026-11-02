@@ -57,13 +57,26 @@ export async function listMembers({ q, page }: MemberListParams) {
  * deleted first (while the member row still resolves the email) in the same batch.
  * Tokens and topic subscriptions go with the member row through ON DELETE CASCADE.
  */
-export function memberDeletion(db: Db, id: number) {
+export function memberDeletion(db: Db, id: number, memberRemoval = memberRowRemoval(db, id)) {
   const email = db.select({ email: members.email }).from(members).where(eq(members.id, id))
   return [
     db.delete(requestThrottle).where(inArray(requestThrottle.email, email)),
     db.delete(loginAttempts).where(inArray(loginAttempts.email, email)),
-    db.delete(members).where(eq(members.id, id)).returning({ id: members.id }),
+    memberRemoval,
   ] as const
+}
+
+function memberRowRemoval(db: Db, id: number) {
+  return db.delete(members).where(eq(members.id, id)).returning({ id: members.id })
+}
+
+/** Finds the member row's result by statement, so the batch's order can't change the answer. */
+export async function deleteMemberReportingRemoval(db: Db, id: number) {
+  const memberRemoval = memberRowRemoval(db, id)
+  const statements = memberDeletion(db, id, memberRemoval)
+  const results = await db.batch(statements)
+  const removedRows = results[statements.indexOf(memberRemoval)] as { id: number }[]
+  return { deleted: removedRows.length > 0 }
 }
 
 export async function listSponsorOptions() {
