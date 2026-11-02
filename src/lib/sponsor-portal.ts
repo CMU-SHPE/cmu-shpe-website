@@ -1,11 +1,12 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, exists, sql } from 'drizzle-orm'
 import type { Db } from '@/db'
-import { type Sponsor, members, sponsorEdits, sponsors } from '@/db/schema'
+import { type Sponsor, type SponsorTier, admins, members, sponsorEdits, sponsors } from '@/db/schema'
 import { type MemberSession, currentMember } from '@/lib/member'
 import { findOwnListing } from '@/lib/sponsor-portal-listing'
 import type { LogoColumns, SponsorListingFields } from '@/lib/sponsor-schema'
+import { qualified } from '@/lib/qualified-column'
 
 export type SponsorAccess = { member: MemberSession; listing: Sponsor }
 
@@ -45,6 +46,29 @@ export function changedListingFields(current: ListingValues, next: ListingValues
   return LISTING_FIELDS.filter((field) => changed[field])
 }
 
+export type OfficerListingValues = ListingValues & { tier: SponsorTier }
+
+export type OfficerListingField = ListingField | 'tier'
+
+export function changedOfficerFields(current: OfficerListingValues, next: OfficerListingValues): OfficerListingField[] {
+  const fields: OfficerListingField[] = changedListingFields(current, next)
+  return current.tier === next.tier ? fields : [...fields, 'tier']
+}
+
+function textArray(fields: readonly string[]) {
+  return sql`array[${sql.join(
+    fields.map((field) => sql`${field}`),
+    sql`, `,
+  )}]::text[]`
+}
+
+function columnList(columns: { name: string }[]) {
+  return sql.join(
+    columns.map((column) => sql.identifier(column.name)),
+    sql`, `,
+  )
+}
+
 /**
  * The listing is never taken from the request: both writes find it through the
  * member's own row, which the first statement locks so an admin can't relink or
@@ -61,16 +85,8 @@ export function listingEdit(
 ) {
   const isSponsor = and(eq(members.id, memberId), eq(members.role, 'sponsor'))
   const ownListing = db.select({ id: members.sponsorId }).from(members).where(isSponsor)
-  const changedFields = sql`array[${sql.join(
-    fields.map((field) => sql`${field}`),
-    sql`, `,
-  )}]::text[]`
-  const auditColumns = sql.join(
-    [sponsorEdits.sponsorId, sponsorEdits.memberId, sponsorEdits.memberName, sponsorEdits.fields].map((column) =>
-      sql.identifier(column.name),
-    ),
-    sql`, `,
-  )
+  const changedFields = textArray(fields)
+  const auditColumns = columnList([sponsorEdits.sponsorId, sponsorEdits.memberId, sponsorEdits.editorName, sponsorEdits.fields])
 
   return [
     db.select({ id: members.id }).from(members).where(isSponsor).for('update'),
@@ -83,5 +99,40 @@ export function listingEdit(
       select ${members.sponsorId}, ${members.id}, ${members.name}, ${changedFields}
       from ${members}
       where ${and(isSponsor, eq(members.sponsorId, listingId))}`),
+  ] as const
+}
+
+/**
+ * The officer's name is read from the admins row inside the batch, not from the session. If the
+ * listing or the officer's account is gone, the update returns no row and neither statement writes.
+ */
+export function officerListingEdit(
+  db: Db,
+  adminId: number,
+  listingId: number,
+  values: Partial<typeof sponsors.$inferInsert>,
+  fields: readonly OfficerListingField[],
+) {
+  const officerExists = exists(db.select({ id: admins.id }).from(admins).where(eq(admins.id, adminId)))
+  const update = db
+    .update(sponsors)
+    .set(values)
+    .where(and(eq(sponsors.id, listingId), officerExists))
+    .returning({ id: sponsors.id })
+  if (fields.length === 0) return [update] as const
+
+  const auditColumns = columnList([
+    sponsorEdits.sponsorId,
+    sponsorEdits.editorKind,
+    sponsorEdits.adminId,
+    sponsorEdits.editorName,
+    sponsorEdits.fields,
+  ])
+  return [
+    update,
+    db.execute(sql`insert into ${sponsorEdits} (${auditColumns})
+      select ${qualified(sponsors.id)}, 'officer', ${qualified(admins.id)}, ${qualified(admins.name)}, ${textArray(fields)}
+      from ${sponsors}, ${admins}
+      where ${qualified(sponsors.id)} = ${listingId} and ${qualified(admins.id)} = ${adminId}`),
   ] as const
 }

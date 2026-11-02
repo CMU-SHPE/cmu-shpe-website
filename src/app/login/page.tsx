@@ -22,6 +22,7 @@ const ERROR_ID = 'login-error'
 const statusMessages = {
   changed: 'Your password was changed — sign in with the new password.',
   confirmed: 'Your email is confirmed — sign in to continue.',
+  emailChanged: 'Your email address was changed — sign in with your new email address.',
   reset: 'Your password was reset — sign in with the new password.',
 } as const
 
@@ -33,7 +34,13 @@ function statusMessage(params: Partial<Record<keyof typeof statusMessages, strin
 }
 
 export default async function LoginPage(props: {
-  searchParams: Promise<{ error?: string; changed?: string; confirmed?: string; reset?: string }>
+  searchParams: Promise<{
+    error?: string
+    changed?: string
+    confirmed?: string
+    emailChanged?: string
+    reset?: string
+  }>
 }) {
   if (await currentAdmin()) redirect('/admin')
   if (await currentSponsor()) redirect('/sponsor')

@@ -38,20 +38,20 @@ describe('getSponsorEdits', () => {
   it('returns this listing’s edits newest first, keeping the name after the editor is deleted', async () => {
     const [listing, other] = await Promise.all([createSponsor(), createSponsor()])
     const editor = await createMember({ name: 'Sam', role: 'sponsor', sponsorId: listing.id })
-    const byEditor = { sponsorId: listing.id, memberId: editor.id, memberName: 'Sam' }
+    const byEditor = { sponsorId: listing.id, memberId: editor.id, editorName: 'Sam' }
     const db = getDb()
     await db.insert(sponsorEdits).values([
       { ...byEditor, fields: ['name'], createdAt: new Date('2026-10-01T15:00:00Z') },
       { ...byEditor, fields: ['logo', 'bgColor'], createdAt: new Date('2026-10-02T15:00:00Z') },
-      { sponsorId: other.id, memberId: null, memberName: 'Other', fields: ['name'] },
+      { sponsorId: other.id, memberId: null, editorName: 'Other', fields: ['name'] },
     ])
     await db.delete(members).where(eq(members.id, editor.id))
 
     const edits = await getSponsorEdits(listing.id)
-    const summary = edits.map(({ memberId, memberName, fields, createdAt }) => ({ memberId, memberName, fields, createdAt }))
+    const summary = edits.map(({ memberId, editorName, fields, createdAt }) => ({ memberId, editorName, fields, createdAt }))
     expect(summary).toEqual([
-      { memberId: null, memberName: 'Sam', fields: ['logo', 'bgColor'], createdAt: new Date('2026-10-02T15:00:00Z') },
-      { memberId: null, memberName: 'Sam', fields: ['name'], createdAt: new Date('2026-10-01T15:00:00Z') },
+      { memberId: null, editorName: 'Sam', fields: ['logo', 'bgColor'], createdAt: new Date('2026-10-02T15:00:00Z') },
+      { memberId: null, editorName: 'Sam', fields: ['name'], createdAt: new Date('2026-10-01T15:00:00Z') },
     ])
   })
 })

@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { events } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { type EventFormState, eventFormValues } from '@/lib/event-form'
+import { capacityBelowRsvpsMessage, type EventFormState, eventFormValues } from '@/lib/event-form'
 import { eventFieldErrors, parseEventForm } from '@/lib/event-schema'
 import { createEventWithSlots, updateEventWithSlots } from '@/lib/event-writes'
 import { recordId } from '@/lib/form-fields'
@@ -33,7 +33,11 @@ export async function updateEvent(id: number, _previous: EventFormState, formDat
   const parsed = parseEventForm(formData)
   if (!parsed.success) return refused(formData, eventFieldErrors(parsed.error))
 
-  if (!(await updateEventWithSlots(eventId.data, parsed.data))) redirect('/admin/events?error=missing')
+  const outcome = await updateEventWithSlots(eventId.data, parsed.data)
+  if (outcome.status === 'missing') redirect('/admin/events?error=missing')
+  if (outcome.status === 'over-capacity') {
+    return refused(formData, { capacity: capacityBelowRsvpsMessage(outcome.going) })
+  }
   redirect('/admin/events?saved=1')
 }
 

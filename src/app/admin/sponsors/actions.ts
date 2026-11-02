@@ -17,6 +17,7 @@ import {
 } from '@/lib/crop-upload'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
+import { changedOfficerFields, officerListingEdit } from '@/lib/sponsor-portal'
 import { LOGO_FIELD_NAMES, logoColumns, logoImage, parseSponsorForm } from '@/lib/sponsor-schema'
 
 const logoFields = {
@@ -68,7 +69,7 @@ export async function createSponsor(formData: FormData) {
 }
 
 export async function updateSponsor(id: number, formData: FormData) {
-  await requireAdmin()
+  const session = await requireAdmin()
 
   const sponsorId = recordId.safeParse(id)
   const parsed = parseSponsorForm(formData)
@@ -76,7 +77,14 @@ export async function updateSponsor(id: number, formData: FormData) {
 
   const db = getDb()
   const [row] = await db
-    .select({ tier: sponsors.tier, ...logoFields })
+    .select({
+      name: sponsors.name,
+      tier: sponsors.tier,
+      website: sponsors.website,
+      description: sponsors.description,
+      bgColor: sponsors.bgColor,
+      ...logoFields,
+    })
     .from(sponsors)
     .where(eq(sponsors.id, sponsorId.data))
     .limit(1)
@@ -90,13 +98,19 @@ export async function updateSponsor(id: number, formData: FormData) {
       fields.tier === row.tier
         ? {}
         : { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
-    return db
-      .update(sponsors)
-      .set({ ...fields, ...logoColumns(logo), ...tierChange })
-      .where(eq(sponsors.id, sponsorId.data))
-      .returning({ id: sponsors.id })
+    const values = { ...fields, ...logoColumns(logo) }
+    const [updated] = await db.batch(
+      officerListingEdit(
+        db,
+        Number(session.user.id),
+        sponsorId.data,
+        { ...values, ...tierChange },
+        changedOfficerFields(row, values),
+      ),
+    )
+    return updated
   })
-  if (!saved) redirect('/admin/sponsors?error=missing')
+  if (!saved) redirect('/admin/sponsors?error=not-saved')
   await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/admin/sponsors?saved=1')

@@ -32,6 +32,7 @@ const errorMessages: Record<string, string> = {
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
   svg: "This SVG contains scripts or links and can't be used. Export it as PNG or a plain SVG.",
   missing: 'That sponsor no longer exists.',
+  'not-saved': "That change couldn't be saved, so nothing was changed. Refresh the page and try again.",
   storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
 }
 

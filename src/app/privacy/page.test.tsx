@@ -67,6 +67,15 @@ describe('Privacy page', () => {
     expect(items.some((item) => item?.includes('kept for 7 days'))).toBe(true)
   })
 
+  it('says what deleting an account removes and that sponsor edit records name officers too', async () => {
+    render(await Privacy())
+    const items = screen.getAllByRole('listitem').map((li) => li.textContent ?? '')
+    const deleteItem = items.find((item) => item.startsWith('Delete your account'))
+    expect(deleteItem).toContain('event RSVPs and any sponsor portal access are removed')
+    expect(deleteItem).toContain('its edit history keeps your name')
+    expect(items.some((item) => item.startsWith('Records of changes to a sponsor listing, whether made by a sponsor contact or a club officer'))).toBe(true)
+  })
+
   it('links the contact email from site settings', async () => {
     render(await Privacy())
     expect(screen.getByRole('link', { name: 'shpe@example.edu' })).toHaveAttribute(
