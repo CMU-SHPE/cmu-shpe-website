@@ -13,6 +13,7 @@ export type ThrottledAction =
   | 'change_email'
   | 'confirm_email_change'
   | 'account_password_check'
+  | 'contact'
 
 /**
  * Allowed requests per window, set per action so changing one flow leaves the others alone.
@@ -29,6 +30,7 @@ export const REQUEST_LIMITS: Record<ThrottledAction, ThrottleLimits> = {
   change_email: { perEmailAndIp: 5, perEmail: 5, perIp: 10 },
   confirm_email_change: { perEmailAndIp: 5, perEmail: 5, perIp: 10 },
   account_password_check: { perEmailAndIp: 5, perEmail: 5, perIp: 20 },
+  contact: { perEmailAndIp: 5, perEmail: 15, perIp: 20 },
 }
 
 /**
