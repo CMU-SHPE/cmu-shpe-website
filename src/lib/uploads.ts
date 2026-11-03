@@ -14,7 +14,7 @@ export function validateImageFile(file: File): string | null {
   return null
 }
 
-export type UploadFolder = 'sponsors' | 'officers' | 'advisors'
+export type UploadFolder = 'sponsors' | 'officers' | 'advisors' | 'gallery'
 
 export function blobPathname(folder: UploadFolder, fileName: string, type: AllowedImageType): string {
   const base =
