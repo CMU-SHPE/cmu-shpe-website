@@ -1,7 +1,8 @@
 /**
  * A real sign-in on a preview sets the known-device cookie with the attributes the browser needs
- * to keep it to this site, and signing out removes it. Signs in as the master and signs out again
- * in its own context, so nothing is left behind: a successful sign-in clears its own attempt.
+ * to keep it to this site, and signing out keeps it, so the next sign-in from this browser still
+ * skips the per-account ceiling. Signs in as the master and signs out again in its own context,
+ * which is closed afterwards, so nothing is left behind: a successful sign-in clears its own attempt.
  *
  * Needs E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD (the master), and skips otherwise.
  */
@@ -20,7 +21,7 @@ test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 test.describe('known-device cookie', () => {
   test.skip(missingEnv.length > 0, `Set ${missingEnv.join(', ')} to run the known-device check`)
 
-  test('a sign-in sets it as a Secure, HttpOnly, SameSite=Lax __Host- cookie, and signing out removes it', async ({
+  test('a sign-in sets it as a Secure, HttpOnly, SameSite=Lax __Host- cookie, and signing out keeps it', async ({
     browser,
     baseURL,
   }) => {
@@ -55,7 +56,9 @@ test.describe('known-device cookie', () => {
 
       await page.getByRole('button', { name: 'Sign out', exact: true }).filter({ visible: true }).first().click()
       await page.waitForURL((url) => url.pathname === '/')
-      expect((await context.cookies()).filter((cookie) => cookie.name === COOKIE)).toEqual([])
+      const afterSignOut = (await context.cookies()).filter((cookie) => cookie.name === COOKIE)
+      expect(afterSignOut.map(({ value }) => value)).toEqual([stored.value])
+      expect((await context.cookies()).filter((cookie) => cookie.name.includes('authjs.session-token'))).toEqual([])
     } finally {
       await context.close()
     }

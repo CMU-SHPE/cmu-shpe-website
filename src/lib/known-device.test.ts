@@ -154,7 +154,7 @@ describe('the known-device cookie', () => {
     expect(jar.set).not.toHaveBeenCalled()
   })
 
-  it('is removed on sign-out, and left alone when there is none', async () => {
+  it('is removed when the account is deleted, and left alone when there is none', async () => {
     await forgetKnownDevice()
     expect(jar.set).not.toHaveBeenCalled()
     jar.values.set(KNOWN_DEVICE_COOKIE, withKnownDevice(undefined, ana)!)

@@ -3,7 +3,6 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { signOut } from '@/auth'
 import { currentAdmin } from '@/lib/admin'
-import { forgetKnownDevice } from '@/lib/known-device'
 import { currentMember } from '@/lib/member'
 import Navbar, { type NavbarUser } from '@/components/Navbar'
 import Footer from '@/components/Footer'
@@ -30,7 +29,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   async function signOutAction() {
     'use server'
-    await forgetKnownDevice()
     await signOut({ redirectTo: '/' })
   }
 
