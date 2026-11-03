@@ -3,6 +3,7 @@ import { and, eq, gt, isNotNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, type Db } from '@/db'
 import { memberEmailChanges, members } from '@/db/schema'
+import { lockAccountEmails } from '@/lib/account-email-lock'
 import { isUniqueViolation } from '@/lib/db-errors'
 import { emailAddress } from '@/lib/form-fields'
 import { hashToken, memberTokenParam } from '@/lib/member-tokens'
@@ -80,12 +81,6 @@ export function purgeExpiredEmailChanges(db: Db) {
 }
 
 /**
- * Taken in share mode for the rest of the transaction, so an admin created while the change
- * commits can't slip past the check below with the same address.
- */
-const lockAdmins = sql`lock table admins in share mode`
-
-/**
  * Runs only after the caller has checked the account's password, so whoever gets here controls
  * both the account and the new inbox. An unconfirmed sign-up holding that address gives way
  * rather than blocking the change for 7 days.
@@ -152,7 +147,7 @@ export async function confirmEmailChange(token: string): Promise<EmailChangeResu
   let rows: AppliedRow[]
   try {
     const [, , applied] = (await db.batch([
-      db.execute(lockAdmins),
+      db.execute(lockAccountEmails),
       db.execute(releaseUnconfirmedHolder(tokenHash)),
       db.execute(applyEmailChange(tokenHash)),
     ])) as unknown as [unknown, unknown, { rows: AppliedRow[] }]

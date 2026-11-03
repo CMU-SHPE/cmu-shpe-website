@@ -3,9 +3,10 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
-import { type SQL, and, eq, isNull, sql } from 'drizzle-orm'
+import { type SQL, and, eq, exists, isNull, sql } from 'drizzle-orm'
 import { getDb, type Db } from '@/db'
 import { admins, members } from '@/db/schema'
+import { lockAccountEmails } from '@/lib/account-email-lock'
 import { isUniqueViolation } from '@/lib/db-errors'
 import { EmailSendError, sendEmail } from '@/lib/email'
 import { accountExists, adminAccountExists, confirmEmail, type EmailContent } from '@/lib/email-templates'
@@ -54,6 +55,19 @@ function matchWriteRoundTrip(db: Db) {
   return db.execute(sql`select 1`)
 }
 
+function adminEmailIs(email: string) {
+  return sql`lower(${admins.email}) = ${email}`
+}
+
+/** An admin created since the lookup in prepareSignUpEmail keeps the address; the sign-up is answered as for an admin. */
+function undoIfAdminHolds(db: Db, email: string) {
+  const adminHolds = db.select({ id: admins.id }).from(admins).where(adminEmailIs(email))
+  return db
+    .delete(members)
+    .where(and(eq(members.email, email), exists(adminHolds)))
+    .returning({ id: members.id })
+}
+
 /**
  * Picks the one email this sign-up sends. An existing account is never changed or
  * revealed; an unconfirmed one is taken over by the newest sign-up, so registering
@@ -65,7 +79,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
   const { name, email, passwordHash, privacyPolicyVersion, base } = signUp
 
   const [[admin], [member]] = await Promise.all([
-    db.select({ name: admins.name }).from(admins).where(eq(admins.email, email)).limit(1),
+    db.select({ name: admins.name }).from(admins).where(adminEmailIs(email)).limit(1),
     db
       .select({ id: members.id, name: members.name, emailConfirmedAt: members.emailConfirmedAt })
       .from(members)
@@ -99,12 +113,23 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
 
   const newMemberId = sql`(select ${members.id} from ${members} where ${members.email} = ${email})`
   const { token, row } = newMemberToken(newMemberId, 'confirm_email')
+  let undone: { id: number }[]
   try {
-    await db.batch([db.insert(members).values({ email, ...details }), insertMemberToken(db, row)])
+    const results = await db.batch([
+      db.execute(lockAccountEmails),
+      db.insert(members).values({ email, ...details }),
+      insertMemberToken(db, row),
+      undoIfAdminHolds(db, email),
+    ])
+    undone = results[3]
   } catch (error) {
     // A simultaneous sign-up for the same address won the insert; treat this one as arriving second.
     if (!retried && isUniqueViolation(error)) return prepareSignUpEmail(db, signUp, true)
     throw error
+  }
+  if (undone.length > 0) {
+    if (retried) throw new Error('An admin account claimed this address during sign-up twice in a row')
+    return prepareSignUpEmail(db, signUp, true)
   }
   return confirmEmail(confirmLink(base, token))
 }
