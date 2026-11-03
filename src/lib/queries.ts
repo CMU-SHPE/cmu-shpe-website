@@ -6,6 +6,7 @@ import {
   advisors,
   eventTimeSlots,
   events,
+  galleryPhotos,
   homePillars,
   homeStats,
   nationalStats,
@@ -74,6 +75,10 @@ export async function getOfficers() {
 
 export async function getAdvisors() {
   return getDb().select().from(advisors).orderBy(asc(advisors.sortOrder), asc(advisors.id))
+}
+
+export async function getGalleryPhotos() {
+  return getDb().select().from(galleryPhotos).orderBy(asc(galleryPhotos.sortOrder), asc(galleryPhotos.id))
 }
 
 export type EventWithSlots = ClubEvent & { slots: EventTimeSlot[] }

@@ -1,21 +1,32 @@
 import Link from 'next/link'
 import Editable from '@/components/editable'
+import HomeGallery from '@/components/HomeGallery'
 import SponsorLogo from '@/components/SponsorLogo'
 import { LocationIcon } from '@/components/icons'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
 import { formatEventDateRange, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
-import { getEvents, getHomePillars, getHomeStats, getSiteContent, getSponsors } from '@/lib/queries'
+import {
+  getEvents,
+  getGalleryPhotos,
+  getHomePillars,
+  getHomeStats,
+  getSiteContent,
+  getSiteContentWithDefaults,
+  getSponsors,
+} from '@/lib/queries'
 
 export default async function Home() {
-  const [content, admin, stats, pillars, sponsors, events] = await Promise.all([
+  const [content, galleryContent, admin, stats, pillars, sponsors, events, galleryPhotos] = await Promise.all([
     getSiteContent([...contentKeysFor('home'), 'events.upcoming.empty']),
+    getSiteContentWithDefaults(contentKeysFor('home.gallery')),
     currentAdmin(),
     getHomeStats(),
     getHomePillars(),
     getSponsors(),
     getEvents(),
+    getGalleryPhotos(),
   ])
   const editable = Boolean(admin)
   const upcomingEvents = splitEvents(events, todayInDenver(new Date())).upcoming.slice(0, 3)
@@ -281,6 +292,13 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      <HomeGallery
+        photos={galleryPhotos}
+        eyebrow={galleryContent['home.gallery.eyebrow']}
+        heading={galleryContent['home.gallery.heading']}
+        editable={editable}
+      />
 
       {/* ── CTA Banner ── */}
       <section className="bg-gradient-to-r from-cmu-maroon to-[#6b0018] py-20">

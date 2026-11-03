@@ -19,6 +19,10 @@ Chapter officers sign in and edit the whole site without touching code:
   navigation, buttons and form labels stay fixed.
 - **Officers and faculty advisor** — add, edit, reorder and remove people, with a
   square-cropped photo.
+- **Photo gallery** — add, edit, reorder and remove the photos shown on the home page, such
+  as the chapter at the SHPE National Convention. Each photo is cropped to 4:3 and needs a
+  description for screen readers; a caption is optional. With no photos, the home page shows
+  no gallery.
 - **Sponsors** — name, tier, website, description, logo (with cropping) and the logo
   tile's background color; reorder within a tier. Each sponsor's **Details** page shows
   the accounts linked to it, their edit history and its receipts (see
@@ -134,8 +138,8 @@ connection string, edits made locally change the live site.
    **Save changes** (or **Discard**). Lists such as the About page values take one item
    per line. The Privacy Policy and Terms of Use pages are required disclosures for member
    accounts: edit them to keep them accurate, but never blank a section.
-3. Choose **Admin** in the top bar for everything else: officers, sponsors, events, page
-   lists, site settings, members, newsletter topics and newsletters.
+3. Choose **Admin** in the top bar for everything else: officers, the photo gallery,
+   sponsors, events, page lists, site settings, members, newsletter topics and newsletters.
 4. Choose **Change password** in the admin sidebar to change your own password. Forgot it?
    Choose **Forgot password?** on the sign-in page and enter your admin email: the link it
    sends works for 30 minutes, once. This works for every admin, the master included. The
@@ -521,6 +525,21 @@ does once it deploys.
    `2026-10-27-privacy-sponsor-portal.sql`). A key shown as `changed elsewhere` is left alone and
    holds back the date: after the COMMIT, work this release's wording into it by hand on
    `/privacy`, then change **Last updated** by hand, last.
+
+### Production steps for the photo gallery release
+
+Do these in order, all *before* merging to `main`, after the account recovery release's steps,
+because the home page reads the new table as soon as it deploys.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** apply the additive `gallery_photos` table (reviewed in
+   `drizzle/0009_lush_iron_patriot.sql`; it only adds) to production with `npm run db:push`, as
+   described under [Preview databases](#preview-databases).
+3. **Merge** to `main`.
+
+There is no policy text step: the gallery holds club photos that officers upload, not
+information from member accounts. The `home.gallery.*` text keys are new, so the gallery shows
+their defaults until an admin edits them.
 
 ### Releasing a change to the Privacy Policy or Terms
 
