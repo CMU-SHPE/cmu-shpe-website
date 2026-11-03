@@ -121,7 +121,7 @@ export const contentDefaults = {
   'contact.subjects': 'General Inquiry\nMembership\nSponsorship\nEvents\nMedia / Press\nOther',
 
   'privacy.header.heading': 'Privacy Policy',
-  'privacy.updated': 'November 1, 2026',
+  'privacy.updated': 'November 2, 2026',
   'privacy.intro':
     'This policy explains what the Society of Hispanic Professional Engineers chapter at Colorado Mesa University (SHPE @ CMU) collects through this website, why, who helps us handle it, and how you can delete it. We are a student club: we collect as little as we can and never sell your information.',
   'privacy.collect.heading': 'What we collect',
@@ -136,7 +136,7 @@ export const contentDefaults = {
     'The club events you RSVP to, and when you RSVPed.',
     'If you are a sponsor contact: which sponsor listing your account is linked to, and a record of each change you make to that listing (your name at the time, when, and which parts you changed).',
     'For sponsors, the receipts for their sponsorship (PDF files) that club officers upload. These are stored privately in our database, not in public file storage.',
-    'Short-lived records of sign-in, sign-up, email confirmation, new confirmation link, password reset, email change and contact form attempts (the email address involved and your IP address), used to stop abuse.',
+    'Short-lived records of sign-in, sign-up, email confirmation, new confirmation link, password reset, email change and contact form attempts, and of password checks on your account page (the email address involved and your IP address, or for an IPv6 address only its network part), used to stop abuse.',
     'Whatever you type into the contact form, when you send us a message.',
   ].join('\n'),
   'privacy.use.heading': 'Why we collect it',
@@ -162,12 +162,12 @@ export const contentDefaults = {
   ].join('\n'),
   'privacy.cookies.heading': 'Cookies',
   'privacy.cookies.body':
-    'We only use cookies that are strictly necessary to sign you in and keep you signed in securely, so there is no cookie banner. We don’t use analytics, advertising or tracking cookies. Your light or dark theme choice is saved in your own browser and never sent to us.',
+    'We only use cookies that are strictly necessary to sign you in and keep you signed in securely. One of them, the known-device cookie, is set when you sign in or reset your password, so that you can still sign in from that browser while someone else is trying to guess your password. It holds a scrambled code for each account used on that browser (up to 5), not your email address. A code stops working 180 days after the last sign-in or password reset on that browser, or as soon as that account’s password changes, and the cookie is removed when you delete your account. Because every cookie we use is strictly necessary, there is no cookie banner. We don’t use analytics, advertising or tracking cookies. Your light or dark theme choice is saved in your own browser and never sent to us.',
   'privacy.retention.heading': 'How long we keep it',
   'privacy.retention.items': [
     'Your account and newsletter choices, the record of which newsletters were sent to you and whether each went out, and the record of when you unsubscribed from which topic: until you delete your account, then removed with it.',
     'Accounts whose email address is never confirmed: kept for 7 days, or until the last confirmation link we sent expires if that is later, then deleted automatically during later sign-up or new confirmation link requests.',
-    'Records of sign-in, sign-up, email confirmation, new confirmation link, password reset, email change and contact form attempts: used for 15 minutes, then deleted automatically during later sign-in, sign-up, email confirmation, new confirmation link, password-reset, email-change or contact form activity.',
+    'Records of sign-in, sign-up, email confirmation, new confirmation link, password reset, email change and contact form attempts, and of password checks on your account page: used for 15 minutes, then deleted automatically during later sign-in, sign-up, email confirmation, new confirmation link, password-reset, email-change, account-page or contact form activity.',
     'Server logs of failed or blocked sign-in attempts (the email address entered and your IP address) and of blocked sign-up, email confirmation, new confirmation link, password reset and contact form requests (your IP address): kept for a limited time by our host, Vercel, then deleted.',
     'Email confirmation and email change links stop working after 24 hours, and password reset links after 1 hour (30 minutes for site admins).',
     'A new email address you asked to change to: until you confirm it, make a newer request, change your password or delete your account. If its link expires unused, it is deleted the next time anyone asks to change an email address.',

@@ -18,13 +18,13 @@ beforeEach(async () => {
 
 describe('sendContactMessage', () => {
   it('throttles repeat submissions from one address and records them under the contact action', async () => {
-    for (let attempt = 0; attempt < REQUEST_LIMITS.contact.perEmail; attempt += 1) {
+    for (let attempt = 0; attempt < REQUEST_LIMITS.contact.perEmailAndIp; attempt += 1) {
       await expect(sendContactMessage(message)).resolves.toEqual({ ok: true })
     }
     await expect(sendContactMessage(message)).resolves.toEqual({ ok: false, reason: 'throttled' })
 
     const rows = await getDb().select().from(requestThrottle)
-    expect(rows).toHaveLength(REQUEST_LIMITS.contact.perEmail + 1)
+    expect(rows).toHaveLength(REQUEST_LIMITS.contact.perEmailAndIp)
     expect(rows.every((row) => row.action === 'contact' && row.ip === '203.0.113.9')).toBe(true)
   })
 })

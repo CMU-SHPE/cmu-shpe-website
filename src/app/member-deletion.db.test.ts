@@ -13,12 +13,19 @@ const mocks = vi.hoisted(() => {
     signOut: vi.fn(async ({ redirectTo }: { redirectTo: string }) => {
       throw new Redirect(redirectTo)
     }),
+    cookies: new Map<string, string>(),
   }
 })
 
 vi.mock('@/auth', () => ({ signIn: vi.fn(), signOut: mocks.signOut }))
 vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }))
-vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.9' }) }))
+vi.mock('next/headers', () => ({
+  headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.9' }),
+  cookies: async () => ({
+    get: (name: string) => (mocks.cookies.has(name) ? { name, value: mocks.cookies.get(name)! } : undefined),
+    set: (name: string, value: string) => mocks.cookies.set(name, value),
+  }),
+}))
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
     throw new mocks.Redirect(url)
@@ -30,6 +37,7 @@ vi.mock('@/lib/admin', () => ({ requireAdmin: vi.fn(async () => ({ user: { id: '
 vi.mock('@/lib/email', () => ({ sendEmail: vi.fn(), EmailSendError: class EmailSendError extends Error {} }))
 
 import { getDb } from '@/db'
+import { KNOWN_DEVICE_COOKIE } from '@/lib/known-device'
 import {
   eventRsvps,
   loginAttempts,
@@ -112,6 +120,7 @@ async function expectOnlyMemberRecordsGone(member: { id: number; email: string }
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  mocks.cookies.clear()
   await resetDb()
 })
 
@@ -119,10 +128,12 @@ describe('deleteAccount', () => {
   it('removes exactly what the account page promises, then signs out', async () => {
     const { member, bystander } = await memberWithRecords()
     mocks.requireMember.mockResolvedValue({ user: { id: String(member.id), email: member.email, kind: 'member' } })
+    mocks.cookies.set(KNOWN_DEVICE_COOKIE, 'a known-device code')
 
     expect(await redirectOf(deleteAccount(deleteForm()))).toBe('/account/deleted')
 
     await expectOnlyMemberRecordsGone(member, bystander)
+    expect(mocks.cookies.get(KNOWN_DEVICE_COOKIE)).toBe('')
     expect(mocks.signOut).toHaveBeenCalledWith({ redirectTo: '/account/deleted' })
   })
 
@@ -130,7 +141,9 @@ describe('deleteAccount', () => {
     const { member } = await memberWithRecords()
     mocks.requireMember.mockResolvedValue({ user: { id: String(member.id), email: member.email, kind: 'member' } })
 
+    mocks.cookies.set(KNOWN_DEVICE_COOKIE, 'a known-device code')
     expect(await redirectOf(deleteAccount(deleteForm('wrong password')))).toMatch(/^\/account\?error=delete-current/)
+    expect(mocks.cookies.get(KNOWN_DEVICE_COOKIE)).toBe('a known-device code')
 
     const [rows, rsvps] = await remainingRecords(member)
     expect([rows, rsvps]).toEqual([1, 1])

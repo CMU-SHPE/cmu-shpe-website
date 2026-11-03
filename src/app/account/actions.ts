@@ -8,9 +8,10 @@ import { signIn, signOut } from '@/auth'
 import { getDb } from '@/db'
 import { memberTopicSubscriptions, members } from '@/db/schema'
 import { parsePasswordChange } from '@/lib/admin-account'
-import { clearLoginAttempts, recordLoginAttempt } from '@/lib/authorize'
+import { clearLoginAttempts } from '@/lib/authorize'
 import { EmailSendError, sendEmail } from '@/lib/email'
 import { confirmNewEmail, passwordChanged } from '@/lib/email-templates'
+import { forgetKnownDevice } from '@/lib/known-device'
 import { clientIp } from '@/lib/login-throttle'
 import { requireMember } from '@/lib/member'
 import {
@@ -44,7 +45,7 @@ async function currentMemberRow() {
 
 async function isThrottled(email: string) {
   const ip = clientIp((await headers()).get('x-forwarded-for'))
-  const { throttled } = await recordLoginAttempt(email, ip)
+  const { throttled } = await recordRequest('account_password_check', email, ip)
   return throttled
 }
 
@@ -186,5 +187,6 @@ export async function deleteAccount(formData: FormData) {
 
   const db = getDb()
   await db.batch(memberDeletion(db, member.id))
+  await forgetKnownDevice()
   await signOut({ redirectTo: '/account/deleted' })
 }

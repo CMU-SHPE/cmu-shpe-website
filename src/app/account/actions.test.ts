@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => {
     hash: vi.fn(async (_password: string, cost: number) => `$2b$${cost}$new-hash`),
     signIn: vi.fn<(provider: string, options: Record<string, unknown>) => Promise<void>>(),
     signOut: vi.fn<(options: Record<string, unknown>) => Promise<void>>(),
+    forgetKnownDevice: vi.fn(async () => {
+      mocks.state.calls.push('forgetKnownDevice')
+    }),
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string; html?: string }) => Promise<void>>(),
   }
 })
@@ -65,6 +68,7 @@ vi.mock('@/lib/authorize', () => ({
 }))
 vi.mock('bcryptjs', () => ({ default: { compare: mocks.compare, hash: mocks.hash } }))
 vi.mock('@/auth', () => ({ signIn: mocks.signIn, signOut: mocks.signOut }))
+vi.mock('@/lib/known-device', () => ({ forgetKnownDevice: mocks.forgetKnownDevice }))
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendEmail: mocks.sendEmail,
@@ -212,13 +216,14 @@ describe('changePassword', () => {
   it('rejects a wrong current password as a throttled attempt and changes nothing', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?error=password-current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('mia@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
     expect(mocks.state.updates).toEqual([])
     expect(mocks.sendEmail).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?error=password-throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
   })
@@ -384,21 +389,22 @@ describe('deleteAccount', () => {
   it('refuses a wrong password and keeps the account', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(deleteAccount(deleteForm('guess')))).toBe('/account?error=delete-current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('mia@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
     expect(mocks.state.batches).toEqual([])
     expect(mocks.signOut).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(deleteAccount(deleteForm()))).toBe('/account?error=delete-throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
   })
 
-  it('deletes throttle records and the member in one batch, then signs out', async () => {
+  it('deletes throttle records and the member in one batch, then forgets the device and signs out', async () => {
     expect(await redirectOf(deleteAccount(deleteForm()))).toBe('/account/deleted')
     expect(mocks.compare).toHaveBeenCalledWith(CURRENT, '$2b$12$stored')
-    expect(mocks.state.calls.slice(-2)).toEqual(['batch', 'signOut'])
+    expect(mocks.state.calls.slice(-3)).toEqual(['batch', 'forgetKnownDevice', 'signOut'])
     const statements = mocks.state.batches[0]
     expect(statements.map((statement) => statement.sql.split(' where ')[0])).toEqual([
       'delete from "request_throttle"',

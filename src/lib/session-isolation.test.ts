@@ -25,22 +25,17 @@ const fake = vi.hoisted(() => {
   const state = {
     admins: [] as AdminRow[],
     members: [] as MemberRow[],
-    counts: { emailAttempts: 1, ipAttempts: 1 } as Record<string, number>,
+    counts: { perEmailAndIp: 1, perEmail: 1, perIp: 1 } as Record<string, number>,
+    stored: [] as unknown[],
     ops: [] as string[],
   }
   const db = {
-    insert: () => ({
-      values: async () => {
-        state.ops.push('insert attempt')
-      },
-    }),
     delete: () => ({
-      where: async (condition: { expiredBefore?: unknown }) => {
-        state.ops.push(condition?.expiredBefore ? 'purge expired attempts' : 'clear email attempts')
+      where: async () => {
+        state.ops.push('clear email attempts')
       },
     }),
     select: (fields: Record<string, unknown>) => {
-      const [key] = Object.keys(fields)
       let table = ''
       const query = {
         from: (source: Record<symbol, string>) => {
@@ -48,10 +43,6 @@ const fake = vi.hoisted(() => {
           return query
         },
         where: (condition: { lookup?: { column: string; value: unknown } }) => {
-          if (key in state.counts) {
-            state.ops.push(`count ${key}`)
-            return Promise.resolve([{ [key]: state.counts[key] }])
-          }
           const lookup = condition?.lookup
           return {
             limit: async () => {
@@ -80,13 +71,20 @@ const fake = vi.hoisted(() => {
 
 vi.mock('@/auth', () => ({ auth: fake.auth }))
 vi.mock('@/db', () => ({ getDb: fake.getDb }))
+vi.mock('@/lib/throttle-store', () => ({
+  storeIfAllowed: async (attempt: { limits: Record<string, number>; skipEmailCeiling?: boolean }) => {
+    fake.state.ops.push('store attempt')
+    fake.state.stored.push(attempt)
+    const over = (key: string) => fake.state.counts[key] > attempt.limits[key]
+    return { throttled: over('perEmailAndIp') || (!attempt.skipEmailCeiling && over('perEmail')) || over('perIp') }
+  },
+}))
 vi.mock('next/navigation', () => ({ redirect: fake.redirect }))
 vi.mock('bcryptjs', () => ({ default: { compare: fake.compare } }))
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>()
   return {
     ...actual,
-    lt: (_column: unknown, value: unknown) => ({ expiredBefore: value }),
     eq: (column: { name: string }, value: unknown) => ({
       lookup: { column: column.name.replace(/_(\w)/g, (_, c: string) => c.toUpperCase()), value },
     }),
@@ -179,7 +177,8 @@ async function expectRefusedByEveryAdminGuard() {
 beforeEach(() => {
   fake.state.admins = []
   fake.state.members = []
-  fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+  fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
+  fake.state.stored = []
   fake.state.ops = []
   fake.auth.mockReset()
   fake.getDb.mockClear()
@@ -388,13 +387,14 @@ describe('authorizeCredentials', () => {
     expect(fake.compare).toHaveBeenCalledTimes(1)
   })
 
-  it('never reaches bcrypt or the account tables once throttled', async () => {
+  it('never reaches bcrypt once throttled, having read both account tables the same way for every address', async () => {
     fake.state.admins = [max]
     fake.state.members = [mia]
     fake.compare.mockResolvedValue(true)
     for (const counts of [
-      { emailAttempts: 6, ipAttempts: 1 },
-      { emailAttempts: 1, ipAttempts: 21 },
+      { perEmailAndIp: 6, perEmail: 6, perIp: 6 },
+      { perEmailAndIp: 1, perEmail: 51, perIp: 1 },
+      { perEmailAndIp: 1, perEmail: 1, perIp: 51 },
     ]) {
       fake.state.counts = counts
       for (const email of [max.email, mia.email, 'nobody@example.com']) {
@@ -402,7 +402,9 @@ describe('authorizeCredentials', () => {
       }
     }
     expect(fake.compare).not.toHaveBeenCalled()
-    expect(fake.state.ops.filter((op) => op.startsWith('select '))).toEqual([])
+    expect(fake.state.ops.filter((op) => op.startsWith('select '))).toEqual(
+      Array.from({ length: 9 }, () => ['select admins', 'select members']).flat(),
+    )
   })
 
   describe('an email present in both tables', () => {
