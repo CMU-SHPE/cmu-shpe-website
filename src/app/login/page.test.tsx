@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 const mocks = vi.hoisted(() => {
   class FakeAuthError extends Error {}
@@ -85,6 +85,13 @@ describe('LoginPage messages and links', () => {
       expect(field).toHaveAttribute('aria-invalid', 'true')
       expect(field).toHaveAttribute('aria-describedby', alert.id)
     }
+  })
+
+  it('offers a password reset with the error, in the same words whatever went wrong', async () => {
+    render(await page({ error: '1' }))
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent("Invalid email or password. Can't sign in? Reset your password.")
+    expect(within(alert).getByRole('link', { name: 'Reset your password' })).toHaveAttribute('href', '/forgot-password')
   })
 
   it('leaves the fields unmarked without an error', async () => {

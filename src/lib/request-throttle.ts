@@ -46,7 +46,7 @@ export async function recordRequest(
   const source = throttleIp(ip)
   return storeIfAllowed({
     table: requestThrottle,
-    lockKey: `${action}:${email}`,
+    flow: action,
     scope: eq(requestThrottle.action, action),
     columns: { action, email, ip: source },
     email,

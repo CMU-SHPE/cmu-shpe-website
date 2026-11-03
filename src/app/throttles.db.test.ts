@@ -44,14 +44,14 @@ vi.mock('@/lib/email', async (importOriginal) => ({
 }))
 
 import { getDb } from '@/db'
-import { loginAttempts, requestThrottle } from '@/db/schema'
+import { loginAttempts, members, requestThrottle } from '@/db/schema'
 import { newAdminResetToken, replaceAdminResetTokens } from '@/lib/admin-tokens'
 import { authorizeCredentials, recordLoginAttempt } from '@/lib/authorize'
-import { KNOWN_DEVICE_COOKIE, withKnownDevice } from '@/lib/known-device'
+import { KNOWN_DEVICE_COOKIE, deviceAccountFor, withKnownDevice } from '@/lib/known-device'
 import { LOGIN_LIMITS } from '@/lib/login-throttle'
 import { REQUEST_LIMITS, recordRequest, type ThrottledAction } from '@/lib/request-throttle'
 import { TEST_PASSWORD, createAdmin, createMember, resetDb } from '@/test/db'
-import { changePassword as changeMemberPassword } from './account/actions'
+import { changePassword as changeMemberPassword, deleteAccount } from './account/actions'
 import { changePassword as changeAdminPassword } from './admin/account/actions'
 import { requestPasswordReset } from './forgot-password/actions'
 import { signUp } from './join/actions'
@@ -350,12 +350,36 @@ describe('storing and counting', () => {
     const finished: string[] = []
     const holder = db
       .batch([
-        db.execute(sql`select pg_advisory_xact_lock(hashtext(${'signup:sam@shpe.test'}))`),
+        db.execute(sql`select pg_advisory_xact_lock(1, hashtext(${'signup:sam@shpe.test'}))`),
         db.execute(sql`select pg_sleep(2)`),
       ])
       .then(() => finished.push('lock holder'))
     await new Promise((resolve) => setTimeout(resolve, 500))
     const attempt = recordRequest('signup', 'sam@shpe.test', STRANGER_IP).then(() => finished.push('attempt'))
+    await Promise.all([holder, attempt])
+    expect(finished).toEqual(['lock holder', 'attempt'])
+  })
+
+  it('lets one source through only up to its own limit when it sends for many emails at once', async () => {
+    const { perIp } = REQUEST_LIMITS.admin_password_reset
+    const results = await Promise.all(
+      Array.from({ length: perIp * 3 }, (_, n) => recordRequest('admin_password_reset', `person${n}@shpe.test`, STRANGER_IP)),
+    )
+    expect(results.filter(({ throttled }) => !throttled)).toHaveLength(perIp)
+    expect(await getDb().select().from(requestThrottle)).toHaveLength(perIp)
+  })
+
+  it('waits for the lock on that source and flow before counting, whatever the email', async () => {
+    const db = getDb()
+    const finished: string[] = []
+    const holder = db
+      .batch([
+        db.execute(sql`select pg_advisory_xact_lock(2, hashtext(${`signup:${STRANGER_IP}`}))`),
+        db.execute(sql`select pg_sleep(2)`),
+      ])
+      .then(() => finished.push('lock holder'))
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const attempt = recordRequest('signup', 'someone-else@shpe.test', STRANGER_IP).then(() => finished.push('attempt'))
     await Promise.all([holder, attempt])
     expect(finished).toEqual(['lock holder', 'attempt'])
   })
@@ -399,7 +423,7 @@ describe('storing and counting', () => {
 
   it('counts every spelling of an IPv4-mapped address as that IPv4 address', async () => {
     await createAdmin({ email: 'max@shpe.test' })
-    const spellings = ['192.0.2.77', '::ffff:192.0.2.77', '::ffff:c000:24d', '0:0:0:0:0:ffff:192.0.2.77', '::FFFF:C000:024D']
+    const spellings = ['::ffff:192.0.2.77%eth0', '::ffff:192.0.2.77', '::ffff:c000:24d', '0:0:0:0:0:ffff:192.0.2.77', '::FFFF:C000:024D']
     for (const ip of spellings) await signIn('max@shpe.test', WRONG, ip)
     await expect(signIn('max@shpe.test', TEST_PASSWORD, '::ffff:192.0.2.77')).resolves.toBeNull()
   })
@@ -424,7 +448,7 @@ describe('the known-device cookie', () => {
     await fillLoginCeiling('ada@shpe.test')
 
     await expect(signIn('max@shpe.test', TEST_PASSWORD, OWNER_IP)).resolves.toBeNull()
-    const maxDevice = withKnownDevice(undefined, 'max@shpe.test')!
+    const maxDevice = withKnownDevice(undefined, (await deviceAccountFor('max@shpe.test'))!)!
     await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, OWNER_IP, maxDevice)).resolves.toMatchObject({
       email: 'max@shpe.test',
     })
@@ -434,28 +458,29 @@ describe('the known-device cookie', () => {
   it('does nothing when forged or tampered with', async () => {
     await createAdmin({ email: 'max@shpe.test' })
     await fillLoginCeiling('max@shpe.test')
-    const real = withKnownDevice(undefined, 'max@shpe.test')!
+    const real = withKnownDevice(undefined, (await deviceAccountFor('max@shpe.test'))!)!
     const flipped = `${real.slice(0, 10)}${real[10] === 'A' ? 'B' : 'A'}${real.slice(11)}`
     for (const cookie of [flipped, 'max@shpe.test', `${real}A`, `${real.slice(0, -1)}`]) {
       await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, OWNER_IP, cookie)).resolves.toBeNull()
     }
     vi.stubEnv('AUTH_SECRET', 'a secret the attacker guessed')
-    const forged = withKnownDevice(undefined, 'max@shpe.test')!
+    const forged = withKnownDevice(undefined, (await deviceAccountFor('max@shpe.test'))!)!
     vi.stubEnv('AUTH_SECRET', 'a test secret for known devices')
     await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, OWNER_IP, forged)).resolves.toBeNull()
   })
 
   it('keeps the per-source limit, so the cookie is no help to a guesser', async () => {
     await createAdmin({ email: 'max@shpe.test' })
-    const device = withKnownDevice(undefined, 'max@shpe.test')!
+    const device = withKnownDevice(undefined, (await deviceAccountFor('max@shpe.test'))!)!
     for (let attempt = 0; attempt < LOGIN_LIMITS.perEmailAndIp; attempt += 1) {
       await authorizeCredentials({ email: 'max@shpe.test', password: WRONG }, STRANGER_IP, device)
     }
     await expect(authorizeCredentials({ email: 'max@shpe.test', password: TEST_PASSWORD }, STRANGER_IP, device)).resolves.toBeNull()
   })
 
-  it('is set when a reset link is used, so the next sign-in from that browser works', async () => {
+  it('is set when a reset link is used, so the next sign-in from that browser works, and the old one stops working', async () => {
     const admin = await createAdmin({ email: 'max@shpe.test', role: 'master' })
+    const before = withKnownDevice(undefined, (await deviceAccountFor('max@shpe.test'))!, Date.now() - 1000)!
     const db = getDb()
     const issued = newAdminResetToken(admin.id)
     await db.batch(replaceAdminResetTokens(db, issued.row))
@@ -471,5 +496,26 @@ describe('the known-device cookie', () => {
     await expect(authorizeCredentials({ email: 'max@shpe.test', password: NEW_PASSWORD }, OWNER_IP, cookie)).resolves.toMatchObject({
       email: 'max@shpe.test',
     })
+    await expect(authorizeCredentials({ email: 'max@shpe.test', password: NEW_PASSWORD }, '192.0.2.11', before)).resolves.toBeNull()
+  })
+
+  it('does nothing for a new account that reuses a deleted account’s address', async () => {
+    const first = await createMember({ email: 'mia@shpe.test' })
+    const cookie = withKnownDevice(undefined, (await deviceAccountFor('mia@shpe.test'))!)!
+    await getDb().delete(members).where(eq(members.id, first.id))
+    await createMember({ email: 'mia@shpe.test' })
+    await fillLoginCeiling('mia@shpe.test')
+    await expect(authorizeCredentials({ email: 'mia@shpe.test', password: TEST_PASSWORD }, OWNER_IP, cookie)).resolves.toBeNull()
+  })
+
+  it('is removed when the member deletes their account', async () => {
+    const member = await createMember({ email: 'mia@shpe.test' })
+    mocks.auth.mockResolvedValue({ user: { id: String(member.id), kind: 'member', email: member.email } })
+    mocks.cookies.set(KNOWN_DEVICE_COOKIE, withKnownDevice(undefined, (await deviceAccountFor('mia@shpe.test'))!)!)
+    const form = new FormData()
+    form.set('confirm', 'DELETE')
+    form.set('password', TEST_PASSWORD)
+    await deleteAccount(form).catch(() => {})
+    expect(mocks.cookies.get(KNOWN_DEVICE_COOKIE)).toBe('')
   })
 })

@@ -387,7 +387,7 @@ describe('authorizeCredentials', () => {
     expect(fake.compare).toHaveBeenCalledTimes(1)
   })
 
-  it('never reaches bcrypt or the account tables once throttled', async () => {
+  it('never reaches bcrypt once throttled, having read both account tables the same way for every address', async () => {
     fake.state.admins = [max]
     fake.state.members = [mia]
     fake.compare.mockResolvedValue(true)
@@ -402,7 +402,9 @@ describe('authorizeCredentials', () => {
       }
     }
     expect(fake.compare).not.toHaveBeenCalled()
-    expect(fake.state.ops.filter((op) => op.startsWith('select '))).toEqual([])
+    expect(fake.state.ops.filter((op) => op.startsWith('select '))).toEqual(
+      Array.from({ length: 9 }, () => ['select admins', 'select members']).flat(),
+    )
   })
 
   describe('an email present in both tables', () => {

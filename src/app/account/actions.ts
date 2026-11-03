@@ -11,6 +11,7 @@ import { parsePasswordChange } from '@/lib/admin-account'
 import { clearLoginAttempts } from '@/lib/authorize'
 import { EmailSendError, sendEmail } from '@/lib/email'
 import { confirmNewEmail, passwordChanged } from '@/lib/email-templates'
+import { forgetKnownDevice } from '@/lib/known-device'
 import { clientIp } from '@/lib/login-throttle'
 import { requireMember } from '@/lib/member'
 import {
@@ -186,5 +187,6 @@ export async function deleteAccount(formData: FormData) {
 
   const db = getDb()
   await db.batch(memberDeletion(db, member.id))
+  await forgetKnownDevice()
   await signOut({ redirectTo: '/account/deleted' })
 }

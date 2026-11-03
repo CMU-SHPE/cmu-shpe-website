@@ -15,7 +15,7 @@ import { REQUEST_LIMITS, recordRequest } from './request-throttle'
 
 const render = (condition: SQL) => new PgDialect().sqlToQuery(condition)
 
-type StoredAttempt = { lockKey: string; scope: SQL; columns: unknown; email: string; ip: string | null; limits: unknown }
+type StoredAttempt = { flow: string; scope: SQL; columns: unknown; email: string; ip: string | null; limits: unknown }
 const lastAttempt = () => fake.storeIfAllowed.mock.calls.at(-1)![0] as StoredAttempt
 
 beforeEach(() => {
@@ -23,11 +23,11 @@ beforeEach(() => {
 })
 
 describe('recordRequest', () => {
-  it('stores the request under its own action, lock and limits', async () => {
+  it('stores the request under its own action, flow and limits', async () => {
     await expect(recordRequest('forgot_password', 'mia@example.com', '203.0.113.7')).resolves.toEqual({ throttled: false })
     const attempt = lastAttempt()
     expect(attempt).toMatchObject({
-      lockKey: 'forgot_password:mia@example.com',
+      flow: 'forgot_password',
       columns: { action: 'forgot_password', email: 'mia@example.com', ip: '203.0.113.7' },
       email: 'mia@example.com',
       ip: '203.0.113.7',

@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-type AdminRow = { id: number; email: string; name: string; role: 'admin' | 'master'; passwordHash: string }
+type AdminRow = {
+  id: number
+  email: string
+  name: string
+  role: 'admin' | 'master'
+  passwordHash: string
+  passwordChangedAt?: Date | null
+}
 type MemberRow = {
   id: number
   email: string
@@ -66,6 +73,7 @@ import { LOGIN_LIMITS } from './login-throttle'
 
 const ana: AdminRow = { id: 2, email: 'ana@example.com', name: 'Ana', role: 'admin', passwordHash: '$2b$12$real' }
 const credentials = { email: 'Ana@Example.com', password: 'correct horse battery' }
+const anaDevice = { kind: 'admin' as const, id: 2, email: 'ana@example.com', passwordChangedAt: null }
 const mia: MemberRow = {
   id: 2,
   email: 'mia@example.com',
@@ -95,19 +103,19 @@ afterEach(() => {
 describe('authorizeCredentials', () => {
   it('stores the attempt under the login limits, keyed on the normalised email and source', async () => {
     await authorizeCredentials(credentials, '203.0.113.7, 10.0.0.1')
-    expect(fake.state.ops[0]).toBe('store attempt')
+    expect(fake.state.ops.slice(0, 3)).toEqual(['find admin', 'find member', 'store attempt'])
     expect(fake.state.stored[0]).toMatchObject({
-      lockKey: 'login:ana@example.com',
+      flow: 'login',
       columns: { email: 'ana@example.com', ip: '203.0.113.7' },
       limits: LOGIN_LIMITS,
       skipEmailCeiling: false,
     })
   })
 
-  it('stops before the password check once throttled', async () => {
+  it('reads both account tables, then stops before the password check once throttled', async () => {
     fake.state.counts.perEmailAndIp = 6
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
-    expect(fake.state.ops).toEqual(['store attempt'])
+    expect(fake.state.ops).toEqual(['find admin', 'find member', 'store attempt'])
     expect(fake.compare).not.toHaveBeenCalled()
   })
 
@@ -144,19 +152,19 @@ describe('authorizeCredentials', () => {
     })
 
     it('lets its own account past a full per-email ceiling', async () => {
-      const cookie = withKnownDevice(undefined, 'ana@example.com')!
+      const cookie = withKnownDevice(undefined, anaDevice)!
       await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toMatchObject({ id: '2' })
       expect(fake.state.stored[0]).toMatchObject({ skipEmailCeiling: true })
     })
 
-    it('does nothing for another account, even alongside its own tag', async () => {
-      const cookie = withKnownDevice(undefined, 'someone@example.com')!
+    it('does nothing for another account', async () => {
+      const cookie = withKnownDevice(undefined, { ...anaDevice, id: 9, email: 'someone@example.com' })!
       await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
       expect(fake.state.stored[0]).toMatchObject({ skipEmailCeiling: false })
     })
 
     it('does nothing when forged or tampered with', async () => {
-      const real = withKnownDevice(undefined, 'ana@example.com')!
+      const real = withKnownDevice(undefined, anaDevice)!
       const tampered = `${real.slice(0, -2)}${real.endsWith('AA') ? 'AB' : 'AA'}`
       for (const cookie of [tampered, 'ana@example.com', '', 'x'.repeat(43), `${real}x`]) {
         await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
@@ -164,9 +172,16 @@ describe('authorizeCredentials', () => {
       expect(fake.compare).not.toHaveBeenCalled()
     })
 
+    it('stops working once the password changes', async () => {
+      const cookie = withKnownDevice(undefined, anaDevice, Date.now() - 1000)!
+      fake.state.admin = { ...ana, passwordChangedAt: new Date() }
+      await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
+      expect(fake.compare).not.toHaveBeenCalled()
+    })
+
     it('still meets the per-source limit', async () => {
       fake.state.counts = { perEmailAndIp: LOGIN_LIMITS.perEmailAndIp + 1, perEmail: 1, perIp: 1 }
-      const cookie = withKnownDevice(undefined, 'ana@example.com')!
+      const cookie = withKnownDevice(undefined, anaDevice)!
       await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
     })
   })

@@ -40,7 +40,7 @@ export async function recordLoginAttempt(
   const source = throttleIp(ip)
   return storeIfAllowed({
     table: loginAttempts,
-    lockKey: `login:${email}`,
+    flow: 'login',
     scope: undefined,
     columns: { email, ip: source },
     email,
@@ -73,6 +73,7 @@ async function findAccount(email: string) {
         name: admins.name,
         role: admins.role,
         passwordHash: admins.passwordHash,
+        passwordChangedAt: admins.passwordChangedAt,
       })
       .from(admins)
       .where(eq(admins.email, email))
@@ -84,6 +85,7 @@ async function findAccount(email: string) {
         name: members.name,
         role: members.role,
         passwordHash: members.passwordHash,
+        passwordChangedAt: members.passwordChangedAt,
         emailConfirmedAt: members.emailConfirmedAt,
       })
       .from(members)
@@ -98,8 +100,9 @@ async function findAccount(email: string) {
 /**
  * An admin row wins over a member row with the same email. Every
  * path runs exactly one bcrypt compare, and an unconfirmed member gets the same
- * generic failure as a wrong password. knownDeviceCookie is the browser's known_device
- * cookie; it only counts for the email it was issued to.
+ * generic failure as a wrong password. The account is read before the attempt is
+ * counted, so the browser's known-device cookie can be checked against it; that cookie only
+ * counts for the account and password it was issued under.
  */
 export async function authorizeCredentials(
   credentials: unknown,
@@ -112,14 +115,15 @@ export async function authorizeCredentials(
   const email = parsed.data.email.toLowerCase()
   const ip = clientIp(forwardedFor)
 
-  const { throttled } = await recordLoginAttempt(email, ip, { knownDevice: isKnownDevice(knownDeviceCookie, email) })
+  const checkedAt = Date.now()
+  const account = await findAccount(email)
+  const knownDevice = isKnownDevice(knownDeviceCookie, account)
+  const { throttled } = await recordLoginAttempt(email, ip, { knownDevice })
   if (throttled) {
     console.warn(`LOGIN THROTTLED: ${email} from ${ip ?? 'unknown ip'}`)
     return null
   }
 
-  const checkedAt = Date.now()
-  const account = await findAccount(email)
   const valid = await bcrypt.compare(parsed.data.password, account?.passwordHash ?? UNKNOWN_EMAIL_HASH)
   if (!account || !valid || !account.confirmed) {
     const reason = !account ? 'unknown email' : !valid ? 'bad password' : 'email not confirmed'
