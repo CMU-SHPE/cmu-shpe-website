@@ -116,7 +116,7 @@ Your RSVPs, newsletter choices and sponsor access stay with your account.
 
 - Asking again sends a new link, and the older one stops working. Changing or resetting your
   password also cancels the link.
-- If the new address already belongs to another account, the link shows "This email address
+- If the new address already belongs to another account, confirming shows "This email address
   can't be used" and your email stays the same.
 - If you didn't ask for the change, close the page. Nothing changes.
 
