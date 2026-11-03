@@ -20,8 +20,10 @@ You land on the admin **Dashboard**. While you are signed in, the top bar shows 
 
 ![The Sign in page with the Email and Password fields and the Sign in button](/help/img/officers/sign-in.png)
 
-If you see "Invalid email or password.", check both and try again. After several wrong tries
-the site makes you wait 15 minutes.
+If you see "Invalid email or password. Can't sign in? Reset your password.", check both and try
+again, or choose **Reset your password** (see [If you forget your password](#if-you-forget-your-password)).
+After five wrong tries from the same place, the site stops letting you sign in from there for up
+to 15 minutes. Resetting your password by email lifts that wait straight away.
 
 ![The admin dashboard with the sidebar listing every admin section](/help/img/officers/dashboard.png)
 
@@ -38,13 +40,22 @@ You stay signed in on this device and are signed out everywhere else.
 
 ### If you forget your password
 
-Officer accounts can't use **Forgot password?** on the sign-in page; that link is only for
-members. Instead:
+Every officer, the master admin included, can reset their own password by email:
+
+1. On the sign-in page, choose **Forgot password?**
+2. Enter your admin **Email** and choose **Send reset link**.
+3. Open the email and choose the link. It works for 30 minutes, once.
+4. Enter a **New password**, type it again in **Confirm new password**, and choose **Save new
+   password**.
+
+You are signed out on every other device, and any sign-in wait on your account is cleared.
+
+If you can't get into that email account:
 
 - **Most officers:** ask the master admin (usually the chapter president) to set a new password
   for you. They share it with you directly, and you can change it afterwards with **Change password**.
-- **The master admin:** the website can't reset the master account from inside the site. Ask
-  the chapter's technical helper (see [Handing over to next year's officers](#handing-over-to-next-year-s-officers)).
+- **The master admin:** ask the chapter's technical helper (see
+  [Handing over the master admin account](#handing-over-the-master-admin-account)).
 
 ## Editing page text
 
@@ -80,19 +91,21 @@ they end, using Colorado (Mountain) time.
 1. Choose **Events** in the admin sidebar.
 2. Under **Add event**, fill in **Title**, **Description**, **Location** and **Type** (Networking,
    Workshop, Social, Academic, Community, Panel or Conference).
-3. Set the **Start date**. <!-- event-date-range -->
+3. Set the **Start date**.
 4. For an event that lasts more than one day, also set the **End date (optional)**. Leave it blank
-   for a one-day event. <!-- event-date-range -->
-5. To show times, choose **+ Time slot** and pick the days it covers (from and to) and its start
-   and end time. Add one slot for each set of days with different times. <!-- event-date-range -->
+   for a one-day event.
+5. To show times, choose **Add time slot** and fill in **From** and **To** (the days it covers),
+   **Start time** and **End time**. Add one slot for each set of days with different times.
 6. If places are limited, enter a **Capacity (optional)**. Leave it blank for no limit.
 7. Choose **Add event**.
 
 For example, a conference from Oct 10 to Oct 12, 2026 that runs 6 PM to 8 PM on the first two
 days and 7 PM to 8 PM on the last day needs a **Start date** of Oct 10 and an **End date
-(optional)** of Oct 12, plus two time slots: Oct 10–11, 6 PM – 8 PM, and Oct 12, 7 PM – 8 PM. <!-- event-date-range -->
-The Events page then shows "Oct 10–12, 2026" with both time slots underneath. <!-- event-date-range -->
-Time slots are optional: an event without any shows only its dates. <!-- event-date-range -->
+(optional)** of Oct 12, plus two time slots: Oct 10–11, 6 PM – 8 PM, and Oct 12, 7 PM – 8 PM.
+The Events page then shows "Oct 10–12, 2026" with both time slots underneath.
+
+Time slots are optional. Without any, you can type the time as you want it shown in **Time
+(optional)**, for example "6:00 PM – 9:00 PM", or leave it blank to show only the dates.
 
 ![The Add event form with the start date, end date and time slot fields](/help/img/officers/add-event.png)
 
@@ -101,13 +114,17 @@ Time slots are optional: an event without any shows only its dates. <!-- event-d
 1. Choose **Events** in the admin sidebar and find the event under **Upcoming events** or
    **Past events**.
 2. To change it, choose **Edit** under the event, make your changes and choose **Save changes**.
-3. To remove it, choose **Delete** and confirm with **OK**. This can't be undone, and its RSVPs are
-   removed too.
+3. To remove it, choose **Delete** and confirm with **OK**. The confirmation says how many RSVPs
+   are removed with it, for example "This also removes its 12 RSVPs.", or "It has no RSVPs to
+   remove." This can't be undone.
 
 ### How capacity works
 
 - Members can RSVP until the event is full. Two people can never take the last place at the
   same time.
+- You can't lower the capacity below the number of people who already RSVPed. If you try, nothing
+  is saved and the form says, for example, "This event already has 12 RSVPs, so the capacity can't
+  be lower than 12."
 - On the Events page, capped events show how many spots are left, and full events show **Full**.
 - RSVPs are only possible for upcoming events.
 
@@ -125,8 +142,9 @@ Time slots are optional: an event without any shows only its dates. <!-- event-d
 2. Choose **Download CSV**. The button only appears once at least one person has RSVPed.
 3. Open the file in Excel or Google Sheets.
 
-The file lists name, email and RSVP time. The attendees page shows RSVP times in Mountain time,
-but the file uses UTC (world standard time), which is 6 or 7 hours ahead.
+The file lists each person's name, email and RSVP time, followed by the event's start date, end
+date and times. RSVP times are in Mountain time, the same as on the attendees page, and end with
+MDT or MST.
 
 The list holds members' personal information. Share it only with the people running the event,
 and delete it when the event is over.
@@ -182,6 +200,18 @@ and Bronze.
 - **Remove:** choose **Delete** and confirm with **OK**. Everyone linked to the listing loses
   sponsor access and becomes a supporter, and the listing's receipts and edit history are deleted.
 
+### If someone else saved the listing while you were editing
+
+A sponsor can edit their own listing from the sponsor portal at the same time as you. If you both
+change the same field, your save is refused so it can't overwrite theirs, and you see "Someone
+else changed this listing while you were editing, so nothing was saved." Under it, the notice lists
+each field you both changed with its saved version. The form still has what you typed: check it,
+and choose **Save changes** again to replace the saved version. If you changed different fields,
+both edits are kept and nothing is refused.
+
+If the notice says "This page was out of date, so nothing was saved.", check the form and save again.
+If it says your logo change wasn't kept, choose your logo again before saving.
+
 ### How to give a sponsor access to the sponsor portal
 
 A sponsor's contact can edit their own listing, RSVP to events and download receipts from the
@@ -190,9 +220,12 @@ sponsor portal. To give them access:
 1. Ask the contact to create an account at [shpecmu.com/join](/join) and confirm their email.
    They can follow the [Sponsor guide](/help/sponsors).
 2. Choose **Members** in the admin sidebar and search for their name or email.
-3. Check that **Email confirmed** says **Yes**. The listing menu only appears for confirmed
-   members, and only when at least one sponsor listing exists.
+3. Check that **Email confirmed** says **Yes**.
 4. In their row, pick the listing from **Choose a listing**, then choose **Make sponsor**.
+
+If **Make sponsor** is greyed out, the line under it says why: "Available once this member
+confirms their email.", or "Add a sponsor listing on the Sponsors page first." when no listing
+exists yet.
 
 You see "Sponsor access saved." Their **Role** changes to **Sponsor**, and the next time they sign
 in they land on the sponsor portal. A listing can have several sponsor accounts, but each account
@@ -220,9 +253,10 @@ You see "Sponsor access removed." They keep their member account as a supporter.
 The page shows:
 
 - **Sponsor accounts:** the people linked to this listing.
-- **Edit history:** every change sponsors made from the sponsor portal, newest first (up to 100):
-  when, who, and which fields changed. Changes officers make on the Sponsors page are not listed
-  here. If the person has since deleted their account, their name is followed by "(account deleted)".
+- **Edit history:** every change made by sponsors from the sponsor portal and by officers on the
+  Sponsors page, newest first (up to 100): when, who, and which fields changed. Each name is
+  followed by "(sponsor)" or "(officer)". If that person's account has since been deleted, it says
+  "(sponsor, account deleted)" or "(officer, account deleted)".
 - **Receipts:** the receipts shared with this sponsor.
 
 ![A sponsor's Details page with Sponsor accounts, Edit history and the Upload a receipt form](/help/img/officers/sponsor-details.png)
@@ -262,6 +296,33 @@ For any item:
 
 ![The Home page stats list on the Page lists page](/help/img/officers/page-lists.png)
 
+## Photo gallery
+
+Choose **Photo gallery** in the admin sidebar to manage the photos shown in the gallery on the
+home page. With no photos, the home page has no gallery. The gallery's small title and heading are
+page text: edit them on the home page (see [Editing page text](#editing-page-text)).
+
+### How to add a photo
+
+1. Under **Add photo**, choose **Upload photo** and pick an image file (JPEG, PNG, WebP, GIF, AVIF
+   or SVG) under 8 MB. In the **Frame this photo** window, drag and use **Zoom** until it looks
+   right, then choose **Use this framing**. The home page shows the photo in that shape.
+2. Fill in **Description for screen readers**: say what the photo shows, for visitors who can't
+   see it, for example "Eight members holding the chapter banner at the SHPE National Convention".
+   This is required.
+3. Optionally add a **Caption (optional)**, shown under the photo.
+4. Choose **Add photo**.
+
+![The Add photo form on the Photo gallery page](/help/img/officers/gallery.png)
+
+### How to change, reorder or remove a photo
+
+Photos appear on the home page in the order of the **Photos** list.
+
+- **Change:** choose **Edit** under the photo, make your changes and choose **Save changes**.
+- **Reorder:** use **↑** and **↓**.
+- **Remove:** choose **Delete** and confirm with **OK**.
+
 ## Site settings
 
 Choose **Site settings** in the admin sidebar. When you are done, choose **Save settings** at the
@@ -274,6 +335,11 @@ bottom.
   **MavLife**. Each must be a full link starting with https://. Leave a link blank to hide its icon.
 - **Contact form subjects:** the choices in the Contact form's subject menu, one per line in
   **Subject options (one per line)**.
+
+Messages sent with the Contact page's form go to the chapter inbox the technical helper set up for
+the form, not to the **Contact email** above, so changing that field doesn't change where they
+arrive. If they stop arriving, contact the technical helper. Visitors who send many messages in a
+short time are asked to wait a few minutes or use the contact email instead.
 
 ![The Site settings page with the Mailing address field](/help/img/officers/site-settings.png)
 
@@ -312,9 +378,11 @@ never got the email, send them to [shpecmu.com/join/resend](/join/resend) for a 
 1. Choose **Members** and find the person.
 2. Choose **Delete** in their row and confirm with **OK**.
 
-The confirmation mentions their account, sign-in links and newsletter choices. Their RSVPs and
-newsletter history are deleted too. If they edited a sponsor listing, those history entries stay,
-marked "(account deleted)". This can't be undone.
+The confirmation lists what is removed: their account, email confirmation and password reset
+links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their
+event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings,
+receipts and edit history stay, and the edit history keeps their name, marked "(sponsor, account
+deleted)". This can't be undone.
 
 ## Newsletter topics
 
@@ -328,8 +396,9 @@ pick for it.
 4. Use **↑** and **↓** to set the order members see them in.
 5. To delete one, choose **Delete** and confirm with **OK**.
 
-Each topic shows how many members subscribe to it. Deleting a topic removes every member's choice
-of it, and they stop getting newsletters about it.
+Each topic shows how many members subscribe to it. When you delete a topic, the confirmation says
+how many members (confirmed or not) have chosen it, or "No members have chosen it yet." Deleting it
+removes every member's choice of it, and they stop getting newsletters about it.
 
 ![The Newsletter topics page with a topic's subscriber count and the Add topic form](/help/img/officers/topics.png)
 
@@ -425,6 +494,10 @@ allowed to create accounts.
 
 Every new account starts as a regular admin that can edit the site but can't create accounts.
 
+Each email address can belong to only one account, admin or member. If the address is already
+used, you see "An account with that email already exists." Use a different address for the admin
+account, or have the person delete their member account first.
+
 ![The Admin accounts page with the Can create accounts button and the Create admin form](/help/img/officers/admin-accounts.png)
 
 ### The "Can create accounts" permission (master admin only)
@@ -444,9 +517,12 @@ The master's list also shows who created each account.
 
 1. Choose **Admin accounts**.
 2. Next to their name, choose **Reset password**.
-3. Enter a **New password** and type it again in **Confirm new password**.
+3. Enter a **New password (12–72 characters)** and type it again in **Confirm new password**.
 4. Choose **Set new password**.
-5. Give them the new password directly. They are signed out everywhere.
+5. Give them the new password directly; the site doesn't email it. They are signed out everywhere.
+
+Admins who can still open their email can also reset their own password with **Forgot
+password?** (see [If you forget your password](#if-you-forget-your-password)).
 
 ### How to remove an admin (master admin only)
 
@@ -496,14 +572,15 @@ chapter's technical helper: the person who looks after the website's code and ho
 don't know who that is, ask your faculty advisor or the previous master admin.
 
 1. The outgoing master tells the technical helper who the new master is and which email address
-   they will use.
+   they will use. It must not already belong to a member account.
 2. The technical helper moves the master account to that email and sets a temporary password.
    Everyone signed in to the old master account is signed out.
 3. The helper gives the new master the temporary password in person or in a private message.
 4. The new master signs in and changes the password straight away with **Change password**.
 
-The same steps work if the master admin forgets their password or loses access to their email.
-Other admin accounts are not affected.
+The same steps work if the master admin loses access to their email. A master who only forgot
+their password can use **Forgot password?** instead (see
+[If you forget your password](#if-you-forget-your-password)). Other admin accounts are not affected.
 
 ### If you are stuck
 

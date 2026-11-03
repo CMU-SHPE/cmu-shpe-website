@@ -54,8 +54,10 @@ Accounts that are never confirmed are deleted after 7 days. You can simply join 
 You land on **Your account**. While you are signed in, the top bar shows your name, an
 **Account** link and **Sign out**. On a phone, open the menu to see them.
 
-If you see "Invalid email or password.", check both and try again. After several wrong tries
-you have to wait 15 minutes.
+If you see "Invalid email or password. Can't sign in? Reset your password.", check both and try
+again, or choose **Reset your password** (see [If you forgot your password](#if-you-forgot-your-password)).
+After five wrong tries from the same place, you can't sign in from there for up to 15 minutes.
+Resetting your password lifts that wait straight away.
 
 ### How to sign out
 
@@ -89,6 +91,7 @@ You stay signed in on this device and are signed out everywhere else.
 Choose **Account** in the top bar to open **Your account**. From there you can:
 
 - change your name under **Your name**, then choose **Save name**;
+- change your email address (see below);
 - choose your newsletters (see below);
 - see and cancel your RSVPs under **My RSVPs**;
 - change your password;
@@ -98,14 +101,26 @@ Choose **Account** in the top bar to open **Your account**. From there you can:
 
 ### Changing your email address
 
-You can't change the email address of an account. To use a different address:
+1. Go to **Your account** and find **Change email**.
+2. Enter your **New email** and your **Current password**.
+3. Choose **Send confirmation link**.
+4. Open the email sent to your new address and choose the link. It works for 24 hours, once.
+5. The **Confirm your new email** page shows the new address. Enter your **Current password** and
+   choose **Confirm my new email**.
 
-1. Create a new account with the new address and confirm it.
-2. Choose your newsletters again in the new account.
-3. Sign in to the old account and delete it (see [Deleting your account](#deleting-your-account)).
+Your email doesn't change until you finish step 5. You are then signed out everywhere, and the
+sign-in page says "Your email address was changed — sign in with your new email address." Your
+old address gets an email saying the address was changed.
 
-If you are a sponsor contact, ask a chapter officer to link your new account to your company's
-listing.
+Your RSVPs, newsletter choices and sponsor access stay with your account.
+
+- Asking again sends a new link, and the older one stops working. Changing or resetting your
+  password also cancels the link.
+- If the new address already belongs to another account, the link shows "This email address
+  can't be used" and your email stays the same.
+- If you didn't ask for the change, close the page. Nothing changes.
+
+![The Change email section of Your account](/help/img/members/change-email.png)
 
 ## Newsletters
 

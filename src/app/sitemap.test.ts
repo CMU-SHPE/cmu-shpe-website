@@ -28,10 +28,10 @@ afterEach(() => {
 })
 
 describe('sitemap', () => {
-  it('lists every public page, including join, privacy and terms, under the deployment’s site URL', () => {
+  it('lists every public page, including join, help, privacy and terms, under the deployment’s site URL', () => {
     const urls = sitemap().map((entry) => entry.url)
     expect(urls.every((url) => url.startsWith('https://preview.shpe.example'))).toBe(true)
-    expect(pathsOf(urls)).toEqual(['/', '/about', '/events', '/sponsors', '/officers', '/contact', '/join', '/privacy', '/terms'])
+    expect(pathsOf(urls)).toEqual(['/', '/about', '/events', '/sponsors', '/officers', '/contact', '/join', '/help', '/privacy', '/terms'])
   })
 
   it('lists only pages that exist', () => {

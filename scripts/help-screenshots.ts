@@ -340,7 +340,7 @@ const stageSetup: Record<Stage, (pages: Pages, files: { logo: Buffer; receipt: B
     await eventForm.getByLabel('Title', { exact: true }).fill(EVENT.title)
     await eventForm.getByLabel('Description', { exact: true }).fill(EVENT.description)
     await eventForm.getByLabel('Location', { exact: true }).fill(EVENT.location)
-    await eventForm.getByLabel('Date', { exact: true }).fill(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10))
+    await eventForm.getByLabel('Start date', { exact: true }).fill(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10))
     await eventForm.getByLabel('Capacity (optional)', { exact: true }).fill(EVENT.capacity)
     created.event = true
     await eventForm.getByRole('button', { name: 'Add event', exact: true }).click()

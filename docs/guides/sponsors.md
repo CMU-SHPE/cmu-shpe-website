@@ -60,6 +60,16 @@ either needs to change.
 Every saved change is recorded with your name, the time and which fields changed. Chapter officers
 can see this history.
 
+### If someone else saved the listing while you were editing
+
+A colleague or a chapter officer may edit the same listing at the same time. If you both change the
+same field, your save is refused so it can't overwrite theirs, and you see "Someone else changed
+this listing while you were editing, so nothing was saved." The notice lists each field you both
+changed with its saved version. The form still has what you typed: check it, and choose **Save
+listing** again to replace the saved version. Changes to different fields are both kept.
+
+If the notice says your logo change wasn't kept, choose your logo again before saving.
+
 ![The Your listing form with the Save listing button](/help/img/sponsors/edit-listing.png)
 
 ## Events and RSVPs
@@ -102,6 +112,10 @@ every page. Give the email address you signed in with and your company's name.
 
 If you see "Your sponsor access changed while you were editing, so nothing was saved.", your access
 changed while you were editing. Reload the page and check with the chapter.
+
+To use a different work email, change it on **Your account** (see the
+[Member guide](/help/members#changing-your-email-address)). Your sponsor access stays linked to your
+account, so you don't need an officer to set it up again.
 
 ## Privacy and terms
 

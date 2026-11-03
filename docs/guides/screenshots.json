@@ -28,8 +28,7 @@
     },
     {
       "guide": "officers", "slug": "add-event", "url": "/admin/events", "role": "admin", "stage": "start",
-      "setup": "Add event card with Start date, End date (optional), + Time slot and Capacity (optional).",
-      "pending": "waits for feat/event-date-range to land",
+      "setup": "Add event card with Start date, End date (optional), Add time slot and Capacity (optional).",
       "element": ["section[aria-labelledby=add-event-heading]"],
       "mask": []
     },
@@ -74,6 +73,12 @@
       "setup": "Search filtered to this run's fake accounts: Alex Example (confirmed supporter) and Sam Example (sponsor). Any other row is hidden.",
       "hideUnlessFake": ["main tbody tr"],
       "highlight": ["main thead >> text=Email confirmed", "main tbody tr:has-text('Alex Example') >> form:has(select)", "main tbody tr:has-text('Sam Example') >> role=button[name=/^Remove sponsor access/]"],
+      "mask": []
+    },
+    {
+      "guide": "officers", "slug": "gallery", "url": "/admin/gallery", "role": "admin", "stage": "start",
+      "setup": "Signed in as the example admin; only the Add photo card is captured, nothing is uploaded.",
+      "element": ["section[aria-labelledby=add-photo-heading]"],
       "mask": []
     },
     {
@@ -164,6 +169,12 @@
       "guide": "members", "slug": "account", "url": "/account", "role": "member", "stage": "confirmed",
       "setup": "Alex Example, confirmed; the Example Updates topic exists.",
       "highlight": ["section[aria-labelledby=topics-heading] fieldset, section[aria-labelledby=topics-heading] ul", "role=button[name='Save newsletter choices']"],
+      "mask": []
+    },
+    {
+      "guide": "members", "slug": "change-email", "url": "/account", "role": "member", "stage": "confirmed",
+      "setup": "Alex Example's Change email section, not submitted.",
+      "element": ["section[aria-labelledby=email-heading]"],
       "mask": []
     },
     {
