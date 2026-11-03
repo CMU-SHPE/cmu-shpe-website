@@ -5,28 +5,19 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { advisors, officers } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { cleanupBlobs, writeOrDiscardUploads } from '@/lib/blob-cleanup'
-import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
-import {
-  NO_UPLOAD,
-  UPLOAD_FAILED,
-  UPLOAD_UNAVAILABLE,
-  UPLOAD_UNSAFE_SVG,
-  newlyUploaded,
-  resolveCroppedUpload,
-} from '@/lib/crop-upload'
+import { cleanupBlobs } from '@/lib/blob-cleanup'
+import type { CroppedImage } from '@/lib/crop'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
+import { resolveImageField, saveImageChange } from '@/lib/image-field'
 import { PHOTO_FIELD_NAMES, parseAdvisorForm, parseOfficerForm } from '@/lib/person-schema'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
 
 type PersonTable = typeof officers | typeof advisors
 
+const PAGE = '/admin/officers'
 const SAVED = '/admin/officers?saved=1'
 const INVALID = '/admin/officers?error=invalid'
 const MISSING = '/admin/officers?error=missing'
-const UPLOAD = '/admin/officers?error=upload'
-const STORAGE = '/admin/officers?error=storage'
-const UNSAFE_SVG = '/admin/officers?error=svg'
 
 function photoColumns(table: PersonTable) {
   return {
@@ -40,20 +31,13 @@ function toColumns(image: CroppedImage) {
   return { photoUrl: image.imageUrl, photoOriginalUrl: image.originalUrl, photoCrop: image.crop }
 }
 
-async function resolvePhoto(
+function resolvePhoto(
   formData: FormData,
   photoPath: string | null,
   existing: CroppedImage | null,
   folder: 'officers' | 'advisors',
-): Promise<{ photo: CroppedImage; uploads: string[] }> {
-  const uploaded = await resolveCroppedUpload({ formData, names: PHOTO_FIELD_NAMES, folder, existing })
-  if (uploaded === UPLOAD_FAILED) redirect(UPLOAD)
-  if (uploaded === UPLOAD_UNAVAILABLE) redirect(STORAGE)
-  if (uploaded === UPLOAD_UNSAFE_SVG) redirect(UNSAFE_SVG)
-  if (uploaded !== NO_UPLOAD) return { photo: uploaded, uploads: newlyUploaded(uploaded, existing) }
-
-  if (existing?.imageUrl && photoPath === existing.imageUrl) return { photo: existing, uploads: [] }
-  return { photo: { imageUrl: photoPath, originalUrl: null, crop: null }, uploads: [] }
+) {
+  return resolveImageField({ formData, names: PHOTO_FIELD_NAMES, folder, existing, typedUrl: photoPath, page: PAGE })
 }
 
 async function existingPhoto(table: PersonTable, id: number): Promise<CroppedImage> {
@@ -90,11 +74,11 @@ export async function createOfficer(formData: FormData) {
   if (!parsed.success) redirect(INVALID)
 
   const { photoUrl, ...fields } = parsed.data
-  const { photo, uploads } = await resolvePhoto(formData, photoUrl, null, 'officers')
-  await writeOrDiscardUploads(uploads, async () =>
+  const photo = await resolvePhoto(formData, photoUrl, null, 'officers')
+  await saveImageChange(photo, null, async () =>
     getDb()
       .insert(officers)
-      .values({ ...fields, ...toColumns(photo), sortOrder: await nextSortOrder(officers) })
+      .values({ ...fields, ...toColumns(photo.image), sortOrder: await nextSortOrder(officers) })
       .returning({ id: officers.id }),
   )
 
@@ -110,16 +94,15 @@ export async function updateOfficer(id: number, formData: FormData) {
 
   const existing = await existingPhoto(officers, officerId.data)
   const { photoUrl, ...fields } = parsed.data
-  const { photo, uploads } = await resolvePhoto(formData, photoUrl, existing, 'officers')
-  const saved = await writeOrDiscardUploads(uploads, () =>
+  const photo = await resolvePhoto(formData, photoUrl, existing, 'officers')
+  const saved = await saveImageChange(photo, existing, () =>
     getDb()
       .update(officers)
-      .set({ ...fields, ...toColumns(photo) })
+      .set({ ...fields, ...toColumns(photo.image) })
       .where(eq(officers.id, officerId.data))
       .returning({ id: officers.id }),
   )
   if (!saved) redirect(MISSING)
-  await cleanupBlobs(...orphanedBlobs(existing, photo))
 
   redirect(SAVED)
 }
@@ -141,11 +124,11 @@ export async function createAdvisor(formData: FormData) {
   if (!parsed.success) redirect(INVALID)
 
   const { photoUrl, ...fields } = parsed.data
-  const { photo, uploads } = await resolvePhoto(formData, photoUrl, null, 'advisors')
-  await writeOrDiscardUploads(uploads, async () =>
+  const photo = await resolvePhoto(formData, photoUrl, null, 'advisors')
+  await saveImageChange(photo, null, async () =>
     getDb()
       .insert(advisors)
-      .values({ ...fields, ...toColumns(photo), sortOrder: await nextSortOrder(advisors) })
+      .values({ ...fields, ...toColumns(photo.image), sortOrder: await nextSortOrder(advisors) })
       .returning({ id: advisors.id }),
   )
 
@@ -161,16 +144,15 @@ export async function updateAdvisor(id: number, formData: FormData) {
 
   const existing = await existingPhoto(advisors, advisorId.data)
   const { photoUrl, ...fields } = parsed.data
-  const { photo, uploads } = await resolvePhoto(formData, photoUrl, existing, 'advisors')
-  const saved = await writeOrDiscardUploads(uploads, () =>
+  const photo = await resolvePhoto(formData, photoUrl, existing, 'advisors')
+  const saved = await saveImageChange(photo, existing, () =>
     getDb()
       .update(advisors)
-      .set({ ...fields, ...toColumns(photo) })
+      .set({ ...fields, ...toColumns(photo.image) })
       .where(eq(advisors.id, advisorId.data))
       .returning({ id: advisors.id }),
   )
   if (!saved) redirect(MISSING)
-  await cleanupBlobs(...orphanedBlobs(existing, photo))
 
   redirect(SAVED)
 }

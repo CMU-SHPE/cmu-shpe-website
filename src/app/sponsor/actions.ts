@@ -2,16 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { getDb } from '@/db'
-import { cleanupBlobs, writeOrDiscardUploads } from '@/lib/blob-cleanup'
-import { orphanedBlobs } from '@/lib/crop'
-import {
-  NO_UPLOAD,
-  UPLOAD_FAILED,
-  UPLOAD_UNAVAILABLE,
-  UPLOAD_UNSAFE_SVG,
-  newlyUploaded,
-  resolveCroppedUpload,
-} from '@/lib/crop-upload'
+import { saveImageChange, uploadedImage } from '@/lib/image-field'
 import {
   changedListingFields,
   listingEdit,
@@ -44,24 +35,20 @@ export async function updateListing(_previous: ListingSaveState, formData: FormD
   }
 
   const existing = logoImage(loaded)
-  const uploaded = await resolveCroppedUpload({
+  const logo = (await uploadedImage({
     formData,
     names: LOGO_FIELD_NAMES,
     folder: 'sponsors',
     existing,
-  })
-  if (uploaded === UPLOAD_FAILED) redirect('/sponsor?error=upload')
-  if (uploaded === UPLOAD_UNAVAILABLE) redirect('/sponsor?error=storage')
-  if (uploaded === UPLOAD_UNSAFE_SVG) redirect('/sponsor?error=svg')
-  const logo = uploaded === NO_UPLOAD ? existing : uploaded
-  const uploads = uploaded === NO_UPLOAD ? [] : newlyUploaded(uploaded, existing)
+    page: '/sponsor',
+  })) ?? { image: existing, uploads: [] }
 
-  const values = { ...loaded, ...parsed.data, ...logoColumns(logo) }
+  const values = { ...loaded, ...parsed.data, ...logoColumns(logo.image) }
   const fields = changedListingFields(loaded, values)
   if (fields.length === 0) redirect('/sponsor?saved=unchanged')
 
   const db = getDb()
-  const saved = await writeOrDiscardUploads(uploads, async () => {
+  const saved = await saveImageChange(logo, existing, async () => {
     const [, edit] = await db.batch(listingEdit(db, Number(member.user.id), listing.id, loaded, values, fields))
     return edit.rows
   })
@@ -70,7 +57,6 @@ export async function updateListing(_previous: ListingSaveState, formData: FormD
     if (current?.id !== listing.id) redirect('/sponsor?error=missing')
     return refusalForMissedSave(current, loaded, values, fields) ?? outdatedRefusal(current, values, fields)
   }
-  await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/sponsor?saved=listing')
 }
