@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { asc, inArray, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { memberTopicSubscriptions, newsletterTopics } from '@/db/schema'
+import { members, memberTopicSubscriptions, newsletterTopics } from '@/db/schema'
 import { requiredText } from './form-fields'
+import { audienceEmailCondition } from './newsletter-audience'
 import { qualified } from './qualified-column'
 
 export const MAX_TOPIC_NAME_LENGTH = 100
@@ -28,13 +29,26 @@ export async function getNewsletterTopics() {
     .orderBy(asc(newsletterTopics.sortOrder), asc(newsletterTopics.id))
 }
 
+/** Counts only confirmed members, the same people a send would reach, so every page shows one number. */
+export function confirmedSubscriberCount() {
+  return sql<number>`(
+    select count(*)::int from ${memberTopicSubscriptions}
+    join ${members} on ${qualified(members.id)} = ${qualified(memberTopicSubscriptions.memberId)}
+    where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)}
+      and ${qualified(members.emailConfirmedAt)} is not null
+      and ${audienceEmailCondition(qualified(members.email))}
+  )`
+}
+
 export async function getNewsletterTopicsWithSubscriberCounts() {
   return getDb()
     .select({
       id: newsletterTopics.id,
       name: newsletterTopics.name,
       description: newsletterTopics.description,
-      subscriberCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)})`,
+      subscriberCount: confirmedSubscriberCount(),
+      /** Every member's choice, confirmed or not and whatever the environment: deleting the topic removes all of them. */
+      choiceCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)})`,
     })
     .from(newsletterTopics)
     .orderBy(asc(newsletterTopics.sortOrder), asc(newsletterTopics.id))

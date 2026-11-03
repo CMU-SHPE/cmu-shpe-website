@@ -14,6 +14,7 @@ import {
 import { recordId } from './form-fields'
 import { audienceEmailCondition } from './newsletter-audience'
 import { qualified } from './qualified-column'
+import { confirmedSubscriberCount } from './newsletter-topics'
 import { siteUrl } from './site-url'
 import { MAX_NEWSLETTER_BODY_LENGTH, MAX_NEWSLETTER_SUBJECT_LENGTH } from './newsletter-limits'
 
@@ -42,17 +43,6 @@ export function parseNewsletterForm(formData: FormData) {
   })
 }
 
-function confirmedSubscriberCount() {
-  return sql<number>`(
-    select count(*)::int from ${memberTopicSubscriptions}
-    join ${members} on ${qualified(members.id)} = ${qualified(memberTopicSubscriptions.memberId)}
-    where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)}
-      and ${qualified(members.emailConfirmedAt)} is not null
-      and ${audienceEmailCondition(qualified(members.email))}
-  )`
-}
-
-/** Counts only confirmed members, the same people a send would reach. */
 export async function getTopicsWithConfirmedSubscriberCounts() {
   return getDb()
     .select({ id: newsletterTopics.id, name: newsletterTopics.name, subscriberCount: confirmedSubscriberCount() })

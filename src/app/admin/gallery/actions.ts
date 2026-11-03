@@ -5,33 +5,22 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { galleryPhotos } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { cleanupBlobs, writeOrDiscardUploads } from '@/lib/blob-cleanup'
-import { orphanedBlobs } from '@/lib/crop'
-import {
-  NO_UPLOAD,
-  UPLOAD_FAILED,
-  UPLOAD_UNAVAILABLE,
-  UPLOAD_UNSAFE_SVG,
-  newlyUploaded,
-  resolveCroppedUpload,
-} from '@/lib/crop-upload'
+import { cleanupBlobs } from '@/lib/blob-cleanup'
+import type { StoredImage } from '@/lib/crop'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import {
   GALLERY_IMAGE_FIELD_NAMES,
-  type GalleryImage,
   galleryImage,
   galleryImageColumns,
   parseGalleryPhotoForm,
 } from '@/lib/gallery-schema'
+import { resolveRequiredImageField, saveImageChange } from '@/lib/image-field'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
 
+const PAGE = '/admin/gallery'
 const SAVED = '/admin/gallery?saved=1'
 const INVALID = '/admin/gallery?error=invalid'
-const NO_IMAGE = '/admin/gallery?error=image'
 const MISSING = '/admin/gallery?error=missing'
-const UPLOAD = '/admin/gallery?error=upload'
-const STORAGE = '/admin/gallery?error=storage'
-const UNSAFE_SVG = '/admin/gallery?error=svg'
 
 const imageFields = {
   imageUrl: galleryPhotos.imageUrl,
@@ -39,25 +28,15 @@ const imageFields = {
   imageCrop: galleryPhotos.imageCrop,
 }
 
-async function resolveImage(
-  formData: FormData,
-  imagePath: string | null,
-  existing: GalleryImage | null,
-): Promise<{ image: GalleryImage; uploads: string[] }> {
-  const uploaded = await resolveCroppedUpload({
+function resolveImage(formData: FormData, imagePath: string | null, existing: StoredImage | null) {
+  return resolveRequiredImageField({
     formData,
     names: GALLERY_IMAGE_FIELD_NAMES,
     folder: 'gallery',
     existing,
+    typedUrl: imagePath,
+    page: PAGE,
   })
-  if (uploaded === UPLOAD_FAILED) redirect(UPLOAD)
-  if (uploaded === UPLOAD_UNAVAILABLE) redirect(STORAGE)
-  if (uploaded === UPLOAD_UNSAFE_SVG) redirect(UNSAFE_SVG)
-  if (uploaded !== NO_UPLOAD) return { image: uploaded, uploads: newlyUploaded(uploaded, existing) }
-
-  if (existing && (imagePath === null || imagePath === existing.imageUrl)) return { image: existing, uploads: [] }
-  if (imagePath === null) redirect(NO_IMAGE)
-  return { image: { imageUrl: imagePath, originalUrl: null, crop: null }, uploads: [] }
 }
 
 export async function createGalleryPhoto(formData: FormData) {
@@ -67,11 +46,11 @@ export async function createGalleryPhoto(formData: FormData) {
   if (!parsed.success) redirect(INVALID)
 
   const { imageUrl, ...fields } = parsed.data
-  const { image, uploads } = await resolveImage(formData, imageUrl, null)
-  await writeOrDiscardUploads(uploads, async () =>
+  const image = await resolveImage(formData, imageUrl, null)
+  await saveImageChange(image, null, async () =>
     getDb()
       .insert(galleryPhotos)
-      .values({ ...fields, ...galleryImageColumns(image), sortOrder: await nextSortOrder(galleryPhotos) })
+      .values({ ...fields, ...galleryImageColumns(image.image), sortOrder: await nextSortOrder(galleryPhotos) })
       .returning({ id: galleryPhotos.id }),
   )
 
@@ -91,16 +70,15 @@ export async function updateGalleryPhoto(id: number, formData: FormData) {
 
   const existing = galleryImage(row)
   const { imageUrl, ...fields } = parsed.data
-  const { image, uploads } = await resolveImage(formData, imageUrl, existing)
-  const saved = await writeOrDiscardUploads(uploads, () =>
+  const image = await resolveImage(formData, imageUrl, existing)
+  const saved = await saveImageChange(image, existing, () =>
     db
       .update(galleryPhotos)
-      .set({ ...fields, ...galleryImageColumns(image) })
+      .set({ ...fields, ...galleryImageColumns(image.image) })
       .where(eq(galleryPhotos.id, photoId.data))
       .returning({ id: galleryPhotos.id }),
   )
   if (!saved) redirect(MISSING)
-  await cleanupBlobs(...orphanedBlobs(existing, image))
 
   redirect(SAVED)
 }

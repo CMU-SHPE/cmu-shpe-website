@@ -100,9 +100,20 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.subscriberCount]))).toEqual(counts)
   })
 
-  it('counts every subscriber of each topic on the stage 1 topics page, whatever the environment', async () => {
+  it('shows the topics page the same confirmed audience count as the composer', async () => {
+    const [topicsPage, composer] = await Promise.all([
+      getNewsletterTopicsWithSubscriberCounts(),
+      getTopicsWithConfirmedSubscriberCounts(),
+    ])
+    expect(Object.fromEntries(topicsPage.map((topic) => [topic.name, topic.subscriberCount]))).toEqual(counts)
+    expect(topicsPage.map(({ id, subscriberCount }) => ({ id, subscriberCount }))).toEqual(
+      composer.map(({ id, subscriberCount }) => ({ id, subscriberCount })),
+    )
+  })
+
+  it('counts every member’s choice of each topic for the delete warning, whatever the environment', async () => {
     const topics = await getNewsletterTopicsWithSubscriberCounts()
-    expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.subscriberCount]))).toEqual({
+    expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.choiceCount]))).toEqual({
       Events: 4,
       Jobs: 2,
       Other: 1,

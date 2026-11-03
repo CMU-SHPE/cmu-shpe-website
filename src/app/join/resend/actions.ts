@@ -10,7 +10,7 @@ import { EmailSendError, sendEmail } from '@/lib/email'
 import { confirmEmail } from '@/lib/email-templates'
 import { clientIp } from '@/lib/login-throttle'
 import { parseEmailRequest, purgeStaleUnconfirmedMembers, safeValues, type FormState } from '@/lib/member-accounts'
-import { deleteMemberTokens, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
+import { confirmEmailLink, deleteMemberTokens, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
 import { recordRequest } from '@/lib/request-throttle'
 import { siteUrl } from '@/lib/site-url'
 
@@ -56,5 +56,5 @@ async function sendConfirmationIfUnconfirmed(email: string, base: string) {
 
   const { token, row } = newMemberToken(member.id, 'confirm_email')
   await db.batch([deleteMemberTokens(db, member.id, 'confirm_email'), insertMemberToken(db, row)])
-  await sendEmail({ to: email, ...confirmEmail(`${base}/join/confirm?token=${token}`) })
+  await sendEmail({ to: email, ...confirmEmail(confirmEmailLink(base, token)) })
 }
