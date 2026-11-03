@@ -1,6 +1,7 @@
 import { config } from 'dotenv'
 import bcrypt from 'bcryptjs'
 import { type Db, getDb } from './index'
+import { insertAdmin } from './admin-insert'
 import {
   admins,
   advisors,
@@ -45,12 +46,15 @@ async function ensureMasterAdmin(db: Db): Promise<string> {
     )
   }
 
-  await db.insert(admins).values({
+  const id = await insertAdmin(db, {
     name: parsed.data.name,
     email: parsed.data.email,
     passwordHash: await bcrypt.hash(parsed.data.password, 12),
     role: 'master',
   })
+  if (id === null) {
+    throw new Error(`${parsed.data.email} already belongs to a member account. Set MASTER_EMAIL to another address.`)
+  }
   return `admins: created master account ${parsed.data.email}`
 }
 

@@ -58,7 +58,7 @@ import { hashToken, insertMemberToken, newMemberToken } from '@/lib/member-token
 import { resolveUnsubscribeToken } from '@/lib/newsletter-unsubscribe'
 import { unsubscribeTokenFor } from '@/lib/newsletter-unsubscribe-token'
 import { TEST_PASSWORD, createAdmin, createEvent, createMember, createSponsor, resetDb } from '@/test/db'
-import { masterResetWrites } from '@/db/reset-master-writes'
+import { resetMasterAccount } from '@/db/reset-master-writes'
 import { changePassword } from './account/actions'
 import { confirmEmailChangeFromLink } from './account/confirm-email/actions'
 import { requestPasswordReset } from './forgot-password/actions'
@@ -245,7 +245,7 @@ describe('db:reset-master', () => {
     const masterToken = await issueAdminToken(master.id)
     const otherToken = await issueAdminToken(other.id)
 
-    await db.batch(masterResetWrites(db, master, 'new-max@shpe.test', 'new hash'))
+    expect(await resetMasterAccount(db, 'new-max@shpe.test', 'new hash')).toEqual({ status: 'reset', previousEmail: 'max@shpe.test', sharedWithMember: false })
 
     expect(await db.select({ adminId: adminTokens.adminId }).from(adminTokens)).toEqual([{ adminId: other.id }])
     await expect(resetAdminPasswordWithLink({}, resetForm(masterToken))).resolves.toEqual({

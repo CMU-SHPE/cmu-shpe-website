@@ -115,7 +115,9 @@ clears the failed sign-ins recorded against both emails, cancels its emailed res
 signs out every existing master session. It reports the new password's length; if that doesn't match what you
 typed, fix the quoting and run it again. Variables already set in the shell take
 precedence over `.env.local`. Other admins are left alone; the master resets their
-passwords from **Admin accounts**.
+passwords from **Admin accounts**. It refuses, and changes nothing, if another admin uses
+`MASTER_EMAIL`, or if a member does and it isn't already the master's address: sign-in picks
+the admin account, so a member sharing the address would be locked out.
 
 ### Local development
 
