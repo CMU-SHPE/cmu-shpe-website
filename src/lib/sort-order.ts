@@ -2,6 +2,7 @@ import { type SQL, asc, eq, max } from 'drizzle-orm'
 import { getDb } from '@/db'
 import {
   advisors,
+  galleryPhotos,
   homePillars,
   homeStats,
   nationalStats,
@@ -17,6 +18,7 @@ export type OrderedTable =
   | typeof sponsors
   | typeof officers
   | typeof advisors
+  | typeof galleryPhotos
   | typeof homeStats
   | typeof homePillars
   | typeof nationalStats
