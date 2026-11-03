@@ -1,3 +1,4 @@
+import { isValidElement, type ReactNode } from 'react'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { draft, hasTestDatabase, query, seed } from '@/db/pg-test-support'
@@ -23,6 +24,7 @@ import NewNewsletterPage from './new/page'
 import NewsletterPage from './[id]/page'
 import ConfirmSendPage from './[id]/send/page'
 import AdminTopicsPage from '@/app/admin/topics/page'
+import DeleteButton from '@/components/admin/delete-button'
 import AdminMembersPage from '@/app/admin/members/page'
 import UnsubscribePage from '@/app/unsubscribe/page'
 import { processNewsletterSend, startNewsletterSend } from '@/lib/newsletter-send'
@@ -44,6 +46,13 @@ function text(html: string) {
 }
 
 const none = () => Promise.resolve({})
+
+function deleteWarnings(node: ReactNode): Record<string, string | undefined> {
+  if (Array.isArray(node)) return Object.assign({}, ...node.map(deleteWarnings))
+  if (!isValidElement<{ name?: string; warning?: string; children?: ReactNode }>(node)) return {}
+  if (node.type === DeleteButton) return { [node.props.name ?? '']: node.props.warning }
+  return deleteWarnings(node.props.children)
+}
 
 describe.skipIf(!hasTestDatabase).each(['production', 'preview'])('admin and unsubscribe page loaders on real Postgres, VERCEL_ENV=%s', (env) => {
   const restricted = env !== 'production'
@@ -103,12 +112,23 @@ describe.skipIf(!hasTestDatabase).each(['production', 'preview'])('admin and uns
     expect(html.includes('ana@example.com')).toBe(!restricted)
   })
 
-  it('renders the stage 1 topics and members pages with correct counts', async () => {
+  it('renders the topics page with the composer’s counts and members pages with correct counts', async () => {
     const topics = text(renderToString(await AdminTopicsPage({ searchParams: Promise.resolve({}) })))
-    expect(topics).toContain('3 subscribers')
-    expect(topics).toContain('1 subscriber')
+    expect(topics.match(/\d+ subscribers?/g)).toEqual(
+      restricted ? ['1 subscriber', '0 subscribers', '0 subscribers'] : ['2 subscribers', '1 subscriber', '0 subscribers'],
+    )
+    expect(topics.includes('Not the production site')).toBe(restricted)
     const members = text(renderToString(await AdminMembersPage({ searchParams: Promise.resolve({}) })))
     expect(members).toMatch(/ana@example\.com .*? 2 /)
+  })
+
+  it('warns that deleting a topic removes every member’s choice, unconfirmed and non-test ones included', async () => {
+    const warnings = deleteWarnings(await AdminTopicsPage({ searchParams: Promise.resolve({}) }))
+    expect(warnings).toEqual({
+      Events: '3 members (confirmed or not) have chosen it; their choice is removed and it won’t be sent to them.',
+      Jobs: '1 member (confirmed or not) has chosen it; their choice is removed and it won’t be sent to them.',
+      Other: 'No members have chosen it yet.',
+    })
   })
 
   it('renders the unsubscribe page for a real link without changing anything', async () => {

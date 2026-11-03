@@ -5,17 +5,10 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { members, sponsors } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { cleanupBlobs, writeOrDiscardUploads } from '@/lib/blob-cleanup'
-import { type CroppedImage, orphanedBlobs } from '@/lib/crop'
-import {
-  NO_UPLOAD,
-  UPLOAD_FAILED,
-  UPLOAD_UNAVAILABLE,
-  UPLOAD_UNSAFE_SVG,
-  newlyUploaded,
-  resolveCroppedUpload,
-} from '@/lib/crop-upload'
+import { cleanupBlobs } from '@/lib/blob-cleanup'
+import type { CroppedImage } from '@/lib/crop'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
+import { resolveImageField, saveImageChange, typedImage } from '@/lib/image-field'
 import { moveRow, nextSortOrder } from '@/lib/sort-order'
 import {
   changedOfficerFields,
@@ -53,24 +46,15 @@ async function readEditableFields(id: number) {
   return row
 }
 
-async function resolveLogo(
-  formData: FormData,
-  logoPath: string | null,
-  existing: CroppedImage | null,
-): Promise<{ logo: CroppedImage; uploads: string[] }> {
-  const uploaded = await resolveCroppedUpload({
+function resolveLogo(formData: FormData, logoPath: string | null, existing: CroppedImage | null) {
+  return resolveImageField({
     formData,
     names: LOGO_FIELD_NAMES,
     folder: 'sponsors',
     existing,
+    typedUrl: logoPath,
+    page: '/admin/sponsors',
   })
-  if (uploaded === UPLOAD_FAILED) redirect('/admin/sponsors?error=upload')
-  if (uploaded === UPLOAD_UNAVAILABLE) redirect('/admin/sponsors?error=storage')
-  if (uploaded === UPLOAD_UNSAFE_SVG) redirect('/admin/sponsors?error=svg')
-  if (uploaded !== NO_UPLOAD) return { logo: uploaded, uploads: newlyUploaded(uploaded, existing) }
-
-  if (existing?.imageUrl && logoPath === existing.imageUrl) return { logo: existing, uploads: [] }
-  return { logo: { imageUrl: logoPath, originalUrl: null, crop: null }, uploads: [] }
 }
 
 export async function createSponsor(formData: FormData) {
@@ -80,13 +64,13 @@ export async function createSponsor(formData: FormData) {
   if (!parsed.success) redirect('/admin/sponsors?error=invalid')
 
   const { logoUrl, ...fields } = parsed.data
-  const { logo, uploads } = await resolveLogo(formData, logoUrl, null)
-  await writeOrDiscardUploads(uploads, async () =>
+  const logo = await resolveLogo(formData, logoUrl, null)
+  await saveImageChange(logo, null, async () =>
     getDb()
       .insert(sponsors)
       .values({
         ...fields,
-        ...logoColumns(logo),
+        ...logoColumns(logo.image),
         sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)),
       })
       .returning({ id: sponsors.id }),
@@ -113,19 +97,18 @@ export async function updateSponsor(
   const { logoUrl, ...fields } = parsed.data
   const loaded = parseLoadedListing(formData)
   if (!loaded) {
-    const { logo } = await resolveLogo(new FormData(), logoUrl, logoImage(row))
-    const submitted = { ...fields, ...logoColumns(logo) }
+    const submitted = { ...fields, ...logoColumns(typedImage(logoUrl, logoImage(row)).image) }
     return outdatedRefusal(row, submitted, changedOfficerFields(row, submitted), logoFileChosen(formData))
   }
 
   const existing = logoImage(loaded)
-  const { logo, uploads } = await resolveLogo(formData, logoUrl, existing)
-  const values = { ...fields, ...logoColumns(logo) }
+  const logo = await resolveLogo(formData, logoUrl, existing)
+  const values = { ...fields, ...logoColumns(logo.image) }
   const changed = changedOfficerFields(loaded, values)
   if (changed.length === 0) redirect('/admin/sponsors?saved=1')
 
   const db = getDb()
-  const saved = await writeOrDiscardUploads(uploads, async () => {
+  const saved = await saveImageChange(logo, existing, async () => {
     const tierChange = changed.includes('tier')
       ? { sortOrder: await nextSortOrder(sponsors, eq(sponsors.tier, fields.tier)) }
       : {}
@@ -140,7 +123,6 @@ export async function updateSponsor(
     if (refused) return refused
     redirect('/admin/sponsors?error=not-saved')
   }
-  await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/admin/sponsors?saved=1')
 }
