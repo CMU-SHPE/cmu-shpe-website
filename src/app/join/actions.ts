@@ -18,7 +18,7 @@ import {
   safeValues,
   type FormState,
 } from '@/lib/member-accounts'
-import { deleteMemberTokens, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
+import { confirmEmailLink, deleteMemberTokens, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
 import { getPrivacyPolicyVersion } from '@/lib/queries'
 import { recordRequest } from '@/lib/request-throttle'
 import { siteUrl } from '@/lib/site-url'
@@ -43,10 +43,6 @@ function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row
     from ${members}
     where ${stillUnconfirmed}
   `)
-}
-
-function confirmLink(base: string, token: string) {
-  return `${base}/join/confirm?token=${token}`
 }
 
 // The new and unconfirmed paths spend one more round trip on their write batch. This
@@ -108,7 +104,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
       insertTokenIfUnconfirmed(db, stillUnconfirmed, row),
     ])
     if (takenOver.length === 0) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
-    return confirmEmail(confirmLink(base, token))
+    return confirmEmail(confirmEmailLink(base, token))
   }
 
   const newMemberId = sql`(select ${members.id} from ${members} where ${members.email} = ${email})`
@@ -131,7 +127,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
     if (retried) throw new Error('An admin account claimed this address during sign-up twice in a row')
     return prepareSignUpEmail(db, signUp, true)
   }
-  return confirmEmail(confirmLink(base, token))
+  return confirmEmail(confirmEmailLink(base, token))
 }
 
 /**
