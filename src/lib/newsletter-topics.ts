@@ -47,6 +47,8 @@ export async function getNewsletterTopicsWithSubscriberCounts() {
       name: newsletterTopics.name,
       description: newsletterTopics.description,
       subscriberCount: confirmedSubscriberCount(),
+      /** Every member's choice, confirmed or not and whatever the environment: deleting the topic removes all of them. */
+      choiceCount: sql<number>`(select count(*)::int from ${memberTopicSubscriptions} where ${qualified(memberTopicSubscriptions.topicId)} = ${qualified(newsletterTopics.id)})`,
     })
     .from(newsletterTopics)
     .orderBy(asc(newsletterTopics.sortOrder), asc(newsletterTopics.id))

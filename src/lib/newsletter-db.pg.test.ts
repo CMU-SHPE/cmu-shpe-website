@@ -111,6 +111,15 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     )
   })
 
+  it('counts every member’s choice of each topic for the delete warning, whatever the environment', async () => {
+    const topics = await getNewsletterTopicsWithSubscriberCounts()
+    expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.choiceCount]))).toEqual({
+      Events: 4,
+      Jobs: 2,
+      Other: 1,
+    })
+  })
+
   it('counts each member’s own topics on the members page', async () => {
     const { rows } = await listMembers({ q: '', page: 1 })
     expect(Object.fromEntries(rows.map((row) => [row.email, row.topicCount]))).toEqual({
