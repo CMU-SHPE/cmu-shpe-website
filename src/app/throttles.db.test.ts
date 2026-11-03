@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
@@ -343,6 +343,21 @@ describe('storing and counting', () => {
     )
     expect(results.filter(({ throttled }) => !throttled)).toHaveLength(REQUEST_LIMITS.signup.perEmailAndIp)
     expect(await getDb().select().from(requestThrottle)).toHaveLength(REQUEST_LIMITS.signup.perEmailAndIp)
+  })
+
+  it('waits for the lock on that email and flow before counting', async () => {
+    const db = getDb()
+    const finished: string[] = []
+    const holder = db
+      .batch([
+        db.execute(sql`select pg_advisory_xact_lock(hashtext(${'signup:sam@shpe.test'}))`),
+        db.execute(sql`select pg_sleep(2)`),
+      ])
+      .then(() => finished.push('lock holder'))
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const attempt = recordRequest('signup', 'sam@shpe.test', STRANGER_IP).then(() => finished.push('attempt'))
+    await Promise.all([holder, attempt])
+    expect(finished).toEqual(['lock holder', 'attempt'])
   })
 
   it('lets exactly the allowance of sign-in attempts through at once', async () => {
