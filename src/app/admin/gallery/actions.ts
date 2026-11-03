@@ -6,10 +6,10 @@ import { getDb } from '@/db'
 import { galleryPhotos } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { cleanupBlobs } from '@/lib/blob-cleanup'
+import type { StoredImage } from '@/lib/crop'
 import { type MoveDirection, moveRequest, recordId } from '@/lib/form-fields'
 import {
   GALLERY_IMAGE_FIELD_NAMES,
-  type GalleryImage,
   galleryImage,
   galleryImageColumns,
   parseGalleryPhotoForm,
@@ -28,7 +28,7 @@ const imageFields = {
   imageCrop: galleryPhotos.imageCrop,
 }
 
-function resolveImage(formData: FormData, imagePath: string | null, existing: GalleryImage | null) {
+function resolveImage(formData: FormData, imagePath: string | null, existing: StoredImage | null) {
   return resolveRequiredImageField({
     formData,
     names: GALLERY_IMAGE_FIELD_NAMES,

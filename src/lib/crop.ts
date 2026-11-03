@@ -16,6 +16,9 @@ export type CroppedImage = {
   crop: string | null
 }
 
+/** An image that is always present, such as a gallery photo's. */
+export type StoredImage = CroppedImage & { imageUrl: string }
+
 export function cropSourceUrl(existing: CroppedImage | null): string | null {
   if (!existing) return null
   return existing.originalUrl ?? existing.imageUrl

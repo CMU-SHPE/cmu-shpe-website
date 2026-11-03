@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { CroppedImage } from './crop'
+import type { StoredImage } from './crop'
 import { optional, requiredText } from './form-fields'
 import { imageSource } from './validation'
 
@@ -30,12 +30,10 @@ export type GalleryImageColumns = {
   imageCrop: string | null
 }
 
-export type GalleryImage = CroppedImage & { imageUrl: string }
-
-export function galleryImage(row: GalleryImageColumns): GalleryImage {
+export function galleryImage(row: GalleryImageColumns): StoredImage {
   return { imageUrl: row.imageUrl, originalUrl: row.imageOriginalUrl, crop: row.imageCrop }
 }
 
-export function galleryImageColumns(image: GalleryImage): GalleryImageColumns {
+export function galleryImageColumns(image: StoredImage): GalleryImageColumns {
   return { imageUrl: image.imageUrl, imageOriginalUrl: image.originalUrl, imageCrop: image.crop }
 }

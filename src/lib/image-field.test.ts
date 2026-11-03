@@ -113,6 +113,13 @@ describe('resolveRequiredImageField', () => {
     expect(await resolveRequiredImageField({ ...request(form()), typedUrl: null })).toEqual({ image: existing, uploads: [] })
   })
 
+  it('keeps the existing crop and original when the URL is unchanged', async () => {
+    expect(await resolveRequiredImageField({ ...request(form()), typedUrl: existing.imageUrl })).toEqual({
+      image: existing,
+      uploads: [],
+    })
+  })
+
   it('refuses a blank URL when there is no image to keep', async () => {
     const result = redirectOf(resolveRequiredImageField({ ...request(form(), null), typedUrl: null }))
     expect(await result).toBe('/admin/officers?error=image')

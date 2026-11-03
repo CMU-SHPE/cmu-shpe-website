@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { cleanupBlobs, writeOrDiscardUploads } from './blob-cleanup'
-import { type CroppedImage, orphanedBlobs } from './crop'
+import { type CroppedImage, type StoredImage, orphanedBlobs } from './crop'
 import {
   type CropFieldNames,
   NO_UPLOAD,
@@ -11,8 +11,6 @@ import {
   resolveCroppedUpload,
 } from './crop-upload'
 import type { UploadFolder } from './uploads'
-
-export type StoredImage = CroppedImage & { imageUrl: string }
 
 /** The image a save will store, and the blobs this request uploaded for it. */
 export type ImageChange<Image extends CroppedImage = CroppedImage> = { image: Image; uploads: string[] }
