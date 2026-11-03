@@ -25,8 +25,9 @@ const mocks = vi.hoisted(() => {
       }),
     },
     requireAdmin: vi.fn(async () => ({ user: { id: '2', email: 'ana@example.com', role: 'admin' } })),
-    recordLoginAttempt: vi.fn(async () => ({ throttled: false })),
+    recordRequest: vi.fn(async () => ({ throttled: false })),
     clearLoginAttempts: vi.fn(async () => {}),
+    deleteAdminTokens: vi.fn(async () => {}),
     compare: vi.fn<(password: string, hash: string) => Promise<boolean>>(),
     hash: vi.fn(async (_password: string, cost: number) => `$2b$${cost}$new-hash`),
     signIn: vi.fn<(provider: string, options: Record<string, unknown>) => Promise<void>>(),
@@ -43,11 +44,12 @@ vi.mock('next/navigation', () => ({
 }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.9, 10.0.0.1' }) }))
 vi.mock('@/db', () => ({ getDb: () => mocks.db }))
+vi.mock('@/lib/admin-tokens', () => ({ deleteAdminTokens: mocks.deleteAdminTokens }))
 vi.mock('@/lib/admin', () => ({ requireAdmin: mocks.requireAdmin }))
 vi.mock('@/lib/authorize', () => ({
-  recordLoginAttempt: mocks.recordLoginAttempt,
   clearLoginAttempts: mocks.clearLoginAttempts,
 }))
+vi.mock('@/lib/request-throttle', () => ({ recordRequest: mocks.recordRequest }))
 vi.mock('bcryptjs', () => ({ default: { compare: mocks.compare, hash: mocks.hash } }))
 vi.mock('@/auth', () => ({ signIn: mocks.signIn }))
 
@@ -77,8 +79,8 @@ beforeEach(() => {
   mocks.state.row = { id: 2, email: 'ana@example.com', passwordHash: '$2b$12$stored' }
   mocks.state.updates = []
   mocks.requireAdmin.mockClear()
-  mocks.recordLoginAttempt.mockReset()
-  mocks.recordLoginAttempt.mockResolvedValue({ throttled: false })
+  mocks.recordRequest.mockReset()
+  mocks.recordRequest.mockResolvedValue({ throttled: false })
   mocks.clearLoginAttempts.mockClear()
   mocks.compare.mockReset()
   mocks.compare.mockResolvedValue(true)
@@ -93,7 +95,7 @@ describe('changePassword', () => {
   it('checks the session before anything else', async () => {
     mocks.requireAdmin.mockRejectedValueOnce(new mocks.Redirect('/login'))
     expect(await redirectOf(changePassword(form()))).toBe('/login')
-    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
+    expect(mocks.recordRequest).not.toHaveBeenCalled()
   })
 
   it('rejects invalid input before touching the database', async () => {
@@ -103,11 +105,11 @@ describe('changePassword', () => {
     expect(await redirectOf(changePassword(form({ newPassword: CURRENT, confirmPassword: CURRENT })))).toBe(
       '/admin/account?error=same',
     )
-    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
+    expect(mocks.recordRequest).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(changePassword(form()))).toBe('/admin/account?error=throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
     expect(mocks.state.updates).toEqual([])
@@ -116,13 +118,14 @@ describe('changePassword', () => {
   it('records a wrong current password as a failed attempt and changes nothing', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(changePassword(form()))).toBe('/admin/account?error=current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('ana@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'ana@example.com', '203.0.113.9')
     expect(mocks.compare).toHaveBeenCalledWith(CURRENT, '$2b$12$stored')
     expect(mocks.state.updates).toEqual([])
     expect(mocks.clearLoginAttempts).not.toHaveBeenCalled()
   })
 
   it('stores a cost-12 hash, stamps the change from the app clock and clears attempts', async () => {
+    mocks.deleteAdminTokens.mockClear()
     const before = Date.now()
     expect(await redirectOf(changePassword(form()))).toBe('/admin/account?saved=1')
     expect(mocks.hash).toHaveBeenCalledWith(NEW, 12)
@@ -132,6 +135,7 @@ describe('changePassword', () => {
     expect(update.passwordChangedAt).toBeInstanceOf(Date)
     expect((update.passwordChangedAt as Date).getTime()).toBeGreaterThanOrEqual(before)
     expect(mocks.clearLoginAttempts).toHaveBeenCalledWith('ana@example.com')
+    expect(mocks.deleteAdminTokens).toHaveBeenCalledWith(mocks.db, 2)
   })
 
   it('re-issues the session with the new password so this device stays signed in', async () => {
@@ -158,7 +162,7 @@ describe('changePassword', () => {
   it('sends a session whose account is gone back to /login', async () => {
     mocks.state.row = null
     expect(await redirectOf(changePassword(form()))).toBe('/login')
-    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
+    expect(mocks.recordRequest).not.toHaveBeenCalled()
   })
 
   it('never puts a password in a redirect', async () => {

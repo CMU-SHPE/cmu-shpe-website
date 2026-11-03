@@ -2,40 +2,61 @@
 
 import { redirect } from 'next/navigation'
 import { getDb } from '@/db'
-import { cleanupBlobs } from '@/lib/blob-cleanup'
-import { orphanedBlobs } from '@/lib/crop'
-import { NO_UPLOAD, UPLOAD_FAILED, UPLOAD_UNAVAILABLE, resolveCroppedUpload } from '@/lib/crop-upload'
-import { changedListingFields, listingEdit, requireSponsor } from '@/lib/sponsor-portal'
-import { LOGO_FIELD_NAMES, logoColumns, logoImage, parseSponsorListingForm } from '@/lib/sponsor-schema'
+import { saveImageChange, uploadedImage } from '@/lib/image-field'
+import {
+  changedListingFields,
+  listingEdit,
+  logoFileChosen,
+  outdatedRefusal,
+  refusalForMissedSave,
+  requireSponsor,
+} from '@/lib/sponsor-portal'
+import { findOwnListing } from '@/lib/sponsor-portal-listing'
+import {
+  LOGO_FIELD_NAMES,
+  type ListingSaveState,
+  logoColumns,
+  logoImage,
+  parseLoadedListing,
+  parseSponsorListingForm,
+} from '@/lib/sponsor-schema'
 
-export async function updateListing(formData: FormData) {
+// Used with useActionState, so the previous state comes before the form.
+export async function updateListing(_previous: ListingSaveState, formData: FormData): Promise<ListingSaveState> {
   const { member, listing } = await requireSponsor()
 
   const parsed = parseSponsorListingForm(formData)
   if (!parsed.success) redirect('/sponsor?error=invalid')
 
-  const existing = logoImage(listing)
-  const uploaded = await resolveCroppedUpload({
+  const loaded = parseLoadedListing(formData)
+  if (!loaded) {
+    const submitted = { ...listing, ...parsed.data }
+    return outdatedRefusal(listing, submitted, changedListingFields(listing, submitted), logoFileChosen(formData))
+  }
+
+  const existing = logoImage(loaded)
+  const logo = (await uploadedImage({
     formData,
     names: LOGO_FIELD_NAMES,
     folder: 'sponsors',
     existing,
-  })
-  if (uploaded === UPLOAD_FAILED) redirect('/sponsor?error=upload')
-  if (uploaded === UPLOAD_UNAVAILABLE) redirect('/sponsor?error=storage')
-  const logo = uploaded === NO_UPLOAD ? existing : uploaded
+    page: '/sponsor',
+  })) ?? { image: existing, uploads: [] }
 
-  const values = { ...parsed.data, ...logoColumns(logo) }
-  const fields = changedListingFields(listing, values)
+  const values = { ...loaded, ...parsed.data, ...logoColumns(logo.image) }
+  const fields = changedListingFields(loaded, values)
   if (fields.length === 0) redirect('/sponsor?saved=unchanged')
 
   const db = getDb()
-  const [, updated] = await db.batch(listingEdit(db, Number(member.user.id), listing.id, values, fields))
-  if (updated.length === 0) {
-    await cleanupBlobs(...orphanedBlobs(logo, existing))
-    redirect('/sponsor?error=missing')
+  const saved = await saveImageChange(logo, existing, async () => {
+    const [, edit] = await db.batch(listingEdit(db, Number(member.user.id), listing.id, loaded, values, fields))
+    return edit.rows
+  })
+  if (!saved) {
+    const current = await findOwnListing(Number(member.user.id))
+    if (current?.id !== listing.id) redirect('/sponsor?error=missing')
+    return refusalForMissedSave(current, loaded, values, fields) ?? outdatedRefusal(current, values, fields)
   }
-  await cleanupBlobs(...orphanedBlobs(existing, logo))
 
   redirect('/sponsor?saved=listing')
 }

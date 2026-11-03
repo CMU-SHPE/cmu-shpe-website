@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-type AdminRow = { id: number; email: string; name: string; role: 'admin' | 'master'; passwordHash: string }
+type AdminRow = {
+  id: number
+  email: string
+  name: string
+  role: 'admin' | 'master'
+  passwordHash: string
+  passwordChangedAt?: Date | null
+}
 type MemberRow = {
   id: number
   email: string
@@ -13,37 +20,26 @@ type MemberRow = {
 const fake = vi.hoisted(() => {
   const state = {
     ops: [] as string[],
-    counts: { emailAttempts: 1, ipAttempts: 1 } as Record<string, number>,
+    counts: { perEmailAndIp: 1, perEmail: 1, perIp: 1 } as Record<string, number>,
+    stored: [] as unknown[],
     admin: null as AdminRow | null,
     member: null as MemberRow | null,
     limitDelayMs: 0,
   }
   const db = {
-    insert: () => ({
-      values: async () => {
-        state.ops.push('insert attempt')
-      },
-    }),
     delete: () => ({
-      where: async (condition: { expiredBefore?: unknown }) => {
-        state.ops.push(condition?.expiredBefore ? 'purge expired attempts' : 'clear email attempts')
+      where: async () => {
+        state.ops.push('delete attempts')
       },
     }),
-    select: (fields: Record<string, unknown>) => {
-      const [key] = Object.keys(fields)
+    select: () => {
       let table = ''
       const query = {
         from: (source: Record<symbol, string>) => {
           table = source[Symbol.for('drizzle:Name')]
           return query
         },
-        where: () => {
-          if (key in state.counts) {
-            state.ops.push(`count ${key}`)
-            return Promise.resolve([{ [key]: state.counts[key] }])
-          }
-          return query
-        },
+        where: () => query,
         limit: async () => {
           if (table === 'members') {
             state.ops.push('find member')
@@ -61,16 +57,23 @@ const fake = vi.hoisted(() => {
 })
 
 vi.mock('@/db', () => ({ getDb: () => fake.db }))
-vi.mock('drizzle-orm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('drizzle-orm')>()),
-  lt: (_column: unknown, value: unknown) => ({ expiredBefore: value }),
+vi.mock('@/lib/throttle-store', () => ({
+  storeIfAllowed: async (attempt: { limits: Record<string, number>; skipEmailCeiling?: boolean }) => {
+    fake.state.ops.push('store attempt')
+    fake.state.stored.push(attempt)
+    const over = (key: string) => fake.state.counts[key] > attempt.limits[key]
+    return { throttled: over('perEmailAndIp') || (!attempt.skipEmailCeiling && over('perEmail')) || over('perIp') }
+  },
 }))
 vi.mock('bcryptjs', () => ({ default: { compare: fake.compare } }))
 
 import { authorizeCredentials } from './authorize'
+import { withKnownDevice } from './known-device'
+import { LOGIN_LIMITS } from './login-throttle'
 
 const ana: AdminRow = { id: 2, email: 'ana@example.com', name: 'Ana', role: 'admin', passwordHash: '$2b$12$real' }
 const credentials = { email: 'Ana@Example.com', password: 'correct horse battery' }
+const anaDevice = { kind: 'admin' as const, id: 2, email: 'ana@example.com', passwordChangedAt: null }
 const mia: MemberRow = {
   id: 2,
   email: 'mia@example.com',
@@ -83,7 +86,8 @@ const miaCredentials = { email: 'Mia@Example.com', password: 'member horse batte
 
 beforeEach(() => {
   fake.state.ops = []
-  fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+  fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
+  fake.state.stored = []
   fake.state.admin = null
   fake.state.member = null
   fake.state.limitDelayMs = 0
@@ -97,26 +101,27 @@ afterEach(() => {
 })
 
 describe('authorizeCredentials', () => {
-  it('records the attempt and purges expired ones before counting', async () => {
-    await authorizeCredentials(credentials, '203.0.113.7')
-    expect(fake.state.ops.slice(0, 4)).toEqual([
-      'insert attempt',
-      'purge expired attempts',
-      'count emailAttempts',
-      'count ipAttempts',
-    ])
+  it('stores the attempt under the login limits, keyed on the normalised email and source', async () => {
+    await authorizeCredentials(credentials, '203.0.113.7, 10.0.0.1')
+    expect(fake.state.ops.slice(0, 3)).toEqual(['find admin', 'find member', 'store attempt'])
+    expect(fake.state.stored[0]).toMatchObject({
+      flow: 'login',
+      columns: { email: 'ana@example.com', ip: '203.0.113.7' },
+      limits: LOGIN_LIMITS,
+      skipEmailCeiling: false,
+    })
   })
 
-  it('stops before the password check once throttled, after still purging expired attempts', async () => {
-    fake.state.counts.emailAttempts = 6
+  it('reads both account tables, then stops before the password check once throttled', async () => {
+    fake.state.counts.perEmailAndIp = 6
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
-    expect(fake.state.ops).toEqual(['insert attempt', 'purge expired attempts', 'count emailAttempts', 'count ipAttempts'])
+    expect(fake.state.ops).toEqual(['find admin', 'find member', 'store attempt'])
     expect(fake.compare).not.toHaveBeenCalled()
   })
 
-  it('purges expired attempts exactly once on every path', async () => {
+  it('stores exactly one attempt on every path', async () => {
     const scenarios: (() => void)[] = [
-      () => (fake.state.counts.emailAttempts = 6),
+      () => (fake.state.counts.perEmailAndIp = 6),
       () => (fake.state.admin = null),
       () => (fake.state.admin = ana),
       () => {
@@ -126,13 +131,59 @@ describe('authorizeCredentials', () => {
     ]
     for (const arrange of scenarios) {
       fake.state.ops = []
-      fake.state.counts = { emailAttempts: 1, ipAttempts: 1 }
+      fake.state.counts = { perEmailAndIp: 1, perEmail: 1, perIp: 1 }
       fake.state.admin = null
       fake.compare.mockResolvedValue(false)
       arrange()
       await authorizeCredentials(credentials, null)
-      expect(fake.state.ops.filter((op) => op === 'purge expired attempts')).toHaveLength(1)
+      expect(fake.state.ops.filter((op) => op === 'store attempt')).toHaveLength(1)
     }
+  })
+
+  describe('a known-device cookie', () => {
+    beforeEach(() => {
+      vi.stubEnv('AUTH_SECRET', 'a test secret for known devices')
+      fake.state.admin = ana
+      fake.compare.mockResolvedValue(true)
+      fake.state.counts.perEmail = LOGIN_LIMITS.perEmail + 1
+    })
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('lets its own account past a full per-email ceiling', async () => {
+      const cookie = withKnownDevice(undefined, anaDevice)!
+      await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toMatchObject({ id: '2' })
+      expect(fake.state.stored[0]).toMatchObject({ skipEmailCeiling: true })
+    })
+
+    it('does nothing for another account', async () => {
+      const cookie = withKnownDevice(undefined, { ...anaDevice, id: 9, email: 'someone@example.com' })!
+      await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
+      expect(fake.state.stored[0]).toMatchObject({ skipEmailCeiling: false })
+    })
+
+    it('does nothing when forged or tampered with', async () => {
+      const real = withKnownDevice(undefined, anaDevice)!
+      const tampered = `${real.slice(0, -2)}${real.endsWith('AA') ? 'AB' : 'AA'}`
+      for (const cookie of [tampered, 'ana@example.com', '', 'x'.repeat(43), `${real}x`]) {
+        await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
+      }
+      expect(fake.compare).not.toHaveBeenCalled()
+    })
+
+    it('stops working once the password changes', async () => {
+      const cookie = withKnownDevice(undefined, anaDevice, Date.now() - 1000)!
+      fake.state.admin = { ...ana, passwordChangedAt: new Date() }
+      await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
+      expect(fake.compare).not.toHaveBeenCalled()
+    })
+
+    it('still meets the per-source limit', async () => {
+      fake.state.counts = { perEmailAndIp: LOGIN_LIMITS.perEmailAndIp + 1, perEmail: 1, perIp: 1 }
+      const cookie = withKnownDevice(undefined, anaDevice)!
+      await expect(authorizeCredentials(credentials, '203.0.113.7', cookie)).resolves.toBeNull()
+    })
   })
 
   it('runs bcrypt for unknown emails so timing does not reveal admin accounts', async () => {
@@ -158,7 +209,7 @@ describe('authorizeCredentials', () => {
       role: 'admin',
       authTime: expect.any(Number),
     })
-    expect(fake.state.ops.at(-1)).toBe('clear email attempts')
+    expect(fake.state.ops.at(-1)).toBe('delete attempts')
   })
 
   it('takes authTime before reading the admin row, not after the slow password check', async () => {
@@ -177,25 +228,34 @@ describe('authorizeCredentials', () => {
 
   it('lets the 5th attempt with the right password through after 4 failures', async () => {
     fake.state.admin = ana
-    fake.state.counts.emailAttempts = 5
+    fake.state.counts.perEmailAndIp = 5
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(credentials, null)).resolves.toMatchObject({ id: '2' })
   })
 
   it('throttles the 6th attempt after 5 failures even with the right password', async () => {
     fake.state.admin = ana
-    fake.state.counts.emailAttempts = 6
+    fake.state.counts.perEmailAndIp = 6
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(credentials, null)).resolves.toBeNull()
     expect(fake.compare).not.toHaveBeenCalled()
   })
 
+  it('applies the much higher per-email ceiling across sources', async () => {
+    fake.state.admin = ana
+    fake.compare.mockResolvedValue(true)
+    fake.state.counts.perEmail = 50
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
+    fake.state.counts.perEmail = 51
+    await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
+  })
+
   it('applies the same boundary to the per-ip count', async () => {
     fake.state.admin = ana
     fake.compare.mockResolvedValue(true)
-    fake.state.counts.ipAttempts = 20
+    fake.state.counts.perIp = 50
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toMatchObject({ id: '2' })
-    fake.state.counts.ipAttempts = 21
+    fake.state.counts.perIp = 51
     await expect(authorizeCredentials(credentials, '203.0.113.7')).resolves.toBeNull()
   })
 
@@ -217,7 +277,7 @@ describe('authorizeCredentials', () => {
     })
     expect(fake.compare).toHaveBeenCalledTimes(1)
     expect(fake.compare).toHaveBeenCalledWith('member horse battery', mia.passwordHash)
-    expect(fake.state.ops.at(-1)).toBe('clear email attempts')
+    expect(fake.state.ops.at(-1)).toBe('delete attempts')
   })
 
   it('signs in as the admin when a member row has the same email', async () => {
@@ -245,14 +305,14 @@ describe('authorizeCredentials', () => {
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
     expect(fake.compare).toHaveBeenCalledTimes(1)
-    expect(fake.state.ops).not.toContain('clear email attempts')
+    expect(fake.state.ops).not.toContain('delete attempts')
   })
 
   it('refuses a member with a wrong password, keeping the attempt', async () => {
     fake.state.member = mia
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
     expect(fake.compare).toHaveBeenCalledTimes(1)
-    expect(fake.state.ops).not.toContain('clear email attempts')
+    expect(fake.state.ops).not.toContain('delete attempts')
   })
 
   it('checks both tables and runs exactly one bcrypt compare against the dummy hash for an unknown email', async () => {
@@ -264,7 +324,7 @@ describe('authorizeCredentials', () => {
 
   it('throttles members with the same login attempt limits as admins', async () => {
     fake.state.member = mia
-    fake.state.counts.emailAttempts = 6
+    fake.state.counts.perEmailAndIp = 6
     fake.compare.mockResolvedValue(true)
     await expect(authorizeCredentials(miaCredentials, null)).resolves.toBeNull()
     expect(fake.compare).not.toHaveBeenCalled()

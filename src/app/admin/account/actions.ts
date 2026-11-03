@@ -9,8 +9,10 @@ import { getDb } from '@/db'
 import { admins } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
 import { parsePasswordChange } from '@/lib/admin-account'
-import { clearLoginAttempts, recordLoginAttempt } from '@/lib/authorize'
+import { deleteAdminTokens } from '@/lib/admin-tokens'
+import { clearLoginAttempts } from '@/lib/authorize'
 import { clientIp } from '@/lib/login-throttle'
+import { recordRequest } from '@/lib/request-throttle'
 
 export async function changePassword(formData: FormData) {
   const session = await requireAdmin()
@@ -31,7 +33,7 @@ export async function changePassword(formData: FormData) {
   if (!admin) redirect('/login')
 
   const ip = clientIp((await headers()).get('x-forwarded-for'))
-  const { throttled } = await recordLoginAttempt(admin.email, ip)
+  const { throttled } = await recordRequest('account_password_check', admin.email, ip)
   if (throttled) redirect('/admin/account?error=throttled')
 
   const currentMatches = await bcrypt.compare(parsed.data.currentPassword, admin.passwordHash)
@@ -41,6 +43,8 @@ export async function changePassword(formData: FormData) {
     .update(admins)
     .set({ passwordHash: await bcrypt.hash(parsed.data.newPassword, 12), passwordChangedAt: new Date() })
     .where(eq(admins.id, admin.id))
+  // An emailed reset link from before this change would otherwise still set a password for 30 minutes.
+  await deleteAdminTokens(db, admin.id)
   await clearLoginAttempts(admin.email)
 
   try {

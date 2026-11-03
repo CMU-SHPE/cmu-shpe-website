@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
-  topics: [] as { id: number; name: string; description: string; subscriberCount: number }[],
+  topics: [] as { id: number; name: string; description: string; subscriberCount: number; choiceCount: number }[],
 }))
 
 vi.mock('@/lib/admin', () => ({
@@ -26,6 +26,7 @@ vi.mock('./actions', () => ({
   moveTopic: vi.fn(),
 }))
 
+import { TEST_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
 import AdminTopicsPage from './page'
 
 async function renderPage(searchParams: { saved?: string; error?: string } = {}) {
@@ -35,13 +36,14 @@ async function renderPage(searchParams: { saved?: string; error?: string } = {})
 beforeEach(() => {
   mocks.calls.length = 0
   mocks.topics = [
-    { id: 1, name: 'Events', description: 'Meetups and socials', subscriberCount: 3 },
-    { id: 2, name: 'Jobs', description: '', subscriberCount: 0 },
+    { id: 1, name: 'Events', description: 'Meetups and socials', subscriberCount: 3, choiceCount: 5 },
+    { id: 2, name: 'Jobs', description: '', subscriberCount: 0, choiceCount: 1 },
   ]
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 describe('AdminTopicsPage', () => {
@@ -70,15 +72,37 @@ describe('AdminTopicsPage', () => {
     expect(screen.queryByRole('button', { name: 'Move Jobs down' })).toBeNull()
   })
 
-  it('warns that deleting a topic removes members’ choices for it', async () => {
+  it('warns how many members’ choices deleting a topic removes, counting unconfirmed ones', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Delete Events' }))
     expect(confirm).toHaveBeenCalledWith(
-      "Delete Events? 3 members have chosen it; their choice is removed and they will stop getting it. This can't be undone.",
+      "Delete Events? 5 members (confirmed or not) have chosen it; their choice is removed and it won’t be sent to them. This can't be undone.",
     )
     fireEvent.click(screen.getByRole('button', { name: 'Delete Jobs' }))
-    expect(confirm).toHaveBeenLastCalledWith("Delete Jobs? No members have chosen it yet. This can't be undone.")
+    expect(confirm).toHaveBeenLastCalledWith(
+      "Delete Jobs? 1 member (confirmed or not) has chosen it; their choice is removed and it won’t be sent to them. This can't be undone.",
+    )
+  })
+
+  it('only says nobody chose a topic when no member at all has', async () => {
+    mocks.topics = [{ id: 2, name: 'Jobs', description: '', subscriberCount: 0, choiceCount: 0 }]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Jobs' }))
+    expect(confirm).toHaveBeenCalledWith("Delete Jobs? No members have chosen it yet. This can't be undone.")
+  })
+
+  it('explains the test-only audience count outside production', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    await renderPage()
+    expect(screen.getByRole('note')).toHaveTextContent(TEST_AUDIENCE_NOTICE)
+  })
+
+  it('shows no test-audience notice in production', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    await renderPage()
+    expect(screen.queryByRole('note')).toBeNull()
   })
 
   it('says when there are no topics yet', async () => {

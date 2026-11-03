@@ -9,6 +9,8 @@ PREFIX="cmu-shpe-db-test-$$"
 NETWORK="$PREFIX-net"
 PG="$PREFIX-pg"
 PROXY="$PREFIX-proxy"
+# Pinned by digest: a third-party image under a moving tag would otherwise change under us.
+PROXY_IMAGE="ghcr.io/timowilhelm/local-neon-http-proxy:main@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a"
 
 cleanup() {
   docker rm -f "$PROXY" "$PG" >/dev/null 2>&1 || true
@@ -42,7 +44,7 @@ psql_in_pg <scripts/test-db-seed.sql >/dev/null
 
 docker run -d --name "$PROXY" --network "$NETWORK" \
   -e "PG_CONNECTION_STRING=postgres://postgres:postgres@$PG:5432/main" \
-  -p 127.0.0.1::4444 ghcr.io/timowilhelm/local-neon-http-proxy:main >/dev/null
+  -p 127.0.0.1::4444 "$PROXY_IMAGE" >/dev/null
 PROXY_PORT="$(docker port "$PROXY" 4444/tcp | head -n 1 | sed 's/.*://')"
 
 export DATABASE_URL="postgres://postgres:postgres@db.localtest.me:5432/main"

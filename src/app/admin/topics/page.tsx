@@ -12,6 +12,8 @@ import {
   sectionHeadingClass,
 } from '@/components/admin/styles'
 import { requireAdmin } from '@/lib/admin'
+import { testAudienceOnly } from '@/lib/newsletter-audience'
+import { TEST_AUDIENCE_NOTICE } from '@/lib/newsletter-limits'
 import {
   MAX_TOPIC_DESCRIPTION_LENGTH,
   MAX_TOPIC_NAME_LENGTH,
@@ -22,6 +24,8 @@ import { createTopic, deleteTopic, moveTopic, updateTopic } from './actions'
 const errorMessages: Record<string, string> = {
   invalid: `Please check the fields — a topic needs a name of up to ${MAX_TOPIC_NAME_LENGTH} characters, and descriptions can be up to ${MAX_TOPIC_DESCRIPTION_LENGTH} characters.`,
   missing: 'That topic no longer exists.',
+  in_use:
+    'That topic can’t be deleted while a newsletter that uses it is still being sent. Open the newsletter, press Continue sending until it finishes, then delete the topic.',
 }
 
 function TopicFields({ topic }: { topic?: { name: string; description: string } }) {
@@ -51,8 +55,8 @@ function subscribers(count: number) {
 
 function deleteWarning(count: number) {
   if (count === 0) return 'No members have chosen it yet.'
-  const who = count === 1 ? '1 member has' : `${count} members have`
-  return `${who} chosen it; their choice is removed and they will stop getting it.`
+  const who = count === 1 ? '1 member (confirmed or not) has' : `${count} members (confirmed or not) have`
+  return `${who} chosen it; their choice is removed and it won’t be sent to them.`
 }
 
 export default async function AdminTopicsPage(props: {
@@ -66,6 +70,15 @@ export default async function AdminTopicsPage(props: {
       <h1 className={pageHeadingClass}>Newsletter topics</h1>
 
       <StatusBanner saved={saved} error={error} errorMessages={errorMessages} />
+
+      {testAudienceOnly() && (
+        <p
+          role="note"
+          className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm text-blue-900 dark:text-blue-200"
+        >
+          {TEST_AUDIENCE_NOTICE}
+        </p>
+      )}
 
       <section className={cardClass} aria-labelledby="topics-heading">
         <h2 id="topics-heading" className={sectionHeadingClass}>
@@ -97,7 +110,7 @@ export default async function AdminTopicsPage(props: {
                   <form action={deleteTopic.bind(null, topic.id)}>
                     <DeleteButton
                       name={topic.name}
-                      warning={deleteWarning(topic.subscriberCount)}
+                      warning={deleteWarning(topic.choiceCount)}
                     />
                   </form>
                 </div>

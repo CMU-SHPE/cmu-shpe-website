@@ -1,11 +1,21 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, exists, sql } from 'drizzle-orm'
 import type { Db } from '@/db'
-import { type Sponsor, members, sponsorEdits, sponsors } from '@/db/schema'
+import { type Sponsor, type SponsorTier, admins, members, sponsorEdits, sponsors } from '@/db/schema'
 import { type MemberSession, currentMember } from '@/lib/member'
 import { findOwnListing } from '@/lib/sponsor-portal-listing'
-import type { LogoColumns, SponsorListingFields } from '@/lib/sponsor-schema'
+import {
+  LOGO_FIELD_NAMES,
+  type ListingSaveRefusal,
+  type LogoColumns,
+  type SponsorListingFields,
+  loadedListing,
+  listingSnapshot,
+} from '@/lib/sponsor-schema'
+import { qualified } from '@/lib/qualified-column'
+import { normalizeNewlines } from '@/lib/text'
+import { isUploadedImage } from '@/lib/uploads'
 
 export type SponsorAccess = { member: MemberSession; listing: Sponsor }
 
@@ -35,7 +45,7 @@ export function changedListingFields(current: ListingValues, next: ListingValues
   const changed: Record<ListingField, boolean> = {
     name: current.name !== next.name,
     website: current.website !== next.website,
-    description: current.description !== next.description,
+    description: normalizeNewlines(current.description) !== normalizeNewlines(next.description),
     logo:
       current.logoUrl !== next.logoUrl ||
       current.logoOriginalUrl !== next.logoOriginalUrl ||
@@ -45,43 +55,183 @@ export function changedListingFields(current: ListingValues, next: ListingValues
   return LISTING_FIELDS.filter((field) => changed[field])
 }
 
+export type OfficerListingValues = ListingValues & { tier: SponsorTier }
+
+export type OfficerListingField = ListingField | 'tier'
+
+export function changedOfficerFields(current: OfficerListingValues, next: OfficerListingValues): OfficerListingField[] {
+  const fields: OfficerListingField[] = changedListingFields(current, next)
+  return current.tier === next.tier ? fields : [...fields, 'tier']
+}
+
+function textArray(fields: readonly string[]) {
+  return sql`array[${sql.join(
+    fields.map((field) => sql`${field}`),
+    sql`, `,
+  )}]::text[]`
+}
+
+function columnList(columns: { name: string }[]) {
+  return sql.join(
+    columns.map((column) => sql.identifier(column.name)),
+    sql`, `,
+  )
+}
+
+const FIELD_COLUMNS = {
+  name: ['name'],
+  website: ['website'],
+  description: ['description'],
+  bgColor: ['bgColor'],
+  logo: ['logoUrl', 'logoOriginalUrl', 'logoCrop'],
+  tier: ['tier'],
+} as const
+
+function changedColumns(values: OfficerListingValues, fields: readonly OfficerListingField[]) {
+  return Object.fromEntries(
+    fields.flatMap((field) => FIELD_COLUMNS[field]).map((column) => [column, values[column]]),
+  ) as Partial<OfficerListingValues>
+}
+
+/** Each column this save writes must still hold what the form was loaded with. */
+function stillAsLoaded(loaded: OfficerListingValues, fields: readonly OfficerListingField[]) {
+  return and(
+    ...fields
+      .flatMap((field) => FIELD_COLUMNS[field])
+      .map((column) =>
+        column === 'bgColor'
+          ? sql`lower(${qualified(sponsors.bgColor)}) = lower(${loaded.bgColor})`
+          : sql`${qualified(sponsors[column])} is not distinct from ${loaded[column]}`,
+      ),
+  )
+}
+
+const FIELD_LABELS: Record<Exclude<OfficerListingField, 'logo'>, string> = {
+  name: 'Name',
+  website: 'Website',
+  description: 'Description',
+  bgColor: 'Logo background color',
+  tier: 'Tier',
+}
+
+function refusal(
+  reason: ListingSaveRefusal['reason'],
+  current: OfficerListingValues,
+  submitted: OfficerListingValues,
+  own: readonly OfficerListingField[],
+  contested: readonly OfficerListingField[],
+  logoChosen = false,
+): ListingSaveRefusal {
+  const typed = own.filter((field) => field !== 'logo')
+  return {
+    reason,
+    shown: loadedListing({ ...current, ...changedColumns(submitted, typed) }),
+    loaded: listingSnapshot(current),
+    conflicts: contested
+      .filter((field) => field !== 'logo')
+      .map((field) => ({ field: FIELD_LABELS[field], saved: current[field] })),
+    logoDropped: logoChosen || own.includes('logo'),
+  }
+}
+
+export function logoFileChosen(formData: FormData) {
+  return isUploadedImage(formData.get(LOGO_FIELD_NAMES.file)) || isUploadedImage(formData.get(LOGO_FIELD_NAMES.original))
+}
+
+/**
+ * For a form that can't say what it was loaded with, or a save that missed for a reason other than a
+ * contested field. Its typed changes are kept, but none is called a conflict.
+ */
+export function outdatedRefusal(
+  current: OfficerListingValues,
+  submitted: OfficerListingValues,
+  own: readonly OfficerListingField[],
+  logoChosen = false,
+) {
+  return refusal('outdated', current, submitted, own, [], logoChosen)
+}
+
+/** Null when the columns this save wanted to write are unchanged: something else stopped it. */
+export function refusalForMissedSave(
+  current: OfficerListingValues,
+  loaded: OfficerListingValues,
+  submitted: OfficerListingValues,
+  own: readonly OfficerListingField[],
+): ListingSaveRefusal | null {
+  const changedSinceLoad = changedOfficerFields(loaded, current)
+  const contested = own.filter((field) => changedSinceLoad.includes(field))
+  return contested.length === 0 ? null : refusal('conflict', current, submitted, own, contested)
+}
+
 /**
  * The listing is never taken from the request: both writes find it through the
  * member's own row, which the first statement locks so an admin can't relink or
  * demote them between the update and the audit insert. `listingId` is the listing
  * the caller read and diffed against; if the member has since been moved to another
- * listing, nothing is written rather than applying that diff to the wrong row.
+ * listing, nothing is written rather than applying that diff to the wrong row. The
+ * update and audit are one statement, so a save that matches no row logs nothing.
  */
 export function listingEdit(
   db: Db,
   memberId: number,
   listingId: number,
-  values: ListingValues,
+  loaded: OfficerListingValues,
+  values: OfficerListingValues,
   fields: readonly ListingField[],
 ) {
   const isSponsor = and(eq(members.id, memberId), eq(members.role, 'sponsor'))
   const ownListing = db.select({ id: members.sponsorId }).from(members).where(isSponsor)
-  const changedFields = sql`array[${sql.join(
-    fields.map((field) => sql`${field}`),
-    sql`, `,
-  )}]::text[]`
-  const auditColumns = sql.join(
-    [sponsorEdits.sponsorId, sponsorEdits.memberId, sponsorEdits.memberName, sponsorEdits.fields].map((column) =>
-      sql.identifier(column.name),
-    ),
-    sql`, `,
-  )
+  const auditColumns = columnList([sponsorEdits.sponsorId, sponsorEdits.memberId, sponsorEdits.editorName, sponsorEdits.fields])
+  const update = db
+    .update(sponsors)
+    .set(changedColumns(values, fields))
+    .where(and(eq(sponsors.id, sql`(${ownListing})`), eq(sponsors.id, listingId), stillAsLoaded(loaded, fields)))
+    .returning({ id: sponsors.id })
 
   return [
     db.select({ id: members.id }).from(members).where(isSponsor).for('update'),
-    db
-      .update(sponsors)
-      .set(values)
-      .where(and(eq(sponsors.id, sql`(${ownListing})`), eq(sponsors.id, listingId)))
-      .returning({ id: sponsors.id }),
-    db.execute(sql`insert into ${sponsorEdits} (${auditColumns})
-      select ${members.sponsorId}, ${members.id}, ${members.name}, ${changedFields}
-      from ${members}
-      where ${and(isSponsor, eq(members.sponsorId, listingId))}`),
+    db.execute(sql`with updated as (${update.getSQL()})
+      insert into ${sponsorEdits} (${auditColumns})
+      select updated.id, ${qualified(members.id)}, ${qualified(members.name)}, ${textArray(fields)}
+      from updated, ${members}
+      where ${qualified(members.id)} = ${memberId}
+      returning ${sql.identifier(sponsorEdits.id.name)}`),
+  ] as const
+}
+
+/**
+ * The officer's name is read from the admins row inside the same statement, not from the session. If the
+ * listing or the officer's account is gone, or a written column has changed, neither the update nor the
+ * log row is written. `extraValues` holds columns that follow from the change and aren't versioned.
+ */
+export function officerListingEdit(
+  db: Db,
+  adminId: number,
+  listingId: number,
+  loaded: OfficerListingValues,
+  values: OfficerListingValues,
+  fields: readonly OfficerListingField[],
+  extraValues: { sortOrder?: number } = {},
+) {
+  const officerExists = exists(db.select({ id: admins.id }).from(admins).where(eq(admins.id, adminId)))
+  const update = db
+    .update(sponsors)
+    .set({ ...changedColumns(values, fields), ...extraValues })
+    .where(and(eq(sponsors.id, listingId), officerExists, stillAsLoaded(loaded, fields)))
+    .returning({ id: sponsors.id })
+  const auditColumns = columnList([
+    sponsorEdits.sponsorId,
+    sponsorEdits.editorKind,
+    sponsorEdits.adminId,
+    sponsorEdits.editorName,
+    sponsorEdits.fields,
+  ])
+  return [
+    db.execute(sql`with updated as (${update.getSQL()})
+      insert into ${sponsorEdits} (${auditColumns})
+      select updated.id, 'officer', ${qualified(admins.id)}, ${qualified(admins.name)}, ${textArray(fields)}
+      from updated, ${admins}
+      where ${qualified(admins.id)} = ${adminId}
+      returning ${sql.identifier(sponsorEdits.id.name)}`),
   ] as const
 }

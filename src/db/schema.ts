@@ -11,6 +11,7 @@ import {
   pgTable,
   serial,
   text,
+  time,
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
@@ -28,6 +29,7 @@ export const newsletterRecipientStatus = pgEnum('newsletter_recipient_status', [
   'skipped',
 ])
 export const unsubscribeSource = pgEnum('unsubscribe_source', ['one_click', 'page'])
+export const sponsorEditorKind = pgEnum('sponsor_editor_kind', ['sponsor', 'officer'])
 
 export const admins = pgTable('admins', {
   id: serial('id').primaryKey(),
@@ -117,6 +119,17 @@ export const advisors = pgTable('advisors', {
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
+export const galleryPhotos = pgTable('gallery_photos', {
+  id: serial('id').primaryKey(),
+  imageUrl: text('image_url').notNull(),
+  imageOriginalUrl: text('image_original_url'),
+  imageCrop: text('image_crop'),
+  altText: text('alt_text').notNull(),
+  caption: text('caption').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+})
+
 export const events = pgTable(
   'events',
   {
@@ -126,6 +139,8 @@ export const events = pgTable(
     location: text('location').notNull(),
     type: text('type').notNull(),
     date: date('date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    // Free text from before time slots existed; shown only for events that have no slots.
     time: text('time'),
     capacity: integer('capacity'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -133,6 +148,27 @@ export const events = pgTable(
   (table) => [
     index('events_date_idx').on(table.date),
     check('events_capacity_positive', sql`${table.capacity} > 0`),
+    check('events_end_date_after_start', sql`${table.endDate} >= ${table.date}`),
+  ],
+)
+
+export const eventTimeSlots = pgTable(
+  'event_time_slots',
+  {
+    id: serial('id').primaryKey(),
+    eventId: integer('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }).notNull(),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => [
+    index('event_time_slots_event_idx').on(table.eventId),
+    check('event_time_slots_end_date_after_start', sql`${table.endDate} >= ${table.startDate}`),
+    check('event_time_slots_end_time_after_start', sql`${table.endTime} > ${table.startTime}`),
   ],
 )
 
@@ -201,6 +237,37 @@ export const memberTokens = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
   (table) => [index('member_tokens_member_purpose_idx').on(table.memberId, table.purpose)],
+)
+
+// Only one pending change per member: a newer request replaces the row, so older links stop working.
+export const memberEmailChanges = pgTable(
+  'member_email_changes',
+  {
+    id: serial('id').primaryKey(),
+    memberId: integer('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    newEmail: text('new_email').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('member_email_changes_member_idx').on(table.memberId)],
+)
+
+// Separate from member_tokens so a token can only ever be looked up for the kind of account it was issued to.
+export const adminTokens = pgTable(
+  'admin_tokens',
+  {
+    id: serial('id').primaryKey(),
+    adminId: integer('admin_id')
+      .notNull()
+      .references(() => admins.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('admin_tokens_admin_idx').on(table.adminId)],
 )
 
 export const newsletterTopics = pgTable('newsletter_topics', {
@@ -334,6 +401,7 @@ export type MemberTokenPurpose = (typeof memberTokenPurpose.enumValues)[number]
 export type NewsletterStatus = (typeof newsletterStatus.enumValues)[number]
 export type NewsletterRecipientStatus = (typeof newsletterRecipientStatus.enumValues)[number]
 export type UnsubscribeSource = (typeof unsubscribeSource.enumValues)[number]
+export type SponsorEditorKind = (typeof sponsorEditorKind.enumValues)[number]
 
 export type Admin = typeof admins.$inferSelect
 export type LoginAttempt = typeof loginAttempts.$inferSelect
@@ -342,13 +410,17 @@ export type SiteSettings = typeof siteSettings.$inferSelect
 export type Sponsor = typeof sponsors.$inferSelect
 export type Officer = typeof officers.$inferSelect
 export type Advisor = typeof advisors.$inferSelect
+export type GalleryPhoto = typeof galleryPhotos.$inferSelect
 export type ClubEvent = typeof events.$inferSelect
+export type EventTimeSlot = typeof eventTimeSlots.$inferSelect
 export type HomeStat = typeof homeStats.$inferSelect
 export type HomePillar = typeof homePillars.$inferSelect
 export type NationalStat = typeof nationalStats.$inferSelect
 export type SponsorBenefit = typeof sponsorBenefits.$inferSelect
 export type Member = typeof members.$inferSelect
 export type MemberToken = typeof memberTokens.$inferSelect
+export type MemberEmailChange = typeof memberEmailChanges.$inferSelect
+export type AdminToken = typeof adminTokens.$inferSelect
 export type NewsletterTopic = typeof newsletterTopics.$inferSelect
 export type MemberTopicSubscription = typeof memberTopicSubscriptions.$inferSelect
 export type RequestThrottle = typeof requestThrottle.$inferSelect
@@ -390,12 +462,20 @@ export const sponsorEdits = pgTable(
     sponsorId: integer('sponsor_id')
       .notNull()
       .references(() => sponsors.id, { onDelete: 'cascade' }),
+    editorKind: sponsorEditorKind('editor_kind').notNull().default('sponsor'),
     memberId: integer('member_id').references(() => members.id, { onDelete: 'set null' }),
-    memberName: text('member_name').notNull(),
+    adminId: integer('admin_id').references(() => admins.id, { onDelete: 'set null' }),
+    editorName: text('member_name').notNull(),
     fields: text('fields').array().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   },
-  (table) => [index('sponsor_edits_sponsor_created_idx').on(table.sponsorId, table.createdAt)],
+  (table) => [
+    index('sponsor_edits_sponsor_created_idx').on(table.sponsorId, table.createdAt),
+    check(
+      'sponsor_edits_one_editor',
+      sql`(${table.editorKind} = 'sponsor' and ${table.adminId} is null) or (${table.editorKind} = 'officer' and ${table.memberId} is null)`,
+    ),
+  ],
 )
 
 // List queries must never select `content`; only the download routes read it.

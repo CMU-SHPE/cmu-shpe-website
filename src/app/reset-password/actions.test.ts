@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => {
       mocks.state.ops.push('hash')
       return '$2b$12$new'
     }),
+    rememberKnownDevice: vi.fn(async (email: string) => {
+      mocks.state.ops.push(`remember device for ${email}`)
+    }),
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string }) => Promise<void>>(async () => {
       mocks.state.ops.push('send')
     }),
@@ -43,6 +46,7 @@ vi.mock('@/lib/email', async (importOriginal) => ({
 vi.mock('bcryptjs', () => ({ default: { hash: mocks.hash } }))
 vi.mock('@/lib/site-url', () => ({ siteUrl: () => 'https://shpe.test' }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
+vi.mock('@/lib/known-device', () => ({ rememberKnownDevice: mocks.rememberKnownDevice }))
 
 import { EmailSendError } from '@/lib/email'
 import { hashToken } from '@/lib/member-tokens'
@@ -63,6 +67,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.state.resetRows = [{ email: 'mia@example.com', name: 'Mia' }]
   mocks.state.ops = []
+  mocks.rememberKnownDevice.mockClear()
   mocks.state.statements = []
   mocks.find.mockResolvedValue(7)
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -79,7 +84,7 @@ describe('resetMemberPassword', () => {
     await expect(resetMemberPassword({}, form())).rejects.toThrow('REDIRECT /login?reset=1')
     expect(mocks.find).toHaveBeenCalledWith(TOKEN, 'reset_password')
     expect(mocks.hash).toHaveBeenCalledWith(PASSWORD, 12)
-    expect(mocks.state.ops).toEqual(['hash', 'reset', 'send'])
+    expect(mocks.state.ops).toEqual(['hash', 'reset', 'remember device for mia@example.com', 'send'])
 
     const [statement] = mocks.state.statements
     const { text, params } = normalized(statement)
@@ -88,6 +93,7 @@ describe('resetMemberPassword', () => {
     )
     expect(text).toContain("delete from member_tokens t using updated where t.member_id = updated.id and t.purpose = 'reset_password' and t.token_hash <> $4")
     expect(text).toContain('delete from login_attempts l using updated where l.email = updated.email')
+    expect(text).toContain('delete from member_email_changes e using updated where e.member_id = updated.id')
     expect(text).toMatch(/select email, name from updated$/)
     expect(params[0]).toBe(hashToken(TOKEN))
     expect(params[1]).toBe('$2b$12$new')
@@ -120,6 +126,7 @@ describe('resetMemberPassword', () => {
     mocks.state.resetRows = []
     await expect(resetMemberPassword({}, form())).resolves.toEqual({ formError: expect.stringContaining('expired') })
     expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(mocks.rememberKnownDevice).not.toHaveBeenCalled()
   })
 
   it('refuses a malformed token without touching the database', async () => {

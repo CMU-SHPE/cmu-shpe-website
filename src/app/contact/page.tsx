@@ -1,6 +1,7 @@
 import ContactForm from '@/components/ContactForm'
 import Editable from '@/components/editable'
-import { InstagramIcon, LinkedInIcon, LocationIcon, MavLifeIcon, TikTokIcon, XIcon, YouTubeIcon } from '@/components/icons'
+import { LocationIcon } from '@/components/icons'
+import SocialLinks from '@/components/social-links'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
 import { toLines } from '@/lib/lines'
@@ -129,26 +130,11 @@ export default async function Contact() {
                   editable={editable}
                   className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-4"
                 />
-                <div className="flex gap-4">
-                  {settings?.instagramUrl && (
-                    <SocialLink href={settings.instagramUrl} label="Instagram" icon={<InstagramIcon />} />
-                  )}
-                  {settings?.linkedinUrl && (
-                    <SocialLink href={settings.linkedinUrl} label="LinkedIn" icon={<LinkedInIcon />} />
-                  )}
-                  {settings?.xUrl && (
-                    <SocialLink href={settings.xUrl} label="X (Twitter)" icon={<XIcon />} />
-                  )}
-                  {settings?.youtubeUrl && (
-                    <SocialLink href={settings.youtubeUrl} label="YouTube" icon={<YouTubeIcon />} />
-                  )}
-                  {settings?.tiktokUrl && (
-                    <SocialLink href={settings.tiktokUrl} label="TikTok" icon={<TikTokIcon />} />
-                  )}
-                  {settings?.mavlifeUrl && (
-                    <SocialLink href={settings.mavlifeUrl} label="MavLife" icon={<MavLifeIcon />} />
-                  )}
-                </div>
+                <SocialLinks
+                  settings={settings}
+                  className="flex gap-4"
+                  linkClassName="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-shpe-red hover:text-white text-gray-600 dark:text-gray-300 flex items-center justify-center transition-all duration-200"
+                />
               </div>
 
               {/* Membership CTA */}
@@ -200,25 +186,5 @@ function InfoRow({
         {children}
       </div>
     </div>
-  )
-}
-
-function SocialLink({
-  href,
-  label,
-  icon,
-}: {
-  href: string
-  label: string
-  icon: React.ReactNode
-}) {
-  return (
-    <a
-      href={href}
-      aria-label={label}
-      className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-shpe-red hover:text-white text-gray-600 dark:text-gray-300 flex items-center justify-center transition-all duration-200"
-    >
-      {icon}
-    </a>
   )
 }

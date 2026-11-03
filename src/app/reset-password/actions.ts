@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { EmailSendError, sendEmail } from '@/lib/email'
 import { passwordChanged } from '@/lib/email-templates'
+import { rememberKnownDevice } from '@/lib/known-device'
 import { parsePasswordReset, type FormState } from '@/lib/member-accounts'
 import { findMemberToken, hashToken } from '@/lib/member-tokens'
 import { siteUrl } from '@/lib/site-url'
@@ -36,6 +37,9 @@ function resetPasswordWithToken(token: string, passwordHash: string) {
       delete from member_tokens t using updated
       where t.member_id = updated.id and t.purpose = 'reset_password' and t.token_hash <> ${tokenHash}
     ),
+    pending_email_change as (
+      delete from member_email_changes e using updated where e.member_id = updated.id
+    ),
     cleared as (
       delete from login_attempts l using updated where l.email = updated.email
     )
@@ -65,6 +69,7 @@ export async function resetMemberPassword(_state: FormState, formData: FormData)
   }
   const [member] = result.rows
   if (!member) return { formError: INVALID_LINK }
+  await rememberKnownDevice(member.email)
 
   try {
     await sendEmail({ to: member.email, ...passwordChanged(member.name, `${base}/contact`) })

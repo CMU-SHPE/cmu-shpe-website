@@ -1,28 +1,22 @@
 import Link from 'next/link'
-import ImageCropField from '@/components/image-crop-field'
 import SponsorLogo from '@/components/SponsorLogo'
 import SubmitButton from '@/components/submit-button'
 import DeleteButton from '@/components/admin/delete-button'
 import MoveButtons from '@/components/admin/move-buttons'
 import EditDetails from '@/components/admin/edit-details'
+import SponsorEditForm from '@/components/admin/sponsor-edit-form'
+import SponsorFields from '@/components/admin/sponsor-fields'
 import StatusBanner from '@/components/admin/status-banner'
 import {
   cardClass,
-  focusRingClass,
-  inputClass,
-  labelClass,
   mutedTextClass,
   pageHeadingClass,
   primaryButtonClass,
   secondaryButtonClass,
   sectionHeadingClass,
 } from '@/components/admin/styles'
-import type { Sponsor } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
-import { DEFAULT_LOGO_BACKGROUND } from '@/lib/colors'
-import { HTTP_URL_INPUT, IMAGE_SOURCE_INPUT } from '@/lib/form-fields'
 import { getSponsors } from '@/lib/queries'
-import { LOGO_FIELD_NAMES, MAX_SPONSOR_DESCRIPTION_LENGTH } from '@/lib/sponsor-schema'
 import { SPONSOR_TIERS } from '@/lib/sponsor-tiers'
 import { createSponsor, deleteSponsor, moveSponsor, updateSponsor } from './actions'
 
@@ -30,89 +24,10 @@ const errorMessages: Record<string, string> = {
   invalid:
     'Please check the fields — the name is required, the website must start with http:// or https://, and a logo path must start with a single / or https://.',
   upload: 'The upload failed — use an image file (JPEG, PNG, WebP, GIF, AVIF or SVG) under 8 MB.',
+  svg: "This SVG contains scripts or links and can't be used. Export it as PNG or a plain SVG.",
   missing: 'That sponsor no longer exists.',
+  'not-saved': "That change couldn't be saved, so nothing was changed. Refresh the page and try again.",
   storage: "The image couldn't be saved right now — please try again in a minute. Nothing was changed.",
-}
-
-const logoHelp =
-  'Trim and straighten the logo — pick a shape, then drag, zoom and rotate. Logos are scaled to fit their tile, so the whole framed area stays visible.'
-
-function SponsorFields({ sponsor }: { sponsor?: Sponsor }) {
-  return (
-    <>
-      <label className={labelClass}>
-        Name
-        <input name="name" required maxLength={200} defaultValue={sponsor?.name} className={inputClass} />
-      </label>
-      <label className={labelClass}>
-        Tier
-        <select name="tier" defaultValue={sponsor?.tier ?? SPONSOR_TIERS[0]} className={inputClass}>
-          {SPONSOR_TIERS.map((tier) => (
-            <option key={tier} value={tier}>
-              {tier}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={labelClass}>
-        Website (optional)
-        <input
-          name="website"
-          type="url"
-          maxLength={500}
-          {...HTTP_URL_INPUT}
-          defaultValue={sponsor?.website ?? ''}
-          placeholder="https://…"
-          className={inputClass}
-        />
-      </label>
-      <label className={labelClass}>
-        Description (optional)
-        <textarea
-          name="description"
-          rows={4}
-          maxLength={MAX_SPONSOR_DESCRIPTION_LENGTH}
-          defaultValue={sponsor?.description ?? ''}
-          className={inputClass}
-        />
-      </label>
-      <ImageCropField
-        names={LOGO_FIELD_NAMES}
-        subject="logo"
-        helpText={logoHelp}
-        uploadLabel="Upload logo (optional)"
-        replaceLabel="Replace logo"
-        previewClassName="max-h-28 w-full object-contain p-2"
-        existing={
-          sponsor && {
-            imageUrl: sponsor.logoUrl,
-            originalUrl: sponsor.logoOriginalUrl,
-            crop: sponsor.logoCrop,
-          }
-        }
-      />
-      <label className={labelClass}>
-        Logo path or URL (optional — ignored when you upload a file)
-        <input
-          name="logoUrl"
-          maxLength={500}
-          {...IMAGE_SOURCE_INPUT}
-          defaultValue={sponsor?.logoUrl ?? ''}
-          placeholder="/sponsors/logo.png or https://…"
-          className={inputClass}
-        />
-      </label>
-      <label className={labelClass}>
-        Logo background color
-        <input
-          name="bgColor"
-          type="color"
-          defaultValue={sponsor?.bgColor ?? DEFAULT_LOGO_BACKGROUND}
-          className={`mt-1 block h-10 w-20 cursor-pointer rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-1 ${focusRingClass}`}
-        />
-      </label>
-    </>
-  )
 }
 
 export default async function AdminSponsorsPage(props: {
@@ -190,15 +105,7 @@ export default async function AdminSponsorsPage(props: {
                       </form>
                     </div>
                     <EditDetails name={sponsor.name}>
-                      <form
-                        action={updateSponsor.bind(null, sponsor.id)}
-                        className="mt-4 max-w-md space-y-4"
-                      >
-                        <SponsorFields sponsor={sponsor} />
-                        <SubmitButton pendingLabel="Saving…" className={primaryButtonClass}>
-                          Save changes
-                        </SubmitButton>
-                      </form>
+                      <SponsorEditForm sponsor={sponsor} action={updateSponsor.bind(null, sponsor.id)} />
                     </EditDetails>
                   </li>
                 ))}

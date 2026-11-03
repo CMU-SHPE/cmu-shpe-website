@@ -20,12 +20,7 @@ export default async function ForgotPasswordPage(props: { searchParams: Promise<
   return (
     <AccountShell
       title="Forgot your password?"
-      intro={
-        <>
-          <p>Enter your account email and we&apos;ll send you a link to choose a new password.</p>
-          <p>Site admins: ask the master admin to reset your password.</p>
-        </>
-      }
+      intro={<p>Enter your account email and we&apos;ll send you a link to choose a new password.</p>}
     >
       {sent && (
         <FocusOnMount key={`notice-${renderKey}`} id="request-sent">
@@ -33,7 +28,7 @@ export default async function ForgotPasswordPage(props: { searchParams: Promise<
             live={false}
             saved="sent"
             errorMessages={{}}
-            savedMessage="If an account exists for that email, we've sent a reset link. It works for 1 hour."
+            savedMessage="If an account exists for that email, we've sent a reset link. The email says how long it works."
           />
         </FocusOnMount>
       )}

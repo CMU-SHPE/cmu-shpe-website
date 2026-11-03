@@ -6,11 +6,18 @@ import type { NewsletterBatchResult, NewsletterEmail } from '@/lib/email'
 const mail = vi.hoisted(() => ({
   send: vi.fn<(emails: NewsletterEmail[], options: { idempotencyKey?: string }) => Promise<NewsletterBatchResult>>(),
   plain: vi.fn(async () => {}),
+  cookies: new Map<string, string>(),
 }))
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendNewsletterBatch: mail.send,
   sendEmail: mail.plain,
+}))
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: (name: string) => (mail.cookies.has(name) ? { name, value: mail.cookies.get(name)! } : undefined),
+    set: (name: string, value: string) => mail.cookies.set(name, value),
+  }),
 }))
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
@@ -22,7 +29,9 @@ vi.mock('@/lib/admin', () => ({
 }))
 
 import { saveNewsletter } from '@/app/admin/newsletters/actions'
+import { deleteTopic } from '@/app/admin/topics/actions'
 import { resetMemberPassword } from '@/app/reset-password/actions'
+import { KNOWN_DEVICE_COOKIE } from '@/lib/known-device'
 import { hashToken } from '@/lib/member-tokens'
 import { listMembers } from '@/lib/member-admin'
 import {
@@ -99,9 +108,20 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.subscriberCount]))).toEqual(counts)
   })
 
-  it('counts every subscriber of each topic on the stage 1 topics page, whatever the environment', async () => {
+  it('shows the topics page the same confirmed audience count as the composer', async () => {
+    const [topicsPage, composer] = await Promise.all([
+      getNewsletterTopicsWithSubscriberCounts(),
+      getTopicsWithConfirmedSubscriberCounts(),
+    ])
+    expect(Object.fromEntries(topicsPage.map((topic) => [topic.name, topic.subscriberCount]))).toEqual(counts)
+    expect(topicsPage.map(({ id, subscriberCount }) => ({ id, subscriberCount }))).toEqual(
+      composer.map(({ id, subscriberCount }) => ({ id, subscriberCount })),
+    )
+  })
+
+  it('counts every member’s choice of each topic for the delete warning, whatever the environment', async () => {
     const topics = await getNewsletterTopicsWithSubscriberCounts()
-    expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.subscriberCount]))).toEqual({
+    expect(Object.fromEntries(topics.map((topic) => [topic.name, topic.choiceCount]))).toEqual({
       Events: 4,
       Jobs: 2,
       Other: 1,
@@ -155,12 +175,13 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     const updatedAt = (await getNewsletter(id))!.updatedAt
     expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT, new Date(updatedAt.getTime() - 1))).toEqual({
       started: false,
+      reason: 'changed',
     })
     expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT, updatedAt)).toEqual({
       started: true,
       recipients: audience.length,
     })
-    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)).toEqual({ started: false })
+    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)).toEqual({ started: false, reason: 'not_draft' })
 
     mail.send.mockImplementationOnce(async (emails) => ({
       ok: true,
@@ -234,6 +255,59 @@ describe.skipIf(!hasTestDatabase).each(ENVIRONMENTS)('newsletter queries on real
     expect(
       await query('select m.email, r.status, r.error_code from newsletter_recipients r join members m on m.id = r.member_id'),
     ).toEqual([{ email: 'delivered+di@resend.dev', status: 'skipped', error_code: 'topic_removed' }])
+  })
+
+  it('refuses to delete a topic while a newsletter using it is mid-send, so no queued recipient is skipped', async () => {
+    const id = await draft([3])
+    const otherDraft = await draft([3])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+
+    expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?error=in_use')
+    expect(await getNewsletter(otherDraft)).toMatchObject({ topicIds: [3] })
+    expect(await processNewsletterSend(id)).toEqual({ status: 'sent' })
+    expect(await query('select status, error_code from newsletter_recipients')).toEqual([{ status: 'sent', error_code: null }])
+
+    expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?saved=1')
+    expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?error=missing')
+  })
+
+  it('keeps a newsletter whose audience emptied before the claim an editable draft, and says why', async () => {
+    const id = await draft([3])
+    await query('delete from member_topic_subscriptions where topic_id = 3')
+
+    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)).toEqual({ started: false, reason: 'no_recipients' })
+    expect(await getNewsletter(id)).toMatchObject({ status: 'draft', sendStartedAt: null, recipientCount: null })
+    expect(await query('select count(*)::int as n from newsletter_recipients')).toEqual([{ n: 0 }])
+    expect(await redirectOf(saveNewsletter(id, form({ subject: 'Later', body: 'B', topicIds: ['1'] })))).toBe(
+      `/admin/newsletters/${id}?saved=1`,
+    )
+  })
+
+  it('tells a claim refused because its topics were deleted apart from one refused because of an edit', async () => {
+    const id = await draft([3])
+    const updatedAt = (await getNewsletter(id))!.updatedAt
+    expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?saved=1')
+
+    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT, updatedAt)).toEqual({ started: false, reason: 'topics' })
+    expect(await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT, new Date(updatedAt.getTime() - 1))).toEqual({
+      started: false,
+      reason: 'changed',
+    })
+    expect((await getNewsletter(id))?.status).toBe('draft')
+  })
+
+  it('makes a one-click unsubscribe from a newsletter whose topics are all gone remove the member’s other topics', async () => {
+    const id = await draft([3])
+    await startNewsletterSend(id, { id: 1, name: 'Ada' }, SNAPSHOT)
+    await processNewsletterSend(id)
+    const [{ id: recipientId }] = await query<{ id: number }>('select id from newsletter_recipients')
+    const token = unsubscribeTokenFor(recipientId)
+    expect(await redirectOf(deleteTopic(3))).toBe('/admin/topics?saved=1')
+
+    expect(await unsubscribe(token, 'these', 'page')).toEqual({ ok: true, removed: [], recordedAt: null })
+    expect(await unsubscribe(token, 'these', 'one_click')).toMatchObject({ ok: true, removed: ['Jobs'] })
+    expect(await query('select topic_id from member_topic_subscriptions where member_id = 4')).toEqual([])
+    expect(await unsubscribe(token, 'these', 'one_click')).toEqual({ ok: true, removed: [], recordedAt: null })
   })
 
   it('resolves and uses an unsubscribe link, removing and logging each subscription once', async () => {
@@ -325,7 +399,9 @@ describe.skipIf(!hasTestDatabase)('statements otherwise covered only by mocks, o
     await query("insert into login_attempts (email, ip) values ('ana@example.com', '203.0.113.9')")
     const reset = form({ token: used, password: 'a new long password 123', confirmPassword: 'a new long password 123' })
 
+    mail.cookies.clear()
     expect(await redirectOf(resetMemberPassword({}, reset))).toBe('/login?reset=1')
+    expect(mail.cookies.get(KNOWN_DEVICE_COOKIE)).toMatch(/^[\w-]{22}\.[0-9a-z]+\.[\w-]{43}$/)
     const [member] = await query<{ password_hash: string; password_changed_at: string | null }>(
       'select password_hash, password_changed_at from members',
     )

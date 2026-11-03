@@ -7,7 +7,7 @@ import { dangerButtonClass, focusRingClass, mutedTextClass } from '@/components/
 import { cancelEventRsvp } from '@/app/events/actions'
 import { rsvpMessages } from './rsvp-button'
 
-export type MyRsvp = { eventId: number; title: string; when: string; location: string }
+export type MyRsvp = { eventId: number; title: string; when: string; times: string[]; location: string }
 
 export default function MyRsvpList({ headingId, rsvps }: { headingId: string; rsvps: MyRsvp[] }) {
   const [message, setMessage] = useState('')
@@ -46,6 +46,13 @@ export default function MyRsvpList({ headingId, rsvps }: { headingId: string; rs
                 <p className={mutedTextClass}>
                   {rsvp.when} · {rsvp.location}
                 </p>
+                {rsvp.times.length > 0 && (
+                  <ul className={mutedTextClass}>
+                    {rsvp.times.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <form action={() => cancel(rsvp)}>
                 <SubmitButton pendingLabel="Cancelling…" className={dangerButtonClass}>

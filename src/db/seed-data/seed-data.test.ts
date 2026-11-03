@@ -89,7 +89,7 @@ describe('content defaults', () => {
       'Click and open tracking are turned off',
       'only once you have confirmed your email address',
       'which newsletters were sent to you',
-      'email confirmation, new confirmation link and password reset requests (your IP address)',
+      'email confirmation, new confirmation link, password reset and contact form requests (your IP address)',
       'Delete my account',
       'strictly necessary',
       'analytics',

@@ -30,11 +30,15 @@ const mocks = vi.hoisted(() => {
       return { user: { id: '7', email: 'mia@example.com', name: 'Mia', kind: 'member' } }
     }),
     recordLoginAttempt: vi.fn(async () => ({ throttled: false })),
+    recordRequest: vi.fn(async () => ({ throttled: false })),
     clearLoginAttempts: vi.fn(async () => {}),
     compare: vi.fn(async () => true),
     hash: vi.fn(async (_password: string, cost: number) => `$2b$${cost}$new-hash`),
     signIn: vi.fn<(provider: string, options: Record<string, unknown>) => Promise<void>>(),
     signOut: vi.fn<(options: Record<string, unknown>) => Promise<void>>(),
+    forgetKnownDevice: vi.fn(async () => {
+      mocks.state.calls.push('forgetKnownDevice')
+    }),
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string; html?: string }) => Promise<void>>(),
   }
 })
@@ -64,7 +68,12 @@ vi.mock('@/lib/authorize', () => ({
 }))
 vi.mock('bcryptjs', () => ({ default: { compare: mocks.compare, hash: mocks.hash } }))
 vi.mock('@/auth', () => ({ signIn: mocks.signIn, signOut: mocks.signOut }))
-vi.mock('@/lib/email', () => ({ sendEmail: mocks.sendEmail }))
+vi.mock('@/lib/known-device', () => ({ forgetKnownDevice: mocks.forgetKnownDevice }))
+vi.mock('@/lib/email', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/email')>()),
+  sendEmail: mocks.sendEmail,
+}))
+vi.mock('@/lib/request-throttle', () => ({ recordRequest: mocks.recordRequest }))
 vi.mock('@/lib/newsletter-topics', () => ({
   countExistingTopics: async (ids: number[]) =>
     ids.filter((id) => mocks.state.knownTopics.some((topic) => topic.id === id)).length,
@@ -109,7 +118,9 @@ vi.mock('@/db', async () => {
   return { getDb: () => mocks.db }
 })
 
-import { changePassword, deleteAccount, saveTopics, updateName } from './actions'
+import { EmailSendError } from '@/lib/email'
+import { hashToken } from '@/lib/member-tokens'
+import { changePassword, deleteAccount, requestEmailChange, saveTopics, updateName } from './actions'
 
 function form(entries: [string, string][]) {
   const data = new FormData()
@@ -142,6 +153,9 @@ const NEW = 'new password 456'
 const passwordForm = (overrides: Record<string, string> = {}) =>
   form(Object.entries({ currentPassword: CURRENT, newPassword: NEW, confirmPassword: NEW, ...overrides }))
 
+const emailForm = (overrides: Record<string, string> = {}) =>
+  form(Object.entries({ newEmail: 'Nina@New.example', currentPassword: CURRENT, ...overrides }))
+
 beforeEach(() => {
   const { state } = mocks
   state.calls.length = 0
@@ -152,6 +166,7 @@ beforeEach(() => {
   state.batches.length = 0
   mocks.requireMember.mockClear()
   mocks.recordLoginAttempt.mockReset().mockResolvedValue({ throttled: false })
+  mocks.recordRequest.mockReset().mockResolvedValue({ throttled: false })
   mocks.clearLoginAttempts.mockClear()
   mocks.compare.mockReset().mockResolvedValue(true)
   mocks.hash.mockClear()
@@ -168,6 +183,7 @@ beforeEach(() => {
 describe.each([
   ['updateName', () => updateName(form([['name', 'Mia']]))],
   ['changePassword', () => changePassword(passwordForm())],
+  ['requestEmailChange', () => requestEmailChange(emailForm())],
   ['saveTopics', () => saveTopics(form([['topics', '1']]))],
   ['deleteAccount', () => deleteAccount(form([['password', CURRENT], ['confirm', 'DELETE']]))],
 ])('%s', (_, run) => {
@@ -200,13 +216,14 @@ describe('changePassword', () => {
   it('rejects a wrong current password as a throttled attempt and changes nothing', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?error=password-current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('mia@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
     expect(mocks.state.updates).toEqual([])
     expect(mocks.sendEmail).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?error=password-throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
   })
@@ -234,13 +251,16 @@ describe('changePassword', () => {
     })
   })
 
-  it('cancels pending reset links in the same batch as the password change', async () => {
+  it('cancels pending reset links and any pending email change in the same batch as the password change', async () => {
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?saved=password')
     expect(mocks.state.batches).toHaveLength(1)
     const [update, cancelResets] = mocks.state.batches[0]
     expect(update.sql).toMatch(/^update "members" set "password_hash" = \$1, "password_changed_at" = \$2 where/)
     expect(cancelResets.sql).toMatch(/^delete from "member_tokens" where/)
     expect(cancelResets.params).toEqual([7, 'reset_password'])
+    const cancelEmailChange = mocks.state.batches[0][2]
+    expect(cancelEmailChange.sql).toBe('delete from "member_email_changes" where "member_email_changes"."member_id" = $1')
+    expect(cancelEmailChange.params).toEqual([7])
   })
 
   it('still finishes the change when the notice fails, logging only a tag', async () => {
@@ -249,6 +269,63 @@ describe('changePassword', () => {
     expect(await redirectOf(changePassword(passwordForm()))).toBe('/account?saved=password')
     expect(consoleError).toHaveBeenCalledWith('EMAIL SEND FAILED: password_changed')
     consoleError.mockRestore()
+  })
+})
+
+describe('requestEmailChange', () => {
+  it('stores a hashed 24-hour pending change, replacing older ones, and emails the link to the new address only', async () => {
+    const before = Date.now()
+    expect(await redirectOf(requestEmailChange(emailForm()))).toBe('/account?saved=email')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('change_email', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
+    expect(mocks.compare).toHaveBeenCalledWith(CURRENT, '$2b$12$stored')
+
+    const [[purge, upsert]] = mocks.state.batches
+    expect(purge.sql).toBe('delete from "member_email_changes" where "member_email_changes"."expires_at" < now()')
+    expect(upsert.sql).toMatch(/^insert into "member_email_changes" .* on conflict \("member_id"\) do update set/)
+    const [memberId, newEmail, tokenHash, expiresAt] = upsert.params as [number, string, string, string]
+    expect(memberId).toBe(7)
+    expect(newEmail).toBe('nina@new.example')
+    expect(Date.parse(expiresAt) - before).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000)
+    expect(Date.parse(expiresAt) - before).toBeLessThan(24 * 60 * 60 * 1000 + 60_000)
+
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    const message = mocks.sendEmail.mock.calls[0][0]
+    expect(message).toMatchObject({ to: 'nina@new.example', subject: 'Confirm your new email for SHPE @ CMU' })
+    const token = message.text.match(/https:\/\/shpe\.example\/account\/confirm-email\?token=([A-Za-z0-9_-]{43})\n/)?.[1]
+    expect(token).toBeDefined()
+    expect(hashToken(token!)).toBe(tokenHash)
+    expect(mocks.state.updates).toEqual([])
+  })
+
+  it.each([
+    ['an invalid address', { newEmail: 'nope' }, '/account?error=email-invalid'],
+    ['a missing password', { currentPassword: '' }, '/account?error=email-password'],
+    ['the current address in another case', { newEmail: 'MIA@example.com' }, '/account?error=email-same'],
+  ])('refuses %s before any limit, password check or write', async (_case, overrides, path) => {
+    expect(await redirectOf(requestEmailChange(emailForm(overrides)))).toBe(path)
+    expect(mocks.recordRequest).not.toHaveBeenCalled()
+    expect(mocks.compare).not.toHaveBeenCalled()
+    expect(mocks.state.batches).toEqual([])
+  })
+
+  it('refuses a wrong current password without storing or sending anything', async () => {
+    mocks.compare.mockResolvedValue(false)
+    expect(await redirectOf(requestEmailChange(emailForm()))).toBe('/account?error=email-current')
+    expect(mocks.state.batches).toEqual([])
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('refuses when its own limit is reached, before checking the password', async () => {
+    mocks.recordRequest.mockResolvedValue({ throttled: true })
+    expect(await redirectOf(requestEmailChange(emailForm()))).toBe('/account?error=email-throttled')
+    expect(mocks.compare).not.toHaveBeenCalled()
+    expect(mocks.state.batches).toEqual([])
+  })
+
+  it('reports a failed send without saying anything about the new address', async () => {
+    mocks.sendEmail.mockRejectedValue(new EmailSendError('validation_error'))
+    expect(await redirectOf(requestEmailChange(emailForm()))).toBe('/account?error=email-send')
   })
 })
 
@@ -312,21 +389,22 @@ describe('deleteAccount', () => {
   it('refuses a wrong password and keeps the account', async () => {
     mocks.compare.mockResolvedValueOnce(false)
     expect(await redirectOf(deleteAccount(deleteForm('guess')))).toBe('/account?error=delete-current')
-    expect(mocks.recordLoginAttempt).toHaveBeenCalledWith('mia@example.com', '203.0.113.9')
+    expect(mocks.recordRequest).toHaveBeenCalledWith('account_password_check', 'mia@example.com', '203.0.113.9')
+    expect(mocks.recordLoginAttempt).not.toHaveBeenCalled()
     expect(mocks.state.batches).toEqual([])
     expect(mocks.signOut).not.toHaveBeenCalled()
   })
 
   it('refuses when throttled without checking the password', async () => {
-    mocks.recordLoginAttempt.mockResolvedValueOnce({ throttled: true })
+    mocks.recordRequest.mockResolvedValueOnce({ throttled: true })
     expect(await redirectOf(deleteAccount(deleteForm()))).toBe('/account?error=delete-throttled')
     expect(mocks.compare).not.toHaveBeenCalled()
   })
 
-  it('deletes throttle records and the member in one batch, then signs out', async () => {
+  it('deletes throttle records and the member in one batch, then forgets the device and signs out', async () => {
     expect(await redirectOf(deleteAccount(deleteForm()))).toBe('/account/deleted')
     expect(mocks.compare).toHaveBeenCalledWith(CURRENT, '$2b$12$stored')
-    expect(mocks.state.calls.slice(-2)).toEqual(['batch', 'signOut'])
+    expect(mocks.state.calls.slice(-3)).toEqual(['batch', 'forgetKnownDevice', 'signOut'])
     const statements = mocks.state.batches[0]
     expect(statements.map((statement) => statement.sql.split(' where ')[0])).toEqual([
       'delete from "request_throttle"',

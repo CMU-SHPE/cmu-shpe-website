@@ -4,9 +4,11 @@ import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/db'
-import { admins, members } from '@/db/schema'
+import { insertAdmin } from '@/db/admin-insert'
+import { admins } from '@/db/schema'
 import { requireAccountCreator, requireMaster } from '@/lib/admin'
 import { accountCreatorGrant, adminId, parseAdminAccount, parsePasswordReset } from '@/lib/admin-account'
+import { deleteAdminTokens } from '@/lib/admin-tokens'
 import { clearLoginAttempts } from '@/lib/authorize'
 
 export async function createAdmin(formData: FormData) {
@@ -20,27 +22,15 @@ export async function createAdmin(formData: FormData) {
   if (!parsed.success) redirect(`/admin/admins?error=${parsed.code}`)
 
   const { name, email, password } = parsed.data
-  const db = getDb()
-  // Sign-in prefers the admin row, so an admin sharing a member's email would lock the member out.
-  const [[existingAdmin], [existingMember]] = await Promise.all([
-    db.select({ id: admins.id }).from(admins).where(eq(admins.email, email)).limit(1),
-    db.select({ id: members.id }).from(members).where(eq(members.email, email)).limit(1),
-  ])
-  if (existingAdmin || existingMember) redirect('/admin/admins?error=duplicate')
-
-  const inserted = await db
-    .insert(admins)
-    .values({
-      name,
-      email,
-      passwordHash: await bcrypt.hash(password, 12),
-      role: 'admin',
-      canCreateAccounts: false,
-      createdBy: Number(session.user.id),
-    })
-    .onConflictDoNothing({ target: admins.email })
-    .returning({ id: admins.id })
-  if (inserted.length === 0) redirect('/admin/admins?error=duplicate')
+  const id = await insertAdmin(getDb(), {
+    name,
+    email,
+    passwordHash: await bcrypt.hash(password, 12),
+    role: 'admin',
+    canCreateAccounts: false,
+    createdBy: Number(session.user.id),
+  })
+  if (id === null) redirect('/admin/admins?error=duplicate')
 
   redirect('/admin/admins?saved=1')
 }
@@ -93,6 +83,7 @@ export async function resetAdminPassword(id: number, formData: FormData) {
     .where(and(eq(admins.id, parsed.data.id), eq(admins.role, 'admin')))
     .returning({ email: admins.email })
   if (!updated) redirect('/admin/admins?error=missing')
+  await deleteAdminTokens(db, parsed.data.id)
   await clearLoginAttempts(updated.email)
 
   redirect('/admin/admins?saved=reset')

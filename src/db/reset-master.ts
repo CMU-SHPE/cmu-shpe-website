@@ -1,8 +1,7 @@
 import { config } from 'dotenv'
 import bcrypt from 'bcryptjs'
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import { getDb } from './index'
-import { admins, loginAttempts } from './schema'
+import { resetMasterAccount } from './reset-master-writes'
 import { MAX_PASSWORD_BYTES, MIN_PASSWORD_LENGTH, parseAdminAccount } from '../lib/admin-account'
 import { isUniqueViolation, safeErrorMessage } from '../lib/db-errors'
 
@@ -10,6 +9,8 @@ config({ path: '.env.local', quiet: true })
 config({ path: '.env', quiet: true })
 
 const EMAIL_TAKEN = 'already belongs to another admin account. Delete that account first.'
+const MEMBER_EMAIL_TAKEN =
+  'already belongs to a member account. Sign-in would pick the master and lock that member out, so set MASTER_EMAIL to another address or delete that member first.'
 
 async function resetMaster(): Promise<string> {
   const parsed = parseAdminAccount({
@@ -26,39 +27,28 @@ async function resetMaster(): Promise<string> {
   }
   const { email, password } = parsed.data
 
-  const db = getDb()
-  const masters = await db
-    .select({ id: admins.id, email: admins.email })
-    .from(admins)
-    .where(eq(admins.role, 'master'))
-  if (masters.length === 0) {
-    throw new Error('No master account exists. npm run db:seed creates one, but only while the admins table is empty.')
+  const result = await resetMasterAccount(getDb(), email, await bcrypt.hash(password, 12))
+  switch (result.status) {
+    case 'no-master':
+      throw new Error('No master account exists. npm run db:seed creates one, but only while the admins table is empty.')
+    case 'several-masters':
+      throw new Error(`Found ${result.count} master accounts; this script only handles a single master.`)
+    case 'admin-taken':
+      throw new Error(`${email} ${EMAIL_TAKEN}`)
+    case 'member-taken':
+      throw new Error(`${email} ${MEMBER_EMAIL_TAKEN}`)
   }
-  if (masters.length > 1) {
-    throw new Error(`Found ${masters.length} master accounts; this script only handles a single master.`)
+
+  if (result.sharedWithMember) {
+    console.warn(
+      `Warning: a member account also uses ${email}. Sign-in picks the master, so that member can't sign in until the member is deleted or changes to another address.`,
+    )
   }
-  const [master] = masters
-
-  const [taken] = await db
-    .select({ id: admins.id })
-    .from(admins)
-    .where(and(eq(admins.email, email), ne(admins.id, master.id)))
-    .limit(1)
-  if (taken) throw new Error(`${email} ${EMAIL_TAKEN}`)
-
-  // Clock of record for passwordChangedAt is the database, not the machine running this script.
-  await db.batch([
-    db
-      .update(admins)
-      .set({ email, passwordHash: await bcrypt.hash(password, 12), passwordChangedAt: sql`now()` })
-      .where(eq(admins.id, master.id)),
-    db.delete(loginAttempts).where(inArray(loginAttempts.email, [master.email, email])),
-  ])
 
   const length = `${Array.from(password).length}-character password`
-  return master.email === email
+  return result.previousEmail === email
     ? `Set a new ${length} for the master account ${email}.`
-    : `Moved the master account from ${master.email} to ${email} with a new ${length}.`
+    : `Moved the master account from ${result.previousEmail} to ${email} with a new ${length}.`
 }
 
 resetMaster().then(

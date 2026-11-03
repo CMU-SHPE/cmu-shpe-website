@@ -1,21 +1,32 @@
 import Link from 'next/link'
 import Editable from '@/components/editable'
+import HomeGallery from '@/components/HomeGallery'
 import SponsorLogo from '@/components/SponsorLogo'
 import { LocationIcon } from '@/components/icons'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { formatEventDateRange, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventTypeColor } from '@/lib/event-types'
-import { getEvents, getHomePillars, getHomeStats, getSiteContent, getSponsors } from '@/lib/queries'
+import {
+  getEvents,
+  getGalleryPhotos,
+  getHomePillars,
+  getHomeStats,
+  getSiteContent,
+  getSiteContentWithDefaults,
+  getSponsors,
+} from '@/lib/queries'
 
 export default async function Home() {
-  const [content, admin, stats, pillars, sponsors, events] = await Promise.all([
+  const [content, galleryContent, admin, stats, pillars, sponsors, events, galleryPhotos] = await Promise.all([
     getSiteContent([...contentKeysFor('home'), 'events.upcoming.empty']),
+    getSiteContentWithDefaults(contentKeysFor('home.gallery')),
     currentAdmin(),
     getHomeStats(),
     getHomePillars(),
     getSponsors(),
     getEvents(),
+    getGalleryPhotos(),
   ])
   const editable = Boolean(admin)
   const upcomingEvents = splitEvents(events, todayInDenver(new Date())).upcoming.slice(0, 3)
@@ -60,7 +71,7 @@ export default async function Home() {
             />
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
-                href="/contact"
+                href="/join"
                 className="inline-flex items-center justify-center bg-shpe-red hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold text-base transition-all duration-200 shadow-lg hover:-translate-y-0.5"
               >
                 Join SHPE
@@ -202,7 +213,7 @@ export default async function Home() {
                       >
                         {event.type}
                       </span>
-                      <span className="text-gray-400 dark:text-gray-500 text-xs">{formatEventDate(event.date)}</span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">{formatEventDateRange(event.date, event.endDate)}</span>
                     </div>
                     <h3 className="font-bold text-gray-900 dark:text-white text-lg mb-2">{event.title}</h3>
                     <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed mb-5">{event.description}</p>
@@ -282,6 +293,13 @@ export default async function Home() {
         </div>
       </section>
 
+      <HomeGallery
+        photos={galleryPhotos}
+        eyebrow={galleryContent['home.gallery.eyebrow']}
+        heading={galleryContent['home.gallery.heading']}
+        editable={editable}
+      />
+
       {/* ── CTA Banner ── */}
       <section className="bg-gradient-to-r from-cmu-maroon to-[#6b0018] py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -301,7 +319,7 @@ export default async function Home() {
           />
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/contact"
+              href="/join"
               className="inline-flex items-center justify-center bg-shpe-red hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold text-base transition-all duration-200 shadow-lg"
             >
               Get Involved

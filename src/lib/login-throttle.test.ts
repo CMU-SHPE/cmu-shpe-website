@@ -1,24 +1,40 @@
 import { describe, expect, it } from 'vitest'
-import {
-  MAX_FAILURES_PER_EMAIL,
-  MAX_FAILURES_PER_IP,
-  clientIp,
-  isThrottled,
-} from './login-throttle'
+import { LOGIN_LIMITS, clientIp, throttleIp } from './login-throttle'
 
-describe('isThrottled', () => {
-  it('allows attempts up to both limits, counting the current attempt', () => {
-    expect(isThrottled(1, 1)).toBe(false)
-    expect(isThrottled(MAX_FAILURES_PER_EMAIL, MAX_FAILURES_PER_IP)).toBe(false)
+describe('LOGIN_LIMITS', () => {
+  it('takes many sources to reach the per-email ceiling', () => {
+    expect(LOGIN_LIMITS.perEmail / LOGIN_LIMITS.perEmailAndIp).toBeGreaterThanOrEqual(10)
+  })
+})
+
+describe('throttleIp', () => {
+  it('leaves IPv4 alone', () => {
+    expect(throttleIp('203.0.113.7')).toBe('203.0.113.7')
   })
 
-  it('throttles once the per-email limit is passed', () => {
-    expect(isThrottled(MAX_FAILURES_PER_EMAIL + 1, 1)).toBe(true)
+  it.each(['::ffff:192.0.2.1', '::FFFF:192.0.2.1', '::ffff:c000:201', '::ffff:C000:0201', '0:0:0:0:0:ffff:192.0.2.1', '0000:0000:0000:0000:0000:ffff:c000:0201'])(
+    'counts the IPv4-mapped %s as its IPv4 address',
+    (ip) => {
+      expect(throttleIp(ip)).toBe('192.0.2.1')
+    },
+  )
+
+  it('groups every spelling of an IPv6 network under its /64', () => {
+    const network = '2001:db8:1:2::/64'
+    expect(throttleIp('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe(network)
+    expect(throttleIp('2001:0DB8:0001:0002::1')).toBe(network)
+    expect(throttleIp('2001:db8:1:2::1%eth0')).toBe(network)
+    expect(throttleIp('2001:db8::')).toBe('2001:db8:0:0::/64')
+    expect(throttleIp('::1')).toBe('0:0:0:0::/64')
+    expect(throttleIp('1:2:3:4:5:6:1.2.3.4')).toBe('1:2:3:4::/64')
   })
 
-  it('throttles once the per-ip limit is passed even for fresh emails', () => {
-    expect(isThrottled(1, MAX_FAILURES_PER_IP + 1)).toBe(true)
-  })
+  it.each([null, '', 'unknown', '999.1.1.1', '203.0.113.7:443', '1:2:3', '<script>', '2001:db8::g'])(
+    'counts %s as an unknown source',
+    (ip) => {
+      expect(throttleIp(ip)).toBeNull()
+    },
+  )
 })
 
 describe('clientIp', () => {

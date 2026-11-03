@@ -33,6 +33,10 @@ export function newMemberToken(memberId: number | SQL, purpose: MemberTokenPurpo
   }
 }
 
+export function confirmEmailLink(base: string, token: string): string {
+  return `${base}/join/confirm?token=${token}`
+}
+
 export function insertMemberToken(db: Db, row: ReturnType<typeof newMemberToken>['row']) {
   return db.insert(memberTokens).values(row)
 }

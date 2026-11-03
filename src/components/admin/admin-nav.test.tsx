@@ -40,6 +40,17 @@ describe('AdminNav', () => {
     }
   })
 
+  it('shows Photo gallery to every admin and marks it current on /admin/gallery', () => {
+    navigation.pathname = '/admin/gallery'
+    for (const canCreateAccounts of [false, true]) {
+      const { unmount } = render(<AdminNav canCreateAccounts={canCreateAccounts} />)
+      const link = screen.getByRole('link', { name: 'Photo gallery' })
+      expect(link).toHaveAttribute('href', '/admin/gallery')
+      expect(link).toHaveAttribute('aria-current', 'page')
+      unmount()
+    }
+  })
+
   it('shows Change password to every admin', () => {
     for (const canCreateAccounts of [false, true]) {
       const { unmount } = render(<AdminNav canCreateAccounts={canCreateAccounts} />)

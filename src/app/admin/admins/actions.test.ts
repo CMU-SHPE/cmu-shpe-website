@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => {
   const state = {
     caller: null as Caller | null,
     target: { role: 'admin' } as { role: 'admin' | 'master' } | null,
-    member: null as { id: number } | null,
     inserted: [{ id: 9 }] as { id: number }[],
     deleted: [{ id: 4 }] as { id: number }[],
     updated: [{ id: 4, email: 'ana@example.com' }] as { id: number; email: string }[],
@@ -27,10 +26,7 @@ const mocks = vi.hoisted(() => {
         return query
       },
       where: () => query,
-      limit: async () => {
-        if (table === 'members') return state.member ? [state.member] : []
-        return state.target ? [state.target] : []
-      },
+      limit: async () => (table === 'admins' && state.target ? [state.target] : []),
     }
     return query
   }
@@ -39,16 +35,6 @@ const mocks = vi.hoisted(() => {
     state,
     db: {
       select,
-      insert: () => ({
-        values: (values: Record<string, unknown>) => ({
-          onConflictDoNothing: () => ({
-            returning: async () => {
-              state.inserts.push(values)
-              return state.inserted
-            },
-          }),
-        }),
-      }),
       delete: () => ({
         where: () => ({
           returning: async () => {
@@ -71,7 +57,13 @@ const mocks = vi.hoisted(() => {
     requireMaster: vi.fn(),
     requireAccountCreator: vi.fn(),
     clearLoginAttempts: vi.fn(async () => {}),
+    deleteAdminTokens: vi.fn(async () => {}),
     hash: vi.fn(async (_password: string, cost: number) => `$2b$${cost}$hash`),
+    insertAdmin: vi.fn(async (_db: unknown, admin: Record<string, unknown>) => {
+      const [row] = state.inserted
+      if (row) state.inserts.push(admin)
+      return row?.id ?? null
+    }),
   }
 })
 
@@ -81,6 +73,8 @@ vi.mock('next/navigation', () => ({
   },
 }))
 vi.mock('@/db', () => ({ getDb: () => mocks.db }))
+vi.mock('@/db/admin-insert', () => ({ insertAdmin: mocks.insertAdmin }))
+vi.mock('@/lib/admin-tokens', () => ({ deleteAdminTokens: mocks.deleteAdminTokens }))
 vi.mock('@/lib/authorize', () => ({ clearLoginAttempts: mocks.clearLoginAttempts }))
 vi.mock('bcryptjs', () => ({ default: { hash: mocks.hash } }))
 vi.mock('@/lib/admin', async () => {
@@ -135,7 +129,6 @@ function expectNoWrites() {
 beforeEach(() => {
   mocks.state.caller = master
   mocks.state.target = { role: 'admin' }
-  mocks.state.member = null
   mocks.state.inserted = [{ id: 9 }]
   mocks.state.deleted = [{ id: 4 }]
   mocks.state.updated = [{ id: 4, email: 'ana@example.com' }]
@@ -146,6 +139,7 @@ beforeEach(() => {
   mocks.requireAccountCreator.mockClear()
   mocks.clearLoginAttempts.mockClear()
   mocks.hash.mockClear()
+  mocks.insertAdmin.mockClear()
 })
 
 describe('createAdmin', () => {
@@ -198,16 +192,10 @@ describe('createAdmin', () => {
     expectNoWrites()
   })
 
-  it('reports an existing email as a duplicate', async () => {
-    mocks.state.target = { role: 'admin' }
+  it('reports an email an admin or a member already uses as a duplicate', async () => {
+    mocks.state.inserted = []
     expect(await redirectOf(createAdmin(accountForm()))).toBe('/admin/admins?error=duplicate')
-    expectNoWrites()
-  })
-
-  it('refuses an email that belongs to a member, which would lock that member out', async () => {
-    mocks.state.member = { id: 7 }
-    expect(await redirectOf(createAdmin(accountForm()))).toBe('/admin/admins?error=duplicate')
-    expect(mocks.hash).not.toHaveBeenCalled()
+    expect(mocks.insertAdmin).toHaveBeenCalledWith(mocks.db, expect.objectContaining({ email: 'bea@example.com' }))
     expectNoWrites()
   })
 })
@@ -303,7 +291,8 @@ describe('resetAdminPassword', () => {
     expectNoWrites()
   })
 
-  it('stores a cost-12 hash, ends their sessions and clears their attempts', async () => {
+  it('stores a cost-12 hash, ends their sessions, revokes emailed reset links and clears their attempts', async () => {
+    mocks.deleteAdminTokens.mockClear()
     const before = Date.now()
     const url = await redirectOf(resetAdminPassword(4, resetForm()))
     expect(url).toBe('/admin/admins?saved=reset')
@@ -313,6 +302,7 @@ describe('resetAdminPassword', () => {
     expect(update.passwordHash).toBe('$2b$12$hash')
     expect((update.passwordChangedAt as Date).getTime()).toBeGreaterThanOrEqual(before)
     expect(mocks.clearLoginAttempts).toHaveBeenCalledWith('ana@example.com')
+    expect(mocks.deleteAdminTokens).toHaveBeenCalledWith(mocks.db, 4)
   })
 })
 

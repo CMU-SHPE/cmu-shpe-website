@@ -54,6 +54,7 @@ vi.mock('@/db', () => ({
 
 import {
   TOKEN_TTL_MS,
+  confirmEmailLink,
   consumeMemberToken,
   findMemberEmailForToken,
   findMemberToken,
@@ -94,6 +95,13 @@ describe('newMemberToken', () => {
   it('never repeats a token', () => {
     const tokens = new Set(Array.from({ length: 50 }, () => newMemberToken(1, 'reset_password').token))
     expect(tokens.size).toBe(50)
+  })
+})
+
+describe('confirmEmailLink', () => {
+  it('points at the confirm page with the token the member was sent', () => {
+    const { token } = newMemberToken(7, 'confirm_email')
+    expect(confirmEmailLink('https://shpe.test', token)).toBe(`https://shpe.test/join/confirm?token=${token}`)
   })
 })
 

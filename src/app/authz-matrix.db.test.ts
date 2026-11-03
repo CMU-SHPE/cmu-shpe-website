@@ -24,10 +24,24 @@ vi.mock('next/navigation', () => ({
   },
 }))
 // No logo is uploaded anywhere here; this only keeps a delete from reaching Blob storage.
-vi.mock('@/lib/blob-cleanup', () => ({ cleanupBlobs: mocks.cleanupBlobs }))
+vi.mock('@/lib/blob-cleanup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/blob-cleanup')>()),
+  cleanupBlobs: mocks.cleanupBlobs,
+}))
 
 import { getDb } from '@/db'
-import { admins, eventRsvps, events, members, siteContent, sponsorEdits, sponsorReceipts, sponsors } from '@/db/schema'
+import {
+  admins,
+  eventRsvps,
+  events,
+  galleryPhotos,
+  members,
+  siteContent,
+  sponsorEdits,
+  sponsorReceipts,
+  sponsors,
+} from '@/db/schema'
+import { LOADED_LISTING_FIELD, listingSnapshot } from '@/lib/sponsor-schema'
 import { TEST_PASSWORD, resetDb } from '@/test/db'
 import bcrypt from 'bcryptjs'
 import { deleteMember, linkMemberToSponsor, removeSponsorAccess } from './admin/members/actions'
@@ -36,6 +50,8 @@ import { deleteSponsorReceipt, uploadSponsorReceipt } from './admin/sponsors/[id
 import { GET as adminReceiptRoute } from './admin/sponsors/[id]/receipts/[receiptId]/route'
 import AdminSponsorPage from './admin/sponsors/[id]/page'
 import { createEvent as adminCreateEvent, deleteEvent, updateEvent } from './admin/events/actions'
+import { createGalleryPhoto, deleteGalleryPhoto, moveGalleryPhoto, updateGalleryPhoto } from './admin/gallery/actions'
+import AdminGalleryPage from './admin/gallery/page'
 import { GET as attendeesCsvRoute } from './admin/events/[id]/attendees.csv/route'
 import AttendeesPage from './admin/events/[id]/attendees/page'
 import { updateListing } from './sponsor/actions'
@@ -81,7 +97,7 @@ async function buildWorld() {
     ...values,
   })
 
-  const [[admin, master], [listingA, listingB, listingC], [openEvent, bookedEvent]] = await db.batch([
+  const [[admin, master], [listingA, listingB, listingC], [openEvent, bookedEvent], [photoA, photoB]] = await db.batch([
     db
       .insert(admins)
       .values([
@@ -102,6 +118,13 @@ async function buildWorld() {
       .values([
         { title: 'Open event', location: 'Room 1', type: 'Meeting', date: '2099-01-01' },
         { title: 'Booked event', location: 'Room 1', type: 'Meeting', date: '2099-01-02' },
+      ])
+      .returning(),
+    db
+      .insert(galleryPhotos)
+      .values([
+        { imageUrl: '/gallery/a.jpg', altText: 'Photo A', sortOrder: 0 },
+        { imageUrl: '/gallery/b.jpg', altText: 'Photo B', sortOrder: 1 },
       ])
       .returning(),
   ])
@@ -169,6 +192,8 @@ async function buildWorld() {
     receiptB: receiptB.id,
     openEvent,
     bookedEvent,
+    photoA,
+    photoB,
     sessions,
     memberIds,
   }
@@ -191,7 +216,7 @@ function signInAs(session: World['sessions'][Persona]) {
 /** Everything a refused request could have touched, in one round trip; receipt bytes are compared by size and title. */
 async function snapshot() {
   const db = getDb()
-  const [memberRows, sponsorRows, editRows, receiptRows, eventRows, rsvpRows, contentRows] = await db.batch([
+  const [memberRows, sponsorRows, editRows, receiptRows, eventRows, rsvpRows, contentRows, photoRows] = await db.batch([
     db.select().from(members).orderBy(asc(members.id)),
     db.select().from(sponsors).orderBy(asc(sponsors.id)),
     db.select().from(sponsorEdits).orderBy(asc(sponsorEdits.id)),
@@ -202,6 +227,7 @@ async function snapshot() {
     db.select().from(events).orderBy(asc(events.id)),
     db.select({ eventId: eventRsvps.eventId, memberId: eventRsvps.memberId }).from(eventRsvps).orderBy(asc(eventRsvps.id)),
     db.select().from(siteContent).orderBy(asc(siteContent.key)),
+    db.select().from(galleryPhotos).orderBy(asc(galleryPhotos.id)),
   ])
   return {
     members: memberRows,
@@ -211,6 +237,7 @@ async function snapshot() {
     events: eventRows,
     rsvps: rsvpRows,
     siteContent: contentRows,
+    galleryPhotos: photoRows,
   }
 }
 type Snapshot = Awaited<ReturnType<typeof snapshot>>
@@ -244,13 +271,14 @@ function form(values: Record<string, string | Blob>) {
 
 const sponsorForm = (name: string) =>
   form({ name, tier: 'Gold', website: '', logoUrl: '', bgColor: '#ffffff', description: '' })
+const galleryForm = (altText: string) => form({ imageUrl: '/gallery/matrix.jpg', altText, caption: '' })
 const eventForm = (title: string) =>
   form({ title, description: '', location: 'Room 1', type: 'Workshop', date: '2099-02-01', time: '', capacity: '' })
 
 type Expectation = { outcome: string; effect?: (world: World, before: Snapshot, after: Snapshot, persona: Persona) => void }
 type Target = {
   name: string
-  run: (world: World) => Promise<unknown>
+  run: (world: World, persona: Persona) => Promise<unknown>
   expect: Record<Persona, Expectation>
 }
 
@@ -323,10 +351,27 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action updateSponsor(B)',
-    run: (w) => updateSponsor(w.listingB.id, sponsorForm('Renamed B')),
+    run: (w) => {
+      const data = sponsorForm('Renamed B')
+      data.set(LOADED_LISTING_FIELD, listingSnapshot(w.listingB))
+      return updateSponsor(w.listingB.id, null, data)
+    },
     expect: adminOnly({
       outcome: '→ /admin/sponsors?saved=1',
-      effect: (w, _before, after) => expect(row(after.sponsors, w.listingB.id)?.name).toBe('Renamed B'),
+      effect: (w, before, after, persona) => {
+        expect(row(after.sponsors, w.listingB.id)?.name).toBe('Renamed B')
+        const officer = w.sessions[persona]!
+        expect(after.sponsorEdits.slice(before.sponsorEdits.length)).toEqual([
+          expect.objectContaining({
+            sponsorId: w.listingB.id,
+            editorKind: 'officer',
+            memberId: null,
+            adminId: officer.id,
+            editorName: officer.name,
+            fields: ['name'],
+          }),
+        ])
+      },
     }),
   },
   {
@@ -382,7 +427,7 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action createEvent',
-    run: () => adminCreateEvent(eventForm('Matrix event')),
+    run: () => adminCreateEvent({}, eventForm('Matrix event')),
     expect: adminOnly({
       outcome: '→ /admin/events?saved=1',
       effect: (_w, before, after) => {
@@ -393,7 +438,7 @@ const TARGETS: Target[] = [
   },
   {
     name: 'action updateEvent(open)',
-    run: (w) => updateEvent(w.openEvent.id, eventForm('Renamed event')),
+    run: (w) => updateEvent(w.openEvent.id, {}, eventForm('Renamed event')),
     expect: adminOnly({
       outcome: '→ /admin/events?saved=1',
       effect: (w, _before, after) => expect(row(after.events, w.openEvent.id)?.title).toBe('Renamed event'),
@@ -411,10 +456,50 @@ const TARGETS: Target[] = [
     }),
   },
   {
+    name: 'action createGalleryPhoto',
+    run: () => createGalleryPhoto(galleryForm('Matrix photo')),
+    expect: adminOnly({
+      outcome: '→ /admin/gallery?saved=1',
+      effect: (_w, before, after) =>
+        expect(after.galleryPhotos).toEqual([
+          ...before.galleryPhotos,
+          expect.objectContaining({ imageUrl: '/gallery/matrix.jpg', altText: 'Matrix photo', sortOrder: 2 }),
+        ]),
+    }),
+  },
+  {
+    name: 'action updateGalleryPhoto(B)',
+    run: (w) => updateGalleryPhoto(w.photoB.id, galleryForm('Renamed B')),
+    expect: adminOnly({
+      outcome: '→ /admin/gallery?saved=1',
+      effect: (w, _before, after) =>
+        expect(row(after.galleryPhotos, w.photoB.id)).toMatchObject({ imageUrl: '/gallery/matrix.jpg', altText: 'Renamed B' }),
+    }),
+  },
+  {
+    name: 'action deleteGalleryPhoto(B)',
+    run: (w) => deleteGalleryPhoto(w.photoB.id),
+    expect: adminOnly({
+      outcome: '→ /admin/gallery?saved=1',
+      effect: (w, _before, after) => expect(after.galleryPhotos.map((photo) => photo.id)).toEqual([w.photoA.id]),
+    }),
+  },
+  {
+    name: 'action moveGalleryPhoto(B, up)',
+    run: (w) => moveGalleryPhoto(w.photoB.id, 'up'),
+    expect: adminOnly({
+      outcome: '→ /admin/gallery?saved=1',
+      effect: (w, _before, after) =>
+        expect(row(after.galleryPhotos, w.photoB.id)!.sortOrder).toBeLessThan(row(after.galleryPhotos, w.photoA.id)!.sortOrder),
+    }),
+  },
+  {
     name: 'action updateListing (with B’s id in id/sponsorId/listingId, plus tier, logo and order)',
-    run: (w) =>
+    run: (w, persona) =>
       updateListing(
+        null,
         form({
+          [LOADED_LISTING_FIELD]: listingSnapshot(persona === 'sponsor B' ? w.listingB : w.listingA),
           name: 'Edited by sponsor',
           website: '',
           description: 'New description',
@@ -445,9 +530,15 @@ const TARGETS: Target[] = [
               website: null,
             })
             expect(row(after.sponsors, other.id)).toEqual(row(before.sponsors, other.id))
-            expect(after.sponsorEdits.map(({ sponsorId, memberId, memberName }) => ({ sponsorId, memberId, memberName }))).toEqual([
-              { sponsorId: own.id, memberId: editor.id, memberName: editor.name },
-            ])
+            expect(
+              after.sponsorEdits.map(({ sponsorId, editorKind, memberId, adminId, editorName }) => ({
+                sponsorId,
+                editorKind,
+                memberId,
+                adminId,
+                editorName,
+              })),
+            ).toEqual([{ sponsorId: own.id, editorKind: 'sponsor', memberId: editor.id, adminId: null, editorName: editor.name }])
           },
         },
       ],
@@ -543,6 +634,11 @@ const TARGETS: Target[] = [
     expect: adminOnly({ outcome: 'render' }),
   },
   {
+    name: 'page /admin/gallery',
+    run: () => AdminGalleryPage({ searchParams: Promise.resolve({}) }),
+    expect: adminOnly({ outcome: 'render' }),
+  },
+  {
     name: 'page /admin/events/[booked]/attendees',
     run: (w) => AttendeesPage(params({ id: w.bookedEvent.id })),
     expect: adminOnly({ outcome: 'render' }),
@@ -585,7 +681,7 @@ describe('stage 3 authorization matrix', () => {
           cleanWorld = undefined
           signInAs(world.sessions[persona])
 
-          expect(await outcomeOf(() => target.run(world))).toBe(expectation.outcome)
+          expect(await outcomeOf(() => target.run(world, persona))).toBe(expectation.outcome)
 
           const after = await snapshot()
           if (expectation.effect) {

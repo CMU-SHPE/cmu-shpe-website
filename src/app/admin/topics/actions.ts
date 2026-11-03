@@ -1,7 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { newsletterTopics } from '@/db/schema'
 import { requireAdmin } from '@/lib/admin'
@@ -12,6 +12,7 @@ import { moveRow, nextSortOrder } from '@/lib/sort-order'
 const SAVED = '/admin/topics?saved=1'
 const INVALID = '/admin/topics?error=invalid'
 const MISSING = '/admin/topics?error=missing'
+const IN_USE = '/admin/topics?error=in_use'
 
 function parseId(id: unknown) {
   const parsed = recordId.safeParse(id)
@@ -45,15 +46,29 @@ export async function updateTopic(id: number, formData: FormData) {
   redirect(SAVED)
 }
 
+/**
+ * Deleting a topic removes it from every newsletter that chose it. A send in progress reads those
+ * choices for each remaining batch, so its queued recipients on this topic would be skipped.
+ */
+const notUsedByASendInProgress = sql`not exists (
+  select 1 from newsletter_topic_selections s
+  join newsletters n on n.id = s.newsletter_id
+  where s.topic_id = newsletter_topics.id and n.status = 'sending'
+)`
+
 export async function deleteTopic(id: number) {
   await requireAdmin()
   const topicId = parseId(id)
 
-  const deleted = await getDb()
+  const db = getDb()
+  const deleted = await db
     .delete(newsletterTopics)
-    .where(eq(newsletterTopics.id, topicId))
+    .where(and(eq(newsletterTopics.id, topicId), notUsedByASendInProgress))
     .returning({ id: newsletterTopics.id })
-  if (deleted.length === 0) redirect(MISSING)
+  if (deleted.length === 0) {
+    const [stillThere] = await db.select({ id: newsletterTopics.id }).from(newsletterTopics).where(eq(newsletterTopics.id, topicId))
+    redirect(stillThere ? IN_USE : MISSING)
+  }
   redirect(SAVED)
 }
 

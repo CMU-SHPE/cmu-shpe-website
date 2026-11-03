@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
 
-type Write = { kind: 'insert' | 'update' | 'delete'; table: string; values?: Record<string, unknown>; where?: SQL }
+type Write = {
+  kind: 'insert' | 'update' | 'delete' | 'execute'
+  table: string
+  values?: Record<string, unknown>
+  where?: SQL
+  statement?: SQL
+}
 
 const mocks = vi.hoisted(() => {
   const state = {
@@ -11,6 +17,8 @@ const mocks = vi.hoisted(() => {
     ops: [] as string[],
     batches: [] as Write[][],
     batchError: null as null | (() => unknown),
+    adminTakesAddress: null as null | (() => void),
+    confirmedDuringBatch: false,
     throttled: false,
     rounds: 0,
     inFlight: 0,
@@ -54,7 +62,10 @@ const mocks = vi.hoisted(() => {
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
-        where: (where: SQL) => ({ kind: 'update', table: tableName(table), values, where }),
+        where: (where: SQL) => {
+          const write = { kind: 'update', table: tableName(table), values, where }
+          return { ...write, returning: () => write }
+        },
       }),
     }),
     delete: (table: unknown) => ({
@@ -66,6 +77,7 @@ const mocks = vi.hoisted(() => {
           roundTrip(() => {
             state.ops.push(`purge ${tableName(table)}`)
           }).then(resolve, reject),
+        returning: () => ({ kind: 'delete', table: tableName(table), where }),
       }),
     }),
     batch: (writes: Write[]) =>
@@ -77,12 +89,24 @@ const mocks = vi.hoisted(() => {
           throw error
         }
         state.batches.push(writes)
+        const adminTakesAddress = state.adminTakesAddress
+        state.adminTakesAddress = null
+        adminTakesAddress?.()
+        return writes.map((write) => {
+          if (write.kind === 'update') return state.confirmedDuringBatch ? [] : [{ id: 7 }]
+          return write.kind === 'delete' && write.table === 'members' && adminTakesAddress ? [{ id: 9 }] : []
+        })
       }),
-    execute: (statement: SQL) =>
-      roundTrip(() => {
-        state.ops.push(`execute ${new PgDialect().sqlToQuery(statement).sql}`)
-        return { rows: [] }
-      }),
+    execute: (statement: SQL) => ({
+      kind: 'execute',
+      table: '',
+      statement,
+      then: (resolve: (value: unknown) => void, reject: (error: unknown) => void) =>
+        roundTrip(() => {
+          state.ops.push(`execute ${new PgDialect().sqlToQuery(statement).sql}`)
+          return { rows: [] }
+        }).then(resolve, reject),
+    }),
   }
   return {
     state,
@@ -159,6 +183,8 @@ beforeEach(() => {
     ops: [],
     batches: [],
     batchError: null,
+    adminTakesAddress: null,
+    confirmedDuringBatch: false,
     throttled: false,
     rounds: 0,
     inFlight: 0,
@@ -211,8 +237,16 @@ describe('signUp branches', () => {
   it('creates a new member and their confirmation token in one batch', async () => {
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
     const [batch] = mocks.state.batches
-    expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual(['insert members', 'insert member_tokens'])
-    expect(batch[0].values).toMatchObject({
+    expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual([
+      'execute ',
+      'insert members',
+      'insert member_tokens',
+      'delete members',
+    ])
+    expect(render(batch[0].statement!).sql).toBe('lock table admins in share row exclusive mode')
+    expect(render(batch[3].where!).sql).toBe('("members"."email" = $1 and exists $2)')
+    expect(render(batch[3].where!).params[0]).toBe('mia@example.com')
+    expect(batch[1].values).toMatchObject({
       email: 'mia@example.com',
       name: 'New Name',
       passwordHash: '$2b$12$hashed',
@@ -220,7 +254,7 @@ describe('signUp branches', () => {
       ageConfirmedAt: expect.any(Date),
       termsAcceptedAt: expect.any(Date),
     })
-    expect(batch[1].values).toMatchObject({ purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(batch[2].values).toMatchObject({ purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
     expect(mocks.sendEmail.mock.calls[0][0]).toMatchObject({ subject: 'Confirm your email for SHPE @ CMU' })
     expect(sentText()).toMatch(/https:\/\/shpe\.test\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
     expect(sentText().startsWith('Hi,\n')).toBe(true)
@@ -234,7 +268,7 @@ describe('signUp branches', () => {
     expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual([
       'update members',
       'delete member_tokens',
-      'insert member_tokens',
+      'execute ',
     ])
     expect(batch[0].values).toMatchObject({ name: 'New Name', passwordHash: '$2b$12$hashed', privacyPolicyVersion: 'October 2026' })
     expect(render(batch[0].where!)).toMatchObject({
@@ -242,10 +276,24 @@ describe('signUp branches', () => {
       params: [7],
     })
     expect(render(batch[1].where!).params).toEqual([7, 'confirm_email'])
-    expect(batch[2].values).toMatchObject({ memberId: 7, purpose: 'confirm_email' })
+    const tokenInsert = render(batch[2].statement!)
+    expect(tokenInsert.sql).toContain('insert into member_tokens')
+    expect(tokenInsert.sql).toContain('("members"."id" = $4 and "members"."email_confirmed_at" is null)')
+    expect(tokenInsert.params).toEqual(['confirm_email', expect.any(String), expect.any(String), 7])
     expect(sentText()).toContain('/join/confirm?token=')
     expect(sentText().startsWith('Hi,\n')).toBe(true)
     expect(sentText()).not.toMatch(/New Name|Stored Name/)
+  })
+
+  it('sends the account-exists email when a confirmation lands during the batch, in the same round trips', async () => {
+    branches.unconfirmed()
+    mocks.state.confirmedDuringBatch = true
+    await expect(signUp({}, form())).rejects.toThrow('REDIRECT /join/check-email')
+    expect(mocks.state.rounds).toBe(3)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    expect(sentText()).toContain('Hi Stored Name,')
+    expect(sentText()).toContain('https://shpe.test/forgot-password')
+    expect(sentText()).not.toContain('/join/confirm?token=')
   })
 
   it('leaves a confirmed account alone and emails its owner by their stored name', async () => {
@@ -257,14 +305,16 @@ describe('signUp branches', () => {
     expect(sentText()).toContain('https://shpe.test/forgot-password')
   })
 
-  it('leaves an admin alone and sends the admin version, without a reset link', async () => {
+  it('leaves an admin alone and sends the admin version, pointing at the shared reset page without a token', async () => {
     branches.admin()
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
     expect(mocks.state.ops.filter((op) => op.startsWith('find')).sort()).toEqual(['find admins', 'find members'])
     expect(mocks.state.batches).toEqual([])
     expect(sentText()).toContain('Hi Stored Admin,')
-    expect(sentText()).toContain('master admin')
-    expect(sentText()).not.toContain('forgot-password')
+    expect(sentText()).toContain('already belongs to a site admin')
+    expect(sentText()).toMatch(/\/forgot-password\n/)
+    expect(sentText()).not.toContain('master admin')
+    expect(sentText()).not.toContain('token=')
   })
 
   it('purges stale unconfirmed accounts before looking the email up', async () => {
@@ -282,9 +332,20 @@ describe('signUp branches', () => {
     expect(mocks.state.batches[0].map((write) => `${write.kind} ${write.table}`)).toEqual([
       'update members',
       'delete member_tokens',
-      'insert member_tokens',
+      'execute ',
     ])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers as for an admin when an admin takes the address after the lookup, still sending one email', async () => {
+    mocks.state.adminTakesAddress = () => {
+      mocks.state.admin = { name: 'Racing Admin' }
+    }
+    await expect(signUp({}, form())).rejects.toThrow('REDIRECT /join/check-email')
+    expect(mocks.state.batches).toHaveLength(1)
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    expect(sentText()).toContain('Hi Racing Admin,')
+    expect(sentText()).toContain('already belongs to a site admin')
   })
 })
 
