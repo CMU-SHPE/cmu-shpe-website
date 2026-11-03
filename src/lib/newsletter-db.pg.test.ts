@@ -6,11 +6,18 @@ import type { NewsletterBatchResult, NewsletterEmail } from '@/lib/email'
 const mail = vi.hoisted(() => ({
   send: vi.fn<(emails: NewsletterEmail[], options: { idempotencyKey?: string }) => Promise<NewsletterBatchResult>>(),
   plain: vi.fn(async () => {}),
+  cookies: new Map<string, string>(),
 }))
 vi.mock('@/lib/email', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/email')>()),
   sendNewsletterBatch: mail.send,
   sendEmail: mail.plain,
+}))
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: (name: string) => (mail.cookies.has(name) ? { name, value: mail.cookies.get(name)! } : undefined),
+    set: (name: string, value: string) => mail.cookies.set(name, value),
+  }),
 }))
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
@@ -24,6 +31,7 @@ vi.mock('@/lib/admin', () => ({
 import { saveNewsletter } from '@/app/admin/newsletters/actions'
 import { deleteTopic } from '@/app/admin/topics/actions'
 import { resetMemberPassword } from '@/app/reset-password/actions'
+import { KNOWN_DEVICE_COOKIE } from '@/lib/known-device'
 import { hashToken } from '@/lib/member-tokens'
 import { listMembers } from '@/lib/member-admin'
 import {
@@ -391,7 +399,9 @@ describe.skipIf(!hasTestDatabase)('statements otherwise covered only by mocks, o
     await query("insert into login_attempts (email, ip) values ('ana@example.com', '203.0.113.9')")
     const reset = form({ token: used, password: 'a new long password 123', confirmPassword: 'a new long password 123' })
 
+    mail.cookies.clear()
     expect(await redirectOf(resetMemberPassword({}, reset))).toBe('/login?reset=1')
+    expect(mail.cookies.get(KNOWN_DEVICE_COOKIE)).toMatch(/^[\w-]{22}\.[0-9a-z]+\.[\w-]{43}$/)
     const [member] = await query<{ password_hash: string; password_changed_at: string | null }>(
       'select password_hash, password_changed_at from members',
     )
