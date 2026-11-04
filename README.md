@@ -178,10 +178,12 @@ public at `/help/members`) covers the same steps for members.
 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
-  Confirming asks for the password chosen at sign-up, so if someone else signed up with
-  the same address later, the owner's click can't activate the account with that person's
-  password; a wrong password leaves the link working. Didn't get it? `/join/resend` sends
-  a new link. Accounts never confirmed are deleted once they are 7 days old and have no
+  Each sign-up gets its own link carrying that sign-up's name, password and consent, so a
+  later sign-up for the same unconfirmed address can't cancel the owner's link, and nobody's
+  click can activate the account with someone else's password; a wrong password leaves the
+  link working. Confirming a link copies its sign-up onto the account and revokes every other
+  confirmation link. Didn't get it? `/join/resend` sends a new link and leaves earlier ones
+  working; it needs the password from the first sign-up for that email. Accounts never confirmed are deleted once they are 7 days old and have no
   unexpired link; there is no scheduled job, so this happens the next time anyone signs
   up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
