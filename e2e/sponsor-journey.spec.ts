@@ -60,6 +60,13 @@ const OFFICER_DESCRIPTION = `Edited by an officer in the sponsor journey, run ${
 const RECEIPT_TITLE = `E2E receipt ${RUN_ID}`
 const RECEIPT_FILE_NAME = `e2e-receipt-${RUN_ID}.pdf`
 const RECEIPT_DATE = '2026-01-15'
+const RECEIPT_BYTES = Math.floor(3.9 * 1024 * 1024)
+/**
+ * The near-cap receipt is the only check that a 4 MB PDF fits through Vercel's request body limit, so
+ * it stays large and its wait covers the upload: 3.9 MB at a slow 1 Mbit/s uplink is about 33 s,
+ * plus the Blob write and the re-render. The default 5 s expect timeout only fit a fast connection.
+ */
+const RECEIPT_UPLOAD_WAIT_MS = 60_000
 const EVENT_TITLE = `E2E RSVP event ${RUN_ID}`
 
 const UI = {
@@ -229,12 +236,36 @@ async function axeInBothThemes(page: Page, path: string) {
 
 /** A PDF by magic bytes, just under the 4 MB cap, with non-text bytes so any re-encoding shows up. */
 function generatedPdf(): Buffer {
-  const size = Math.floor(3.9 * 1024 * 1024)
+  const size = RECEIPT_BYTES
   const pdf = Buffer.alloc(size)
   for (let index = 0; index < size; index += 1) pdf[index] = (index * 131 + 17) & 0xff
   pdf.write('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 0, 'latin1')
   pdf.write('\n%%EOF\n', size - 7, 'latin1')
   return pdf
+}
+
+/** Leaves time inside the hook's own timeout to close the contexts and list what is left. */
+const CLEANUP_BUDGET_MS = 4 * 60_000
+
+function firstLine(error: unknown) {
+  return error instanceof Error ? error.message.split('\n')[0] : String(error)
+}
+
+/** Chromium's net:: errors, e.g. ERR_NETWORK_CHANGED when the runner's connection drops mid-request. */
+function isNetworkError(message: string) {
+  return /\bnet::ERR_/.test(message)
+}
+
+/** Returns false when there was nothing to delete under that name. */
+async function deleteFrom(admin: Page, path: string, name: string, successPath: string) {
+  await open(admin, path)
+  const button = admin.getByRole('button', { name: UI.delete(name), exact: true })
+  if ((await button.count()) === 0) return false
+  await button.click()
+  await expectSaved(admin, successPath, `Deleting ${name}`)
+  await open(admin, path)
+  await expect(admin.getByRole('button', { name: UI.delete(name), exact: true })).toHaveCount(0)
+  return true
 }
 
 function dateInDays(days: number) {
@@ -380,7 +411,7 @@ test.describe('sponsor journey', () => {
           .getByLabel(UI.receipts.file, { exact: true })
           .setInputFiles({ name: RECEIPT_FILE_NAME, mimeType: 'application/pdf', buffer: pdf })
         await receipts.getByRole('button', { name: UI.receipts.upload, exact: true }).click()
-        await expect(receipts.getByRole('status')).toContainText(UI.receipts.uploaded)
+        await expect(receipts.getByRole('status')).toContainText(UI.receipts.uploaded, { timeout: RECEIPT_UPLOAD_WAIT_MS })
         await expect(receipts).toContainText(RECEIPT_TITLE)
       })
 
@@ -490,63 +521,73 @@ test.describe('sponsor journey', () => {
     const baseURL = created.baseURL
     const anythingCreated = created.listing || created.event || created.members.length > 0
     if (missingEnv.length > 0 || !baseURL || !anythingCreated) return
-    test.setTimeout(3 * 60_000)
+    test.setTimeout(CLEANUP_BUDGET_MS + 60_000)
 
-    const context = await newContext(browser, baseURL)
-    const admin = await context.newPage()
-    admin.on('dialog', (dialog) => dialog.accept())
-    const problems: string[] = []
+    type Leftover = { row: string; remove: (admin: Page) => Promise<unknown> }
+    const leftovers: Leftover[] = []
+    const listing = created.listing
+    if (listing) {
+      leftovers.push({
+        row: `sponsor listing ${listing.id ? `#${listing.id} ` : ''}named "${listing.names.join('" or "')}" (Admin > Sponsors)`,
+        remove: async (admin) => {
+          for (const name of listing.names) if (await deleteFrom(admin, '/admin/sponsors', name, '/admin/sponsors')) return
+        },
+      })
+    }
+    if (created.event) {
+      leftovers.push({
+        row: `event "${EVENT_TITLE}" (Admin > Events)`,
+        remove: (admin) => deleteFrom(admin, '/admin/events', EVENT_TITLE, '/admin/events'),
+      })
+    }
+    for (const member of created.members) {
+      leftovers.push({
+        row: `member ${member.email} named "${member.name}" (Admin > Members)`,
+        remove: (admin) =>
+          deleteFrom(admin, `/admin/members?q=${encodeURIComponent(member.email)}`, member.name, '/admin/members'),
+      })
+    }
 
-    async function attempt(description: string, run: () => Promise<void>) {
+    const failures = new Map<Leftover, string>(leftovers.map((leftover) => [leftover, 'not attempted']))
+    const contexts: BrowserContext[] = []
+
+    /** Each pass starts from a fresh context and sign-in, so nothing half-loaded from a dropped connection carries over. */
+    async function cleanupPass() {
+      let admin: Page
       try {
-        assertWriteTarget(baseURL, description)
-        await run()
+        const context = await newContext(browser, baseURL)
+        contexts.push(context)
+        admin = await context.newPage()
+        admin.on('dialog', (dialog) => dialog.accept())
+        await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
       } catch (error) {
-        problems.push(`${description}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
+        for (const leftover of failures.keys()) failures.set(leftover, `admin sign-in for cleanup: ${firstLine(error)}`)
+        return
+      }
+      for (const leftover of [...failures.keys()]) {
+        try {
+          assertWriteTarget(baseURL, `delete the ${leftover.row}`)
+          await leftover.remove(admin)
+          failures.delete(leftover)
+        } catch (error) {
+          failures.set(leftover, firstLine(error))
+        }
       }
     }
 
-    /** Returns false when there was nothing to delete under that name. */
-    async function deleteFrom(path: string, name: string, successPath: string) {
-      await open(admin, path)
-      const button = admin.getByRole('button', { name: UI.delete(name), exact: true })
-      if ((await button.count()) === 0) return false
-      await button.click()
-      await expectSaved(admin, successPath, `Deleting ${name}`)
-      await open(admin, path)
-      await expect(admin.getByRole('button', { name: UI.delete(name), exact: true })).toHaveCount(0)
-      return true
+    const passes = (async () => {
+      await cleanupPass()
+      if ([...failures.values()].some(isNetworkError)) await cleanupPass()
+    })()
+    const outOfTime = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), CLEANUP_BUDGET_MS).unref())
+    if ((await Promise.race([passes, outOfTime])) === 'timeout') {
+      for (const leftover of failures.keys()) failures.set(leftover, `cleanup ran out of its ${CLEANUP_BUDGET_MS / 1000}s budget`)
     }
+    await Promise.allSettled(contexts.map((context) => context.close()))
 
-    try {
-      await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
-
-      const listing = created.listing
-      if (listing) {
-        await attempt(`delete the listing "${listing.names.join('" or "')}"`, async () => {
-          for (const name of listing.names) {
-            if (await deleteFrom('/admin/sponsors', name, '/admin/sponsors')) return
-          }
-        })
-      }
-      if (created.event) {
-        await attempt(`delete the event "${EVENT_TITLE}"`, async () => {
-          await deleteFrom('/admin/events', EVENT_TITLE, '/admin/events')
-        })
-      }
-      for (const member of created.members) {
-        await attempt(`delete the member ${member.email}`, async () => {
-          await deleteFrom(`/admin/members?q=${encodeURIComponent(member.email)}`, member.name, '/admin/members')
-        })
-      }
-    } catch (error) {
-      problems.push(`admin sign-in for cleanup: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
-    } finally {
-      await context.close()
-    }
-
-    if (problems.length > 0) {
-      throw new Error(`Sponsor journey cleanup left data on the preview; remove it by hand:\n- ${problems.join('\n- ')}`)
+    if (failures.size > 0) {
+      const rows = [...failures].map(([leftover, reason]) => `${leftover.row}: ${reason}`)
+      throw new Error(`Sponsor journey cleanup left data on ${baseURL}; delete these rows by hand:\n- ${rows.join('\n- ')}`)
     }
   })
 })
