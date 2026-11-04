@@ -93,7 +93,9 @@ const mocks = vi.hoisted(() => {
         state.adminTakesAddress = null
         adminTakesAddress?.()
         return writes.map((write) => {
-          if (write.kind === 'update') return state.confirmedDuringBatch ? [] : [{ id: 7 }]
+          if (write.kind === 'execute' && /insert into member_tokens/.test(new PgDialect().sqlToQuery(write.statement!).sql)) {
+            return { rows: state.confirmedDuringBatch ? [] : [{ member_id: 7 }] }
+          }
           return write.kind === 'delete' && write.table === 'members' && adminTakesAddress ? [{ id: 9 }] : []
         })
       }),
@@ -254,32 +256,44 @@ describe('signUp branches', () => {
       ageConfirmedAt: expect.any(Date),
       termsAcceptedAt: expect.any(Date),
     })
-    expect(batch[2].values).toMatchObject({ purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/) })
+    expect(batch[2].values).toMatchObject({
+      purpose: 'confirm_email',
+      tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      name: 'New Name',
+      passwordHash: '$2b$12$hashed',
+      privacyPolicyVersion: 'October 2026',
+      ageConfirmedAt: batch[1].values!.ageConfirmedAt,
+      termsAcceptedAt: batch[1].values!.termsAcceptedAt,
+    })
     expect(mocks.sendEmail.mock.calls[0][0]).toMatchObject({ subject: 'Confirm your email for SHPE @ CMU' })
     expect(sentText()).toMatch(/https:\/\/shpe\.test\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
     expect(sentText().startsWith('Hi,\n')).toBe(true)
     expect(sentText()).not.toContain('New Name')
   })
 
-  it('takes over an unconfirmed account: new details, old links revoked, fresh link sent', async () => {
+  it('leaves an unconfirmed account and its links alone, giving this sign-up a link of its own', async () => {
     branches.unconfirmed()
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT')
     const [batch] = mocks.state.batches
-    expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual([
-      'update members',
-      'delete member_tokens',
-      'execute ',
-    ])
-    expect(batch[0].values).toMatchObject({ name: 'New Name', passwordHash: '$2b$12$hashed', privacyPolicyVersion: 'October 2026' })
-    expect(render(batch[0].where!)).toMatchObject({
-      sql: '("members"."id" = $1 and "members"."email_confirmed_at" is null)',
-      params: [7],
-    })
-    expect(render(batch[1].where!).params).toEqual([7, 'confirm_email'])
-    const tokenInsert = render(batch[2].statement!)
+    expect(batch.map((write) => `${write.kind} ${write.table}`)).toEqual(['execute '])
+    const tokenInsert = render(batch[0].statement!)
     expect(tokenInsert.sql).toContain('insert into member_tokens')
-    expect(tokenInsert.sql).toContain('("members"."id" = $4 and "members"."email_confirmed_at" is null)')
-    expect(tokenInsert.params).toEqual(['confirm_email', expect.any(String), expect.any(String), 7])
+    expect(tokenInsert.sql).toContain(
+      'name, password_hash, privacy_policy_version, age_confirmed_at, terms_accepted_at',
+    )
+    expect(tokenInsert.sql).toContain('("members"."id" = $9 and "members"."email_confirmed_at" is null)')
+    expect(tokenInsert.sql).toMatch(/is null\)\s+for share\s+returning member_id\s*$/)
+    expect(tokenInsert.params).toEqual([
+      'confirm_email',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      expect.any(String),
+      'New Name',
+      '$2b$12$hashed',
+      'October 2026',
+      expect.any(String),
+      expect.any(String),
+      7,
+    ])
     expect(sentText()).toContain('/join/confirm?token=')
     expect(sentText().startsWith('Hi,\n')).toBe(true)
     expect(sentText()).not.toMatch(/New Name|Stored Name/)
@@ -329,11 +343,7 @@ describe('signUp branches', () => {
       return Object.assign(new Error('duplicate key'), { code: '23505' })
     }
     await expect(signUp({}, form())).rejects.toThrow('REDIRECT /join/check-email')
-    expect(mocks.state.batches[0].map((write) => `${write.kind} ${write.table}`)).toEqual([
-      'update members',
-      'delete member_tokens',
-      'execute ',
-    ])
+    expect(mocks.state.batches[0].map((write) => `${write.kind} ${write.table}`)).toEqual(['execute '])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
   })
 

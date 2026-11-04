@@ -5,7 +5,7 @@ import type { SQL } from 'drizzle-orm'
 
 const fake = vi.hoisted(() => {
   const state = {
-    stored: new Map<string, { memberId: number; purpose: string; expired: boolean }>(),
+    stored: new Map<string, { memberId: number; purpose: string; expired: boolean; signUp?: Record<string, unknown> }>(),
     statements: [] as { sql: string; params: unknown[] }[],
     returningCalls: 0,
     selectCalls: 0,
@@ -30,7 +30,8 @@ vi.mock('@/db', () => ({
             const [hash, purpose] = query.params as [string, string]
             const row = fake.state.stored.get(hash)
             if (!row || row.purpose !== purpose || row.expired) return []
-            return [{ memberId: row.memberId }]
+            const unlinked = { name: null, passwordHash: null, privacyPolicyVersion: null, ageConfirmedAt: null, termsAcceptedAt: null }
+            return [{ memberId: row.memberId, ...unlinked, ...row.signUp }]
           },
         }),
       }),
@@ -57,10 +58,21 @@ import {
   confirmEmailLink,
   consumeMemberToken,
   findMemberEmailForToken,
+  findConfirmEmailLink,
   findMemberToken,
   hashToken,
+  newConfirmEmailToken,
   newMemberToken,
+  type SignUpDetails,
 } from './member-tokens'
+
+const SIGN_UP: SignUpDetails = {
+  name: 'Mia Lopez',
+  passwordHash: '$2b$12$hashed',
+  privacyPolicyVersion: 'October 2026',
+  ageConfirmedAt: new Date('2026-11-01T10:00:00Z'),
+  termsAcceptedAt: new Date('2026-11-01T10:00:00Z'),
+}
 
 beforeEach(() => {
   fake.state.stored.clear()
@@ -95,6 +107,40 @@ describe('newMemberToken', () => {
   it('never repeats a token', () => {
     const tokens = new Set(Array.from({ length: 50 }, () => newMemberToken(1, 'reset_password').token))
     expect(tokens.size).toBe(50)
+  })
+})
+
+describe('newConfirmEmailToken', () => {
+  it('makes a 24-hour confirmation token carrying the sign-up it was sent for', () => {
+    const { token, row } = newConfirmEmailToken(7, SIGN_UP, 1_000)
+    expect(row).toEqual({
+      memberId: 7,
+      purpose: 'confirm_email',
+      tokenHash: hashToken(token),
+      expiresAt: new Date(1_000 + 24 * 60 * 60 * 1000),
+      ...SIGN_UP,
+    })
+  })
+})
+
+describe('findConfirmEmailLink', () => {
+  it('returns the member and the sign-up the link carries, without using it up', async () => {
+    const token = store(7, 'confirm_email')
+    fake.state.stored.get(hashToken(token))!.signUp = SIGN_UP
+    await expect(findConfirmEmailLink(token)).resolves.toEqual({ memberId: 7, signUp: SIGN_UP })
+    expect(fake.state.returningCalls).toBe(0)
+    expect(fake.state.statements[0].params).toEqual([hashToken(token), 'confirm_email'])
+  })
+
+  it('returns no sign-up for a resent link or one issued before links carried one', async () => {
+    await expect(findConfirmEmailLink(store(7, 'confirm_email'))).resolves.toEqual({ memberId: 7, signUp: null })
+  })
+
+  it('refuses an expired, reset or malformed token', async () => {
+    await expect(findConfirmEmailLink(store(7, 'confirm_email', true))).resolves.toBeNull()
+    await expect(findConfirmEmailLink(store(7, 'reset_password'))).resolves.toBeNull()
+    await expect(findConfirmEmailLink('short')).resolves.toBeNull()
+    expect(fake.state.selectCalls).toBe(2)
   })
 })
 

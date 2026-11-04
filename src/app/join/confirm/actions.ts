@@ -3,31 +3,77 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
-import { and, eq, isNull } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import { members } from '@/db/schema'
 import { WINDOW_MINUTES, clientIp } from '@/lib/login-throttle'
 import type { FormState } from '@/lib/member-accounts'
-import { consumeMemberToken, deleteMemberTokens, findMemberToken } from '@/lib/member-tokens'
+import { findConfirmEmailLink, hashToken } from '@/lib/member-tokens'
 import { recordRequest } from '@/lib/request-throttle'
 
 const INVALID_LINK_PATH = '/join/confirm?invalid=1'
 const PASSWORD_MISSING = 'Enter the password you chose when you signed up.'
 const PASSWORD_MISMATCH =
-  "That password doesn't match this sign-up. If you didn't make the most recent sign-up for this email, sign up again with the password you want."
+  "That password doesn't match the sign-up this link was sent for. If you signed up more than once, use the link from the email that followed the sign-up whose password you know, or sign up again."
 const THROTTLED = `Too many attempts. Wait ${WINDOW_MINUTES} minutes and try again.`
 
 /**
- * Anyone can sign up with an address they don't own, and a later sign-up replaces an
- * unconfirmed one's password, so clicking the link alone must not activate the account:
- * the visitor also has to know the latest sign-up's password. The link is only used up
- * once that matches, so a wrong password leaves it working.
+ * Locking the member first queues a racing confirmation or sign-up behind this one instead of
+ * deadlocking on each other's links. The link is only used up if the account is still unconfirmed
+ * and its password is the one checked, and copying its sign-up onto the account and revoking every
+ * other confirmation link happen in the same statement, so a failure leaves the link working and
+ * nothing half done. A link with no sign-up of its own changes nothing but email_confirmed_at.
+ */
+function confirmWithLink(memberId: number, token: string, checkedPasswordHash: string) {
+  const db = getDb()
+  const tokenHash = hashToken(token)
+  return db.batch([
+    db.execute(sql`select id from members where id = ${memberId} for update`),
+    db.execute<{ id: number }>(sql`
+      with consumed as (
+        delete from member_tokens t
+        using members m
+        where t.token_hash = ${tokenHash} and t.purpose = 'confirm_email' and t.expires_at > now()
+          and m.id = t.member_id and m.email_confirmed_at is null
+          and coalesce(t.password_hash, m.password_hash) = ${checkedPasswordHash}
+        returning t.member_id, t.name, t.password_hash, t.privacy_policy_version, t.age_confirmed_at, t.terms_accepted_at
+      ),
+      confirmed as (
+        update members m set
+          email_confirmed_at = ${new Date().toISOString()}::timestamptz,
+          name = coalesce(c.name, m.name),
+          password_hash = coalesce(c.password_hash, m.password_hash),
+          privacy_policy_version = coalesce(c.privacy_policy_version, m.privacy_policy_version),
+          age_confirmed_at = coalesce(c.age_confirmed_at, m.age_confirmed_at),
+          terms_accepted_at = coalesce(c.terms_accepted_at, m.terms_accepted_at)
+        from consumed c
+        where m.id = c.member_id and m.email_confirmed_at is null
+        returning m.id
+      ),
+      revoked as (
+        delete from member_tokens t using confirmed
+        where t.member_id = confirmed.id and t.purpose = 'confirm_email' and t.token_hash <> ${tokenHash}
+      )
+      select id from confirmed
+    `),
+  ])
+}
+
+/**
+ * Anyone can sign up with an address they don't own, and each sign-up gets its own link
+ * carrying its own name, password and consent, so clicking a link alone must not activate
+ * the account: the visitor also has to know that sign-up's password. A resent link, or one
+ * issued before sign-ups were kept per link, stands for the sign-up on the member row. The
+ * link is only used up once the password matches, so a wrong one leaves it working.
+ * Confirming copies the link's sign-up onto the account and revokes every other
+ * confirmation link: the account now belongs to whoever confirmed it.
  */
 export async function confirmMemberEmail(_state: FormState, formData: FormData): Promise<FormState> {
   const token = formData.get('token')
   if (typeof token !== 'string') redirect(INVALID_LINK_PATH)
-  const memberId = await findMemberToken(token, 'confirm_email')
-  if (memberId === null) redirect(INVALID_LINK_PATH)
+  const link = await findConfirmEmailLink(token)
+  if (link === null) redirect(INVALID_LINK_PATH)
+  const { memberId, signUp } = link
 
   const db = getDb()
   const [member] = await db
@@ -46,25 +92,10 @@ export async function confirmMemberEmail(_state: FormState, formData: FormData):
     console.warn(`CONFIRM EMAIL THROTTLED from ${ip ?? 'unknown ip'}`)
     return { formError: THROTTLED }
   }
-  if (!(await bcrypt.compare(password, member.passwordHash))) return { formError: PASSWORD_MISMATCH }
+  const checkedPasswordHash = signUp?.passwordHash ?? member.passwordHash
+  if (!(await bcrypt.compare(password, checkedPasswordHash))) return { formError: PASSWORD_MISMATCH }
 
-  if ((await consumeMemberToken(token, 'confirm_email')) === null) redirect(INVALID_LINK_PATH)
-
-  const confirmed = await db
-    .update(members)
-    .set({ emailConfirmedAt: new Date() })
-    .where(
-      and(
-        eq(members.id, memberId),
-        isNull(members.emailConfirmedAt),
-        // A sign-up landing between the password check and this write must not be the one activated.
-        eq(members.passwordHash, member.passwordHash),
-      ),
-    )
-    .returning({ id: members.id })
-  // That later sign-up's link must keep working, so nothing else is revoked unless this one took effect.
-  if (confirmed.length === 0) redirect(INVALID_LINK_PATH)
-
-  await deleteMemberTokens(db, memberId, 'confirm_email')
+  const [, confirmed] = await confirmWithLink(memberId, token, checkedPasswordHash)
+  if (confirmed.rows.length === 0) redirect(INVALID_LINK_PATH)
   redirect('/login?confirmed=1')
 }

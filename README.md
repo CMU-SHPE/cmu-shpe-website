@@ -178,10 +178,12 @@ public at `/help/members`) covers the same steps for members.
 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
-  Confirming asks for the password chosen at sign-up, so if someone else signed up with
-  the same address later, the owner's click can't activate the account with that person's
-  password; a wrong password leaves the link working. Didn't get it? `/join/resend` sends
-  a new link. Accounts never confirmed are deleted once they are 7 days old and have no
+  Each sign-up gets its own link carrying that sign-up's name, password and consent, so a
+  later sign-up for the same unconfirmed address can't cancel the owner's link, and nobody's
+  click can activate the account with someone else's password; a wrong password leaves the
+  link working. Confirming a link copies its sign-up onto the account and revokes every other
+  confirmation link. Didn't get it? `/join/resend` sends a new link and leaves earlier ones
+  working; it needs the password from the first sign-up for that email. Accounts never confirmed are deleted once they are 7 days old and have no
   unexpired link; there is no scheduled job, so this happens the next time anyone signs
   up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
@@ -628,6 +630,28 @@ Do these in order, all *before* merging to `main`, after the contact form releas
    key is handled as above.
 
 There is no schema step.
+
+### Production steps for the sign-up links release
+
+Do these in order, all *before* merging to `main`, after the sign-in protection release's steps.
+The new code reads and writes the new `member_tokens` columns, so on the old schema every
+sign-up for a new or unconfirmed address and every email confirmation returns a 500 (sign-ups
+for an admin's or a confirmed member's address still get their usual email). Members' forgot-password
+and new confirmation link requests show their usual "sent" page but send nothing, logging
+`PASSWORD RESET FAILED` or `RESEND CONFIRMATION FAILED`. The push must happen before the merge.
+The old code on the new schema is safe: it never reads the new columns, leaves them empty, and
+the new check allows empty ones.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** with Node.js 24, apply the additive sign-up columns and check on `member_tokens`
+   (reviewed in `drizzle/0010_magical_texas_twister.sql`; it only adds, and existing links,
+   which have empty columns, pass the check) to production with `npm run db:push`, as
+   described under [Preview databases](#preview-databases).
+3. **Merge** to `main`.
+
+There is no policy text step: links store the same kinds of information as the account (a
+name, a hashed password and consent), and they are deleted when the account is confirmed or
+when an unconfirmed account is removed.
 
 ### Releasing a change to the Privacy Policy or Terms
 

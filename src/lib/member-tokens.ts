@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { and, eq, gt, sql, type SQL } from 'drizzle-orm'
+import { and, eq, gt, isNull, sql, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, type Db } from '@/db'
 import { members, memberTokens, type MemberTokenPurpose } from '@/db/schema'
@@ -33,12 +33,56 @@ export function newMemberToken(memberId: number | SQL, purpose: MemberTokenPurpo
   }
 }
 
+/** What a sign-up chose, carried by its own confirmation link so a later sign-up can't change it. */
+export type SignUpDetails = {
+  name: string
+  passwordHash: string
+  privacyPolicyVersion: string
+  ageConfirmedAt: Date
+  termsAcceptedAt: Date
+}
+
+export function newConfirmEmailToken(memberId: number | SQL, signUp: SignUpDetails, now = Date.now()) {
+  const { token, row } = newMemberToken(memberId, 'confirm_email', now)
+  return { token, row: { ...row, ...signUp } }
+}
+
 export function confirmEmailLink(base: string, token: string): string {
   return `${base}/join/confirm?token=${token}`
 }
 
-export function insertMemberToken(db: Db, row: ReturnType<typeof newMemberToken>['row']) {
+export function insertMemberToken(
+  db: Db,
+  row: ReturnType<typeof newMemberToken>['row'] | ReturnType<typeof newConfirmEmailToken>['row'],
+) {
   return db.insert(memberTokens).values(row)
+}
+
+/**
+ * A plain INSERT could not depend on the member row: selecting from it adds nothing once it is
+ * confirmed. FOR SHARE makes it wait behind a confirmation that has locked the row, then re-check
+ * the row as that confirmation left it, so a link is never added after the confirmation revoked the
+ * others. No row comes back if the member was confirmed or deleted meanwhile.
+ */
+export function insertConfirmEmailTokenIfUnconfirmed(
+  db: Db,
+  memberId: number,
+  row: ReturnType<typeof newMemberToken>['row'] & Partial<SignUpDetails>,
+) {
+  const stillUnconfirmed = and(eq(members.id, memberId), isNull(members.emailConfirmedAt))
+  return db.execute<{ member_id: number }>(sql`
+    insert into member_tokens (
+      member_id, purpose, token_hash, expires_at,
+      name, password_hash, privacy_policy_version, age_confirmed_at, terms_accepted_at
+    )
+    select ${members.id}, ${row.purpose}::member_token_purpose, ${row.tokenHash}, ${row.expiresAt.toISOString()}::timestamptz,
+      ${row.name ?? null}, ${row.passwordHash ?? null}, ${row.privacyPolicyVersion ?? null},
+      ${row.ageConfirmedAt?.toISOString() ?? null}::timestamptz, ${row.termsAcceptedAt?.toISOString() ?? null}::timestamptz
+    from ${members}
+    where ${stillUnconfirmed}
+    for share
+    returning member_id
+  `)
 }
 
 export function deleteMemberTokens(db: Db, memberId: number, purpose: MemberTokenPurpose) {
@@ -65,6 +109,36 @@ export async function findMemberToken(token: string, purpose: MemberTokenPurpose
     .where(unexpiredTokenMatching(token, purpose))
     .limit(1)
   return row?.memberId ?? null
+}
+
+function linkedSignUp(row: { [Field in keyof SignUpDetails]: SignUpDetails[Field] | null }): SignUpDetails | null {
+  const { name, passwordHash, privacyPolicyVersion, ageConfirmedAt, termsAcceptedAt } = row
+  if (name === null || passwordHash === null || privacyPolicyVersion === null || ageConfirmedAt === null || termsAcceptedAt === null) {
+    return null
+  }
+  return { name, passwordHash, privacyPolicyVersion, ageConfirmedAt, termsAcceptedAt }
+}
+
+/**
+ * Like findMemberToken, with the sign-up the link was sent for. That is null for a resent link or one
+ * issued before sign-ups were kept per link, which stand for the sign-up already on the member row.
+ */
+export async function findConfirmEmailLink(token: string): Promise<{ memberId: number; signUp: SignUpDetails | null } | null> {
+  if (!memberTokenParam.safeParse(token).success) return null
+  const [row] = await getDb()
+    .select({
+      memberId: memberTokens.memberId,
+      name: memberTokens.name,
+      passwordHash: memberTokens.passwordHash,
+      privacyPolicyVersion: memberTokens.privacyPolicyVersion,
+      ageConfirmedAt: memberTokens.ageConfirmedAt,
+      termsAcceptedAt: memberTokens.termsAcceptedAt,
+    })
+    .from(memberTokens)
+    .where(unexpiredTokenMatching(token, 'confirm_email'))
+    .limit(1)
+  if (!row) return null
+  return { memberId: row.memberId, signUp: linkedSignUp(row) }
 }
 
 /** For a page that only shows a form, such as the hidden username password managers need. */

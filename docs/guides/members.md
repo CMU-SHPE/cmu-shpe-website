@@ -30,6 +30,10 @@ You see "Check your inbox". Your account isn't ready until you confirm your emai
 
 You are taken to the sign-in page with the message "Your email is confirmed — sign in to continue."
 
+If you see "That password doesn't match the sign-up this link was sent for. If you signed up more
+than once, use the link from the email that followed the sign-up whose password you know, or sign
+up again.", the link is still unused: try again with the right password, or use another link.
+
 ![The Confirm your email page with the Password field and the Confirm my email button](/help/img/members/confirm-email.png)
 
 ### If the email doesn't arrive
@@ -37,7 +41,8 @@ You are taken to the sign-in page with the message "Your email is confirmed — 
 1. Wait a few minutes and check your spam or junk folder.
 2. If it still isn't there, go to [shpecmu.com/join/resend](/join/resend). The sign-in page also
    links to it as **Didn't get the confirmation email?**
-3. Enter your **Email** and choose **Send a new link**. Older links stop working.
+3. Enter your **Email** and choose **Send a new link**. It needs the password from the first sign-up for
+   that email. Links we sent earlier keep working until they expire.
 
 If you see "This link doesn't work", the link has expired, was already used, or was cut off when
 you copied it. Choose **Send me a new confirmation link**.
