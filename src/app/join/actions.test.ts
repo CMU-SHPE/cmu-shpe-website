@@ -282,7 +282,7 @@ describe('signUp branches', () => {
       'name, password_hash, privacy_policy_version, age_confirmed_at, terms_accepted_at',
     )
     expect(tokenInsert.sql).toContain('("members"."id" = $9 and "members"."email_confirmed_at" is null)')
-    expect(tokenInsert.sql).toMatch(/returning member_id\s*$/)
+    expect(tokenInsert.sql).toMatch(/is null\)\s+for share\s+returning member_id\s*$/)
     expect(tokenInsert.params).toEqual([
       'confirm_email',
       expect.stringMatching(/^[0-9a-f]{64}$/),

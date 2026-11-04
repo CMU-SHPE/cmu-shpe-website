@@ -6,13 +6,12 @@ const mocks = vi.hoisted(() => {
   const state = {
     member: { email: 'mia@example.com', passwordHash: '$2b$12$signed-up' } as { email: string; passwordHash: string } | null,
     ops: [] as string[],
-    writes: [] as { kind: string; values?: Record<string, unknown>; where: SQL }[],
-    updatedRows: 1,
+    batches: [] as SQL[][],
+    confirmedRows: 1,
   }
   return {
     state,
     find: vi.fn<(token: string) => Promise<{ memberId: number; signUp: SignUpDetails | null } | null>>(),
-    consume: vi.fn<(token: string, purpose: string) => Promise<number | null>>(),
     recordRequest: vi.fn<(action: string, email: string, ip: string | null) => Promise<{ throttled: boolean }>>(),
     compare: vi.fn<(password: string, hash: string) => Promise<boolean>>(),
     db: {
@@ -24,23 +23,12 @@ const mocks = vi.hoisted(() => {
         }
         return query
       },
-      update: () => ({
-        set: (values: Record<string, unknown>) => ({
-          where: (where: SQL) => ({
-            returning: async () => {
-              state.ops.push('update')
-              state.writes.push({ kind: 'update members', values, where })
-              return Array.from({ length: state.updatedRows }, () => ({ id: 7 }))
-            },
-          }),
-        }),
-      }),
-      delete: () => ({
-        where: async (where: SQL) => {
-          state.ops.push('revoke')
-          state.writes.push({ kind: 'delete member_tokens', where })
-        },
-      }),
+      execute: (statement: SQL) => statement,
+      batch: async (statements: SQL[]) => {
+        state.ops.push('batch')
+        state.batches.push(statements)
+        return [{ rows: [{ id: 7 }] }, { rows: Array.from({ length: state.confirmedRows }, () => ({ id: 7 })) }]
+      },
     },
     redirect: vi.fn((url: string) => {
       throw new Error(`REDIRECT ${url}`)
@@ -52,14 +40,13 @@ vi.mock('@/db', () => ({ getDb: () => mocks.db }))
 vi.mock('@/lib/member-tokens', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/member-tokens')>()),
   findConfirmEmailLink: mocks.find,
-  consumeMemberToken: mocks.consume,
 }))
 vi.mock('@/lib/request-throttle', () => ({ recordRequest: mocks.recordRequest }))
 vi.mock('bcryptjs', () => ({ default: { compare: mocks.compare } }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.7' }) }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
-import type { SignUpDetails } from '@/lib/member-tokens'
+import { hashToken, type SignUpDetails } from '@/lib/member-tokens'
 import { confirmMemberEmail } from './actions'
 
 const TOKEN = 'A'.repeat(43)
@@ -90,13 +77,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.state.member = { email: 'mia@example.com', passwordHash: '$2b$12$signed-up' }
   mocks.state.ops = []
-  mocks.state.writes = []
-  mocks.state.updatedRows = 1
+  mocks.state.batches = []
+  mocks.state.confirmedRows = 1
   mocks.find.mockResolvedValue({ memberId: 7, signUp: LINKED_SIGN_UP })
-  mocks.consume.mockImplementation(async () => {
-    mocks.state.ops.push('consume')
-    return 7
-  })
   mocks.recordRequest.mockImplementation(async () => {
     mocks.state.ops.push('throttle')
     return { throttled: false }
@@ -108,8 +91,13 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
+const render = (statement: SQL) => {
+  const { sql, params } = new PgDialect().sqlToQuery(statement)
+  return { sql: sql.replace(/\s+/g, ' ').trim(), params }
+}
+
 describe('confirmMemberEmail', () => {
-  it('checks the link’s own password, then consumes it, confirms the account with the link’s sign-up and revokes its other links', async () => {
+  it('checks the link’s own password, then locks the member and confirms in one statement', async () => {
     mocks.compare.mockImplementation(async (password, hash) => {
       mocks.state.ops.push('compare')
       return password === 'the signed-up password' && hash === '$2b$12$this-link'
@@ -120,32 +108,34 @@ describe('confirmMemberEmail', () => {
     expect(mocks.find).toHaveBeenCalledWith(TOKEN)
     expect(mocks.recordRequest).toHaveBeenCalledWith('confirm_email', 'mia@example.com', '203.0.113.7')
     expect(mocks.compare).toHaveBeenCalledWith('the signed-up password', '$2b$12$this-link')
-    expect(mocks.consume).toHaveBeenCalledWith(TOKEN, 'confirm_email')
-    expect(mocks.state.ops).toEqual(['throttle', 'compare', 'consume', 'update', 'revoke'])
+    expect(mocks.state.ops).toEqual(['throttle', 'compare', 'batch'])
 
-    const [confirmWrite, revoke] = mocks.state.writes
-    expect(confirmWrite.values).toEqual({ ...LINKED_SIGN_UP, emailConfirmedAt: expect.any(Date) })
-    const { sql, params } = new PgDialect().sqlToQuery(confirmWrite.where)
-    expect(sql).toBe('("members"."id" = $1 and "members"."email_confirmed_at" is null)')
-    expect(params).toEqual([7])
-    expect(new PgDialect().sqlToQuery(revoke.where).params).toEqual([7, 'confirm_email'])
+    const [[lock, write]] = mocks.state.batches
+    expect(render(lock)).toEqual({ sql: 'select id from members where id = $1 for update', params: [7] })
+    const { sql, params } = render(write)
+    expect(sql).toMatch(
+      /^with consumed as \( delete from member_tokens t using members m where t\.token_hash = \$1 and t\.purpose = 'confirm_email' and t\.expires_at > now\(\) and m\.id = t\.member_id and m\.email_confirmed_at is null and coalesce\(t\.password_hash, m\.password_hash\) = \$2 returning/,
+    )
+    expect(sql).toContain('name = coalesce(c.name, m.name), password_hash = coalesce(c.password_hash, m.password_hash)')
+    expect(sql).toContain('where m.id = c.member_id and m.email_confirmed_at is null returning m.id')
+    expect(sql).toContain("delete from member_tokens t using confirmed where t.member_id = confirmed.id and t.purpose = 'confirm_email' and t.token_hash <> $4")
+    expect(params).toEqual([hashToken(TOKEN), '$2b$12$this-link', expect.any(String), hashToken(TOKEN)])
   })
 
-  it('checks a link with no sign-up of its own against the member row, and only confirms the account', async () => {
+  it('checks a link with no sign-up of its own against the member row’s password', async () => {
     mocks.find.mockResolvedValue({ memberId: 7, signUp: null })
     await expect(confirm({ token: TOKEN, password: 'the signed-up password' })).resolves.toEqual({
       thrown: 'REDIRECT /login?confirmed=1',
     })
     expect(mocks.compare).toHaveBeenCalledWith('the signed-up password', '$2b$12$signed-up')
-    expect(mocks.state.writes[0].values).toEqual({ emailConfirmedAt: expect.any(Date) })
+    expect(render(mocks.state.batches[0][1]).params[1]).toBe('$2b$12$signed-up')
   })
 
   it('refuses a wrong password with one generic message, leaving the link unused and the account unconfirmed', async () => {
     await expect(confirm({ token: TOKEN, password: 'a later sign-up password' })).resolves.toEqual({
       state: { formError: MISMATCH },
     })
-    expect(mocks.consume).not.toHaveBeenCalled()
-    expect(mocks.state.writes).toEqual([])
+    expect(mocks.state.batches).toEqual([])
   })
 
   it('asks for the password when it is left blank, without counting an attempt or using the link', async () => {
@@ -157,7 +147,7 @@ describe('confirmMemberEmail', () => {
     })
     expect(mocks.recordRequest).not.toHaveBeenCalled()
     expect(mocks.compare).not.toHaveBeenCalled()
-    expect(mocks.consume).not.toHaveBeenCalled()
+    expect(mocks.state.batches).toEqual([])
   })
 
   it('stops checking passwords once throttled, leaving the link unused', async () => {
@@ -166,8 +156,7 @@ describe('confirmMemberEmail', () => {
       state: { formError: 'Too many attempts. Wait 15 minutes and try again.' },
     })
     expect(mocks.compare).not.toHaveBeenCalled()
-    expect(mocks.consume).not.toHaveBeenCalled()
-    expect(mocks.state.writes).toEqual([])
+    expect(mocks.state.batches).toEqual([])
   })
 
   it('shows the invalid-link page for a used, expired or missing token, checking no password', async () => {
@@ -181,23 +170,15 @@ describe('confirmMemberEmail', () => {
     expect(mocks.find).toHaveBeenCalledTimes(1)
     expect(mocks.recordRequest).not.toHaveBeenCalled()
     expect(mocks.compare).not.toHaveBeenCalled()
-    expect(mocks.state.writes).toEqual([])
+    expect(mocks.state.batches).toEqual([])
   })
 
-  it('shows the invalid-link page when the link was used up between the password check and consuming it', async () => {
-    mocks.consume.mockResolvedValue(null)
+  it('shows the invalid-link page when the link was used up, or the account confirmed, before the write', async () => {
+    mocks.state.confirmedRows = 0
     await expect(confirm({ token: TOKEN, password: 'the signed-up password' })).resolves.toEqual({
       thrown: 'REDIRECT /join/confirm?invalid=1',
     })
-    expect(mocks.state.writes).toEqual([])
-  })
-
-  it('shows the invalid-link page and revokes no links when the confirm write changed nothing', async () => {
-    mocks.state.updatedRows = 0
-    await expect(confirm({ token: TOKEN, password: 'the signed-up password' })).resolves.toEqual({
-      thrown: 'REDIRECT /join/confirm?invalid=1',
-    })
-    expect(mocks.state.ops).toEqual(['throttle', 'compare', 'consume', 'update'])
+    expect(mocks.state.ops).toEqual(['throttle', 'compare', 'batch'])
   })
 
   it('shows the invalid-link page when the account behind the link is gone', async () => {

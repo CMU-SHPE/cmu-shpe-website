@@ -631,6 +631,25 @@ Do these in order, all *before* merging to `main`, after the contact form releas
 
 There is no schema step.
 
+### Production steps for the sign-up links release
+
+Do these in order, all *before* merging to `main`, after the sign-in protection release's steps.
+The new code reads and writes the new `member_tokens` columns, so on the old schema every
+sign-up and every email confirmation returns a 500, so does every forgot-password request for a
+member, and new confirmation link requests send nothing. The push must happen before the merge. The old code on the new schema is safe: it
+never reads the new columns, leaves them empty, and the new check allows empty ones.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** with Node.js 24, apply the additive sign-up columns and check on `member_tokens`
+   (reviewed in `drizzle/0010_magical_texas_twister.sql`; it only adds, and existing links,
+   which have empty columns, pass the check) to production with `npm run db:push`, as
+   described under [Preview databases](#preview-databases).
+3. **Merge** to `main`.
+
+There is no policy text step: links store the same kinds of information as the account (a
+name, a hashed password and consent), and they are deleted when the account is confirmed or
+when an unconfirmed account is removed.
+
 ### Releasing a change to the Privacy Policy or Terms
 
 New default text in `src/db/seed-data/content.ts` never reaches production on its own:

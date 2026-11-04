@@ -35,7 +35,11 @@ type SignUp = {
   base: string
 }
 
-// A plain INSERT could not depend on the row: selecting from it adds nothing once it is confirmed.
+/**
+ * A plain INSERT could not depend on the row: selecting from it adds nothing once it is confirmed.
+ * FOR SHARE makes it wait behind a confirmation that has locked the row, then re-check the row as
+ * that confirmation left it, so a link is never added after the confirmation revoked the others.
+ */
 function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row: ConfirmEmailTokenRow) {
   return db.execute<{ member_id: number }>(sql`
     insert into member_tokens (
@@ -47,6 +51,7 @@ function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row
       ${row.ageConfirmedAt.toISOString()}::timestamptz, ${row.termsAcceptedAt.toISOString()}::timestamptz
     from ${members}
     where ${stillUnconfirmed}
+    for share
     returning member_id
   `)
 }
@@ -102,7 +107,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
 
   if (member) {
     const { token, row } = newConfirmEmailToken(member.id, details)
-    // A confirmation landing since the lookup above must not get this sign-up a link.
+    // Confirmed or deleted since the lookup above: no link, and the answer an existing account gets.
     const stillUnconfirmed = and(eq(members.id, member.id), isNull(members.emailConfirmedAt))
     const [linked] = await db.batch([insertTokenIfUnconfirmed(db, stillUnconfirmed, row)])
     if (linked.rows.length === 0) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)

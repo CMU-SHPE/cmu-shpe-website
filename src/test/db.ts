@@ -119,6 +119,13 @@ export async function raceInOrderBehindAccountEmailLock<T>(racers: (() => Promis
   return raceBehindGate(getDb().execute(lockAccountEmails), racers, { inOrder: true })
 }
 
+/** Holds a member row the way a confirmation locks it, so racers run their writes in the order given. */
+export async function raceInOrderBehindLockedMember<T>(memberId: number, racers: (() => Promise<T>)[]): Promise<T[]> {
+  return raceBehindGate(getDb().execute(sql`select id from members where id = ${memberId} for update`), racers, {
+    inOrder: true,
+  })
+}
+
 async function raceBehindGate<T>(
   lock: Parameters<Db['batch']>[0][number],
   racers: (() => Promise<T>)[],
