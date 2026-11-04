@@ -7,12 +7,24 @@ Built with [Next.js](https://nextjs.org) 16 (App Router), React 19, TypeScript a
 [Tailwind CSS](https://tailwindcss.com). Content lives in [Neon](https://neon.tech) Postgres
 through [Drizzle ORM](https://orm.drizzle.team), admin and member sign-in use
 [Auth.js](https://authjs.dev), account emails and newsletters are sent with [Resend](https://resend.com),
-uploaded images go to [Vercel Blob](https://vercel.com/docs/vercel-blob), and the site is
+uploaded images go to [Vercel Blob](https://vercel.com/docs/vercel-blob), contact form
+messages are posted to [Formspree](https://formspree.io) from the server, and the site is
 deployed on [Vercel](https://vercel.com).
+
+- **Using the site:** step-by-step guides for officers, members and sponsors are at `/help`
+  and in [`docs/guides/`](docs/guides) (see [User guides](#user-guides)).
+- **Running it locally:** [Getting started](#getting-started), with every environment
+  variable described in [`.env.example`](.env.example).
+- **Checks:** [Testing](#testing) covers the unit, database and preview smoke tests and the
+  CI jobs; [Deployment](#deployment) covers Vercel, Neon and Resend. Each release's
+  production steps are under [Sponsor portal](#sponsor-portal) (stage 3 and UI clarity) or
+  [Deployment](#deployment) (the rest).
 
 ## What officers can do
 
-Chapter officers sign in and edit the whole site without touching code:
+Chapter officers sign in and edit the whole site without touching code. The officer guide
+([`docs/guides/officers.md`](docs/guides/officers.md), shown under **Help** in the admin)
+walks through each of these:
 
 - **Page text** — the headings and paragraphs on the public pages and in the footer are
   edited in place (see [Editing the site](#editing-the-site)). The SHPE @ CMU title,
@@ -27,8 +39,10 @@ Chapter officers sign in and edit the whole site without touching code:
   tile's background color; reorder within a tier. Each sponsor's **Details** page shows
   the accounts linked to it, their edit history and its receipts (see
   [Sponsor portal](#sponsor-portal)).
-- **Events** — title, description, location, type, date, optional time and optional
-  capacity. Events move from Upcoming to Past on their own, using Denver time. Each event
+- **Events** — title, description, location, type, start date, an optional end date for a
+  multi-day event, time slots (each with its own dates and start and end times; an event
+  with no slots can show a free-text time instead) and optional capacity. Events move from
+  Upcoming to Past on their own after their last day, using Denver time. Each event
   shows its RSVP count, the attendee list (name and email) and a CSV download of it.
 - **Page lists** — the home page stats and pillars, the SHPE National stats on the About
   page, and the sponsor benefits table.
@@ -140,6 +154,7 @@ connection string, edits made locally change the live site.
    accounts: edit them to keep them accurate, but never blank a section.
 3. Choose **Admin** in the top bar for everything else: officers, the photo gallery,
    sponsors, events, page lists, site settings, members, newsletter topics and newsletters.
+   **Help** at the bottom of the sidebar opens the officer guide.
 4. Choose **Change password** in the admin sidebar to change your own password. Forgot it?
    Choose **Forgot password?** on the sign-in page and enter your admin email: the link it
    sends works for 30 minutes, once. This works for every admin, the master included. The
@@ -158,7 +173,8 @@ link. Officers without a photo show their initials.
 ## Member accounts
 
 Anyone 13 or older can create a member account to choose which newsletters they want and
-to RSVP to events.
+to RSVP to events. The member guide ([`docs/guides/members.md`](docs/guides/members.md),
+public at `/help/members`) covers the same steps for members.
 
 - **Sign-up:** `/join` asks for a name, email and password, and sends a confirmation link
   that works for 24 hours. The account can't sign in until the email is confirmed.
@@ -169,7 +185,13 @@ to RSVP to events.
   unexpired link; there is no scheduled job, so this happens the next time anyone signs
   up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
-  sponsors land on `/sponsor` instead.
+  sponsors land on `/sponsor` instead. Over any 15 minutes, sign-in attempts are limited to 5 for
+  one email from one network (an IP address, or an IPv6 /64), 50 for one email from all
+  networks, and 50 from one network across all emails. A successful sign-in or
+  an emailed password reset sets a signed `__Host-known_device` cookie that lets that
+  browser past the per-email limit, so a stranger guessing passwords can't lock the owner
+  out. It lasts 180 days, survives sign-out, and stops working when the password changes.
+  A failed sign-in offers a password reset link.
 - **`/account`:** change name, email and password, choose newsletter topics, see and cancel
   upcoming RSVPs, and **Delete my account** (asks for the password and the word DELETE;
   it removes the account, its newsletter choices, its newsletter send and unsubscribe
@@ -243,7 +265,9 @@ to RSVP to events.
 ## Sponsor portal
 
 Sponsors are member accounts linked to a sponsor listing. A listing can have several
-linked accounts; an account can be linked to one listing.
+linked accounts; an account can be linked to one listing. The sponsor guide
+([`docs/guides/sponsors.md`](docs/guides/sponsors.md), public at `/help/sponsors`) covers
+the portal for sponsors.
 
 - **Giving access:** the sponsor's contact creates a normal member account at `/join` and
   confirms their email. An admin then opens **Members**, picks the listing next to their
@@ -326,6 +350,23 @@ new `sponsor_edits` columns and the policy should match what the site does once 
    hand, last. A later date is never moved backwards. Other releases may change these keys
    too, so this script doesn't need to run last, but a later script must expect its text.
 
+## User guides
+
+The guides for members, sponsors and officers are Markdown files in
+[`docs/guides/`](docs/guides), rendered by the site at request time:
+
+- `/help` lists the member and sponsor guides (`/help/members`, `/help/sponsors`) and links a
+  PDF of both, `public/help/shpe-website-guide.pdf`. The footer's **Help** link opens
+  `/help`.
+- `/admin/help` shows the officer guide to signed-in admins, with the officer handbook PDF
+  (`docs/guides/pdf/officer-handbook.pdf`, served only to admins from
+  `/admin/help/handbook.pdf`).
+
+Edit the Markdown only; the screenshots in `public/help/img/` and both PDFs are generated
+from a preview deployment with `npm run help:screenshots` and `npm run help:pdf`.
+[`docs/guides/README.md`](docs/guides/README.md) explains how the pages are built and how to
+regenerate the images and PDFs.
+
 ## Scripts
 
 | Command | Description |
@@ -338,6 +379,8 @@ new `sponsor_edits` columns and the policy should match what the site does once 
 | `npm test` | Run the test suite ([Vitest](https://vitest.dev) + React Testing Library) |
 | `npm run test:db` | Run the database tests against a throwaway Postgres in Docker (see [Database tests](#database-tests)) |
 | `npm run test:e2e` | Run the [Playwright](https://playwright.dev) smoke tests against a preview deployment (see [Testing](#testing)) |
+| `npm run help:screenshots` | Capture the user guide screenshots from a preview deployment (see [User guides](#user-guides)) |
+| `npm run help:pdf` | Print the user guides to PDF from a preview deployment |
 | `npm run db:push` | Create or update the database tables from `src/db/schema.ts` |
 | `npm run db:generate` | Generate SQL migration files from the schema into `drizzle/` |
 | `npm run db:check` | Fail if `src/db/schema.ts` has changes with no migration in `drizzle/` |
@@ -351,18 +394,24 @@ src/
   app/          Routes (App Router): the public pages, /login, the member pages
                 (/join, /account, /forgot-password, /reset-password, /privacy,
                 /terms), /unsubscribe and /unsubscribe/one-click, the sponsor portal
-                (/sponsor, with receipt downloads at /sponsor/receipts/[id]), and the
-                /admin pages (including /admin/newsletters), each with their server
-                actions
+                (/sponsor, with receipt downloads at /sponsor/receipts/[id]), the user
+                guides (/help), and the /admin pages (including /admin/newsletters and
+                /admin/help), each with their server actions
   components/   Shared UI: Navbar, Footer, ThemeProvider (dark mode), the inline
-                editor (editable.tsx), admin form components, and the RSVP (rsvp/)
-                and sponsor portal (sponsor/) components
+                editor (editable.tsx), admin form components, and the RSVP (rsvp/),
+                sponsor portal (sponsor/) and user guide (help/) components
   db/           Drizzle schema, the Neon client, and the seed script with its data
                 in seed-data/
   lib/          Queries, validation schemas, auth helpers and other shared logic,
                 including newsletter rendering (newsletter-render.ts), sending
                 (newsletter-send.ts) and unsubscribe links
                 (newsletter-unsubscribe-token.ts)
+docs/guides/    The user guides in Markdown, their screenshot list and the officer
+                handbook PDF
+drizzle/        Generated SQL migrations for src/db/schema.ts
+scripts/        Build, database test, migration check and user guide scripts, and the
+                Privacy Policy and Terms release scripts in sql/
+e2e/            Playwright smoke tests for preview deployments
 ```
 
 ## Testing
@@ -435,8 +484,8 @@ BASE_URL=https://<preview>.vercel.app VERCEL_TOKEN=<token> VERCEL_BYPASS=<protec
 as `x-vercel-protection-bypass` to the preview's own origin only. A spec whose own
 variables are missing skips instead of failing.
 
-On a local server, every spec here except `sponsor-portal.spec.ts` and the broken-link tests in
-`newsletters.spec.ts` also needs `E2E_LOCAL_DATABASE_IS_DISPOSABLE=1`.
+On a local server, every spec here except `sponsor-portal.spec.ts`, `help.spec.ts` and the
+broken-link tests in `newsletters.spec.ts` also needs `E2E_LOCAL_DATABASE_IS_DISPOSABLE=1`.
 
 | Spec | Needs, besides `BASE_URL` | Creates or changes |
 | --- | --- | --- |
@@ -446,6 +495,10 @@ On a local server, every spec here except `sponsor-portal.spec.ts` and the broke
 | `newsletter-journey.spec.ts`: an admin adds a topic, a member signs up, confirms by email and opts in, a real newsletter goes to that topic, and the member unsubscribes on the page and by one-click POST | `RESEND_API_KEY` (read-only, to fetch the emails; sent only to `api.resend.com`), `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates a topic, a confirmed member and a newsletter, and sends that newsletter (only `@resend.dev` inboxes receive it off production). The topic and the member are deleted at the end; the newsletter row stays, and its delivery records go with the member. If Site settings has no mailing address, it fills one in and leaves it. |
 | `sponsor-journey.spec.ts`: two members sign up and confirm, the admin links one to a new sponsor listing and uploads a receipt, the sponsor edits the listing and downloads the receipt, the other member is kept out, and an RSVP fills and frees a capacity-1 event before the admin exports its attendees | `RESEND_API_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates two confirmed members, a sponsor listing with an edit-history entry and a 3.9 MB receipt PDF, and an event with RSVPs. Cleanup deletes the listing (its receipts and history go with it), the event (with its RSVPs) and both members, and fails the run listing anything it couldn't remove. The receipt file itself stays in Blob storage. |
 | `event-dates.spec.ts`: an admin adds a three-day event with per-day time slots, an overlapping slot is refused next to the field without losing what was typed, `/events` shows the date range and one line per slot, and editing pre-fills them | `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` | Creates one event, which appears under Past events on `/events` because its dates are fixed in October 2026. Cleanup deletes it, with its time slots. |
+| `help.spec.ts`: `/help`, `/help/members` and `/help/sponsors` render and pass axe in light and dark mode, every screenshot they show loads, the public PDF is served, and signed-out visitors get neither the officer guide nor the handbook PDF; signed in, the officer guide renders and the handbook downloads | `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` for the signed-in check only | Nothing; read-only. |
+| `known-device.spec.ts`: a real sign-in sets the `__Host-known_device` cookie as Secure, HttpOnly and SameSite=Lax, and signing out keeps it | `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` (the master) | Signs the master in and out in its own browser context; nothing is left behind. |
+| `admin-reset-journey.spec.ts`: a throwaway admin resets its password from **Forgot password?** with the emailed link; its old session ends, the old password stops working, the link can't be used twice and a "password was changed" notice arrives | `RESEND_API_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` (the master) | Creates an admin with a `@resend.dev` address, deleted at the end even when a step fails. |
+| `email-change-journey.spec.ts`: a member asks to change their email twice (the first link stops working), confirms the second with their password (a wrong one changes nothing), is signed out, signs in with the new address only, and the old address is told the new one as `d***@resend.dev` | `RESEND_API_KEY`, `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD` (for cleanup) | Creates a confirmed member on `@resend.dev` addresses, deleted at the end. |
 
 `e2e/newsletters.spec.ts` checks unsubscribe links. Without any setup it checks that
 malformed and unknown links show the "This link doesn't work" page, that one-click POSTs
@@ -484,8 +537,8 @@ E2E_UNSUBSCRIBE_TOKEN=<token> BASE_URL=https://<preview>.vercel.app VERCEL_TOKEN
 
 The site is deployed on Vercel, connected to this GitHub repository: every push to
 `main` deploys to production, and every pull request gets its own preview URL. The
-custom domain `shpecmu.com` is configured in the Vercel project settings rather than a
-`CNAME` file. `.github/workflows/ci.yml` only runs checks (lint, tests, database tests, migrations) — it does
+custom domain `shpecmu.com` is configured in the Vercel project settings.
+`.github/workflows/ci.yml` only runs checks (lint, tests, database tests, migrations) — it does
 not deploy anything.
 
 The Vercel project needs `DATABASE_URL`, `AUTH_SECRET`, `BLOB_READ_WRITE_TOKEN`,
@@ -541,6 +594,41 @@ There is no policy text step: the gallery holds club photos that officers upload
 information from member accounts. The `home.gallery.*` text keys are new, so the gallery shows
 their defaults until an admin edits them.
 
+### Production steps for the contact form release
+
+Do these in order, all *before* merging to `main`, after the account recovery release's steps,
+because the Privacy Policy should describe the contact form's limits once it deploys. Its
+preview guards also need `PRODUCTION_DATABASE_HOST` and `PRODUCTION_BLOB_STORE_ID` in the
+Preview environment (see [Preview databases](#preview-databases)).
+
+1. **Backup:** take a backup of the production database.
+2. **Policy text (required):** run `scripts/sql/2026-11-01-privacy-contact-form.sql` as
+   described under
+   [Releasing a change to the Privacy Policy or Terms](#releasing-a-change-to-the-privacy-policy-or-terms):
+   once without `-v commit=1`, check that every key shows `applied now` or `already new`,
+   then again with `-v commit=1`. It updates `privacy.collect.items` and
+   `privacy.retention.items`, then "Last updated". It expects the account recovery release's
+   text: if any key shows `older`, commit `2026-10-31-privacy-account-recovery.sql` first and
+   run this one again. A key shown as `changed elsewhere` is left alone and holds back the
+   date: after the COMMIT, work this release's wording into it by hand on `/privacy`, then
+   change **Last updated** by hand, last.
+
+There is no schema step.
+
+### Production steps for the sign-in protection release
+
+Do these in order, all *before* merging to `main`, after the contact form release's steps.
+
+1. **Backup:** take a backup of the production database.
+2. **Policy text (required):** run `scripts/sql/2026-11-02-privacy-account-password-checks.sql`
+   the same way. It updates `privacy.collect.items`, `privacy.retention.items` and
+   `privacy.cookies.body` (the known-device cookie), then "Last updated". It expects the
+   contact form release's text: if any key shows `older`, commit
+   `2026-11-01-privacy-contact-form.sql` first and run this one again. A `changed elsewhere`
+   key is handled as above.
+
+There is no schema step.
+
 ### Releasing a change to the Privacy Policy or Terms
 
 New default text in `src/db/seed-data/content.ts` never reaches production on its own:
@@ -549,7 +637,11 @@ New default text in `src/db/seed-data/content.ts` never reaches production on it
 sponsor portal, `2026-10-27-privacy-sponsor-portal.sql`, which needs the newsletter one
 committed first; for the UI clarity release, `2026-10-30-privacy-ui-clarity.sql`, which needs
 the sponsor portal one committed first; for the account recovery release,
-`2026-10-31-privacy-account-recovery.sql`, which needs the UI clarity one committed first). Run it with the production connection string at the
+`2026-10-31-privacy-account-recovery.sql`, which needs the UI clarity one committed first; for
+the contact form release, `2026-11-01-privacy-contact-form.sql`, which needs the account
+recovery one committed first; for the sign-in protection release,
+`2026-11-02-privacy-account-password-checks.sql`, which needs the contact form one committed
+first). Run it with the production connection string at the
 point that release's own production steps and the script's header give. It backs the old rows up, only replaces text still matching the old
 default, and rolls back unless run with `-v commit=1`: run it once without, check the
 report at the end, then run `psql -v commit=1 "$DATABASE_URL" -f <file>`. The comments at
