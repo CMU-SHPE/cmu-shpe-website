@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => {
     unconfirmed: null as { id: number; name: string } | null,
     memberWhere: null as SQL | null,
     ops: [] as string[],
-    inserts: [] as Record<string, unknown>[],
+    inserts: [] as SQL[],
+    confirmedMeanwhile: false,
     throttled: false,
   }
   const tableName = (table: unknown) => (table as Record<symbol, string>)[Symbol.for('drizzle:Name')]
@@ -28,15 +29,11 @@ const mocks = vi.hoisted(() => {
         }
         return query
       },
-      insert: (table: unknown) => ({
-        values: (values: Record<string, unknown>) => ({
-          then: (resolve: (value: unknown) => void) => {
-            state.ops.push(`insert ${tableName(table)}`)
-            state.inserts.push(values)
-            resolve(undefined)
-          },
-        }),
-      }),
+      execute: async (statement: SQL) => {
+        state.ops.push('insert member_tokens')
+        state.inserts.push(statement)
+        return { rows: state.confirmedMeanwhile ? [] : [{ member_id: 7 }] }
+      },
       delete: (table: unknown) => ({
         where: (where: SQL) => ({
           kind: 'delete',
@@ -85,25 +82,47 @@ function form(email = 'Mia@Example.com') {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.afterCallbacks.length = 0
-  Object.assign(mocks.state, { unconfirmed: null, memberWhere: null, ops: [], inserts: [], throttled: false })
+  Object.assign(mocks.state, { unconfirmed: null, memberWhere: null, ops: [], inserts: [], confirmedMeanwhile: false, throttled: false })
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 describe('resendConfirmation', () => {
   it('adds a fresh link for an unconfirmed member, leaving earlier links working, and emails it', async () => {
-    mocks.state.unconfirmed = { id: 7, name: 'Mia' }
+    mocks.state.unconfirmed = { id: 7, name: 'Mia Lopez' }
     await expect(resendConfirmation({}, form())).rejects.toThrow('REDIRECT /join/resend?sent=1')
     await runAfterResponse()
     expect(mocks.recordRequest).toHaveBeenCalledWith('resend_confirmation', 'mia@example.com', null)
     expect(mocks.state.ops).toEqual(['purge members', 'find member', 'insert member_tokens'])
-    expect(mocks.state.inserts).toEqual([
-      { memberId: 7, purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), expiresAt: expect.any(Date) },
+    const [insert] = mocks.state.inserts
+    const { sql, params } = new PgDialect().sqlToQuery(insert)
+    expect(sql).toContain('insert into member_tokens')
+    expect(sql).toMatch(/where \("members"\."id" = \$9 and "members"\."email_confirmed_at" is null\)\s+for share\s+returning member_id\s*$/)
+    expect(params).toEqual([
+      'confirm_email',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      expect.any(String),
+      null,
+      null,
+      null,
+      null,
+      null,
+      7,
     ])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
     expect(mocks.sendEmail.mock.calls[0][0].text).toMatch(/\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
     expect(mocks.sendEmail.mock.calls[0][0].text.startsWith('Hi,\n')).toBe(true)
-    expect(mocks.sendEmail.mock.calls[0][0].text).not.toContain('Mia')
+    expect(mocks.sendEmail.mock.calls[0][0].text).not.toContain('Mia Lopez')
+  })
+
+  it('sends nothing when the member was confirmed or deleted after the lookup', async () => {
+    mocks.state.unconfirmed = { id: 7, name: 'Mia Lopez' }
+    mocks.state.confirmedMeanwhile = true
+    await expect(resendConfirmation({}, form())).rejects.toThrow('REDIRECT /join/resend?sent=1')
+    await runAfterResponse()
+    expect(mocks.state.inserts).toHaveLength(1)
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(console.error).not.toHaveBeenCalled()
   })
 
   it('responds before looking anything up, then sends only to an unconfirmed member', async () => {

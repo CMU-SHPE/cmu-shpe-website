@@ -3,7 +3,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
-import { type SQL, and, eq, exists, isNull, sql } from 'drizzle-orm'
+import { and, eq, exists, sql } from 'drizzle-orm'
 import { getDb, type Db } from '@/db'
 import { admins, members } from '@/db/schema'
 import { lockAccountEmails } from '@/lib/account-email-lock'
@@ -18,14 +18,18 @@ import {
   safeValues,
   type FormState,
 } from '@/lib/member-accounts'
-import { confirmEmailLink, insertMemberToken, newConfirmEmailToken, type SignUpDetails } from '@/lib/member-tokens'
+import {
+  confirmEmailLink,
+  insertConfirmEmailTokenIfUnconfirmed,
+  insertMemberToken,
+  newConfirmEmailToken,
+  type SignUpDetails,
+} from '@/lib/member-tokens'
 import { getPrivacyPolicyVersion } from '@/lib/queries'
 import { recordRequest } from '@/lib/request-throttle'
 import { siteUrl } from '@/lib/site-url'
 
 const CHECK_EMAIL_PATH = '/join/check-email'
-
-type ConfirmEmailTokenRow = ReturnType<typeof newConfirmEmailToken>['row']
 
 type SignUp = {
   name: string
@@ -33,27 +37,6 @@ type SignUp = {
   passwordHash: string
   privacyPolicyVersion: string
   base: string
-}
-
-/**
- * A plain INSERT could not depend on the row: selecting from it adds nothing once it is confirmed.
- * FOR SHARE makes it wait behind a confirmation that has locked the row, then re-check the row as
- * that confirmation left it, so a link is never added after the confirmation revoked the others.
- */
-function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row: ConfirmEmailTokenRow) {
-  return db.execute<{ member_id: number }>(sql`
-    insert into member_tokens (
-      member_id, purpose, token_hash, expires_at,
-      name, password_hash, privacy_policy_version, age_confirmed_at, terms_accepted_at
-    )
-    select ${members.id}, ${row.purpose}::member_token_purpose, ${row.tokenHash}, ${row.expiresAt.toISOString()}::timestamptz,
-      ${row.name}, ${row.passwordHash}, ${row.privacyPolicyVersion},
-      ${row.ageConfirmedAt.toISOString()}::timestamptz, ${row.termsAcceptedAt.toISOString()}::timestamptz
-    from ${members}
-    where ${stillUnconfirmed}
-    for share
-    returning member_id
-  `)
 }
 
 // The new and unconfirmed paths spend one more round trip on their write batch. This
@@ -108,8 +91,7 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
   if (member) {
     const { token, row } = newConfirmEmailToken(member.id, details)
     // Confirmed or deleted since the lookup above: no link, and the answer an existing account gets.
-    const stillUnconfirmed = and(eq(members.id, member.id), isNull(members.emailConfirmedAt))
-    const [linked] = await db.batch([insertTokenIfUnconfirmed(db, stillUnconfirmed, row)])
+    const [linked] = await db.batch([insertConfirmEmailTokenIfUnconfirmed(db, member.id, row)])
     if (linked.rows.length === 0) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
     return confirmEmail(confirmEmailLink(base, token))
   }

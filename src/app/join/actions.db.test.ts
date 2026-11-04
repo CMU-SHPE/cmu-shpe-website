@@ -339,6 +339,26 @@ describe('confirmation racing another write to the same unconfirmed account', ()
     await expect(confirm(lastEmailedToken(), STRANGER_PASSWORD)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
   })
 
+  it('a resend queued behind a confirmation adds no link and sends nothing', async () => {
+    const owners = await signUpAs(email, 'Owner', OWNER_PASSWORD)
+    const { id } = await account(email)
+    mocks.sendEmail.mockClear()
+
+    const [confirmed] = await raceInOrderBehindLockedMember<unknown>(id, [
+      () => confirm(owners, OWNER_PASSWORD),
+      async () => {
+        const form = new FormData()
+        form.set('email', email)
+        await expect(resendConfirmation({}, form)).rejects.toThrow('REDIRECT /join/resend?sent=1')
+        for (const callback of mocks.afterResponse.splice(0)) await callback()
+      },
+    ])
+
+    expect(confirmed).toBe('REDIRECT /login?confirmed=1')
+    await expectOneConfirmedOwner()
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+  })
+
   it('two confirmations of different links: the first queued wins and the second finds its link revoked', async () => {
     const owners = await signUpAs(email, 'Owner', OWNER_PASSWORD)
     const strangers = await signUpAs(email, 'Stranger', STRANGER_PASSWORD)

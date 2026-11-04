@@ -635,9 +635,12 @@ There is no schema step.
 
 Do these in order, all *before* merging to `main`, after the sign-in protection release's steps.
 The new code reads and writes the new `member_tokens` columns, so on the old schema every
-sign-up and every email confirmation returns a 500, so does every forgot-password request for a
-member, and new confirmation link requests send nothing. The push must happen before the merge. The old code on the new schema is safe: it
-never reads the new columns, leaves them empty, and the new check allows empty ones.
+sign-up for a new or unconfirmed address and every email confirmation returns a 500 (sign-ups
+for an admin's or a confirmed member's address still get their usual email). Members' forgot-password
+and new confirmation link requests show their usual "sent" page but send nothing, logging
+`PASSWORD RESET FAILED` or `RESEND CONFIRMATION FAILED`. The push must happen before the merge.
+The old code on the new schema is safe: it never reads the new columns, leaves them empty, and
+the new check allows empty ones.
 
 1. **Backup:** take a backup of the production database.
 2. **Schema:** with Node.js 24, apply the additive sign-up columns and check on `member_tokens`

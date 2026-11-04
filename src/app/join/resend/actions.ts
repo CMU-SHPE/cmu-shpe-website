@@ -10,7 +10,7 @@ import { EmailSendError, sendEmail } from '@/lib/email'
 import { confirmEmail } from '@/lib/email-templates'
 import { clientIp } from '@/lib/login-throttle'
 import { parseEmailRequest, purgeStaleUnconfirmedMembers, safeValues, type FormState } from '@/lib/member-accounts'
-import { confirmEmailLink, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
+import { confirmEmailLink, insertConfirmEmailTokenIfUnconfirmed, newMemberToken } from '@/lib/member-tokens'
 import { recordRequest } from '@/lib/request-throttle'
 import { siteUrl } from '@/lib/site-url'
 
@@ -57,6 +57,7 @@ async function sendConfirmationIfUnconfirmed(email: string, base: string) {
   // Anyone can ask for a resend, so earlier links are left working. This one carries no sign-up of its
   // own: it confirms with the sign-up on the member row, the first one made for this address.
   const { token, row } = newMemberToken(member.id, 'confirm_email')
-  await insertMemberToken(db, row)
+  const linked = await insertConfirmEmailTokenIfUnconfirmed(db, member.id, row)
+  if (linked.rows.length === 0) return
   await sendEmail({ to: email, ...confirmEmail(confirmEmailLink(base, token)) })
 }

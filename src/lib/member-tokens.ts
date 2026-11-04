@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { and, eq, gt, sql, type SQL } from 'drizzle-orm'
+import { and, eq, gt, isNull, sql, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDb, type Db } from '@/db'
 import { members, memberTokens, type MemberTokenPurpose } from '@/db/schema'
@@ -56,6 +56,33 @@ export function insertMemberToken(
   row: ReturnType<typeof newMemberToken>['row'] | ReturnType<typeof newConfirmEmailToken>['row'],
 ) {
   return db.insert(memberTokens).values(row)
+}
+
+/**
+ * A plain INSERT could not depend on the member row: selecting from it adds nothing once it is
+ * confirmed. FOR SHARE makes it wait behind a confirmation that has locked the row, then re-check
+ * the row as that confirmation left it, so a link is never added after the confirmation revoked the
+ * others. No row comes back if the member was confirmed or deleted meanwhile.
+ */
+export function insertConfirmEmailTokenIfUnconfirmed(
+  db: Db,
+  memberId: number,
+  row: ReturnType<typeof newMemberToken>['row'] & Partial<SignUpDetails>,
+) {
+  const stillUnconfirmed = and(eq(members.id, memberId), isNull(members.emailConfirmedAt))
+  return db.execute<{ member_id: number }>(sql`
+    insert into member_tokens (
+      member_id, purpose, token_hash, expires_at,
+      name, password_hash, privacy_policy_version, age_confirmed_at, terms_accepted_at
+    )
+    select ${members.id}, ${row.purpose}::member_token_purpose, ${row.tokenHash}, ${row.expiresAt.toISOString()}::timestamptz,
+      ${row.name ?? null}, ${row.passwordHash ?? null}, ${row.privacyPolicyVersion ?? null},
+      ${row.ageConfirmedAt?.toISOString() ?? null}::timestamptz, ${row.termsAcceptedAt?.toISOString() ?? null}::timestamptz
+    from ${members}
+    where ${stillUnconfirmed}
+    for share
+    returning member_id
+  `)
 }
 
 export function deleteMemberTokens(db: Db, memberId: number, purpose: MemberTokenPurpose) {
