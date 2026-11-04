@@ -39,7 +39,7 @@ Your listing is how your company appears on the public Sponsors page. Under **Yo
 can change:
 
 - **Name**
-- **Website (optional)**: a full link starting with https://
+- **Website (optional)**: a full link that starts with http:// or https://
 - **Description (optional)**: up to 1000 characters
 - the logo, with **Upload logo (optional)** or **Replace logo**
 - **Logo background color**: the colour of the tile behind your logo
@@ -68,7 +68,8 @@ this listing while you were editing, so nothing was saved." The notice lists eac
 changed with its saved version. The form still has what you typed: check it, and choose **Save
 listing** again to replace the saved version. Changes to different fields are both kept.
 
-If the notice says your logo change wasn't kept, choose your logo again before saving.
+If the notice says "This page was out of date, so nothing was saved.", check the form and save
+again. If it says your logo change wasn't kept, choose your logo again before saving.
 
 ![The Your listing form with the Save listing button](/help/img/sponsors/edit-listing.png)
 
@@ -110,8 +111,9 @@ If signing in takes you to **Your account** instead of the Sponsor portal, and t
 Contact the chapter through the **Contact** page, or at the email address shown at the bottom of
 every page. Give the email address you signed in with and your company's name.
 
-If you see "Your sponsor access changed while you were editing, so nothing was saved.", your access
-changed while you were editing. Reload the page and check with the chapter.
+If you see "Your sponsor access changed while you were editing, so nothing was saved. Check the
+form and try again.", an officer changed or removed your access while you were editing. Check the
+form and save again. If you are no longer on the Sponsor portal, contact the chapter.
 
 To use a different work email, change it on **Your account** (see the
 [Member guide](/help/members#changing-your-email-address)). Your sponsor access stays linked to your

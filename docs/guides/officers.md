@@ -332,7 +332,7 @@ bottom.
   location**. These appear in the footer and on the Contact, Events and Officers pages.
 - **Mailing address:** see below.
 - **Social links:** **Instagram**, **LinkedIn**, **X (Twitter)**, **YouTube**, **TikTok** and
-  **MavLife**. Each must be a full link starting with https://. Leave a link blank to hide its icon.
+  **MavLife**. Each must be a full link that starts with http:// or https://. Leave a link blank to hide its icon.
 - **Contact form subjects:** the choices in the Contact form's subject menu, one per line in
   **Subject options (one per line)**.
 
@@ -378,11 +378,12 @@ never got the email, send them to [shpecmu.com/join/resend](/join/resend) for a 
 1. Choose **Members** and find the person.
 2. Choose **Delete** in their row and confirm with **OK**.
 
-The confirmation lists what is removed: their account, email confirmation and password reset
-links, newsletter choices, records of the newsletters sent to them and of their unsubscribes, their
-event RSVPs (they come off attendee lists), and any sponsor portal access. Sponsor listings,
-receipts and edit history stay, and the edit history keeps their name, marked "(sponsor, account
-deleted)". This can't be undone.
+The confirmation says "Delete" and their name, then: "This removes their account, email
+confirmation and password reset links, newsletter choices, records of the newsletters sent to them
+and of their unsubscribes, their event RSVPs (they come off attendee lists), and any sponsor portal
+access. Sponsor listings, receipts and edit history stay, and the edit history keeps their name.
+This can't be undone." Afterwards, a sponsor listing's edit history shows their name followed by
+"(sponsor, account deleted)".
 
 ## Newsletter topics
 

@@ -53,7 +53,7 @@ const HTML_COMMENT = /<!--[\s\S]*?-->/g
 /**
  * Raw HTML in the source is shown as text, never rendered, while HTML comments (notes for
  * whoever edits the guides) are dropped before parsing. Heading ids come from the
- * heading text so links like #sending-a-newsletter keep working. `idPrefix` keeps ids unique
+ * heading text so links like #how-to-send-a-newsletter keep working. `idPrefix` keeps ids unique
  * when several guides share one page, and in-page links are prefixed to match.
  */
 export function renderGuide(markdown: string, { idPrefix = '' }: { idPrefix?: string } = {}): RenderedGuide {

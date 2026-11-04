@@ -117,7 +117,8 @@ Your RSVPs, newsletter choices and sponsor access stay with your account.
 - Asking again sends a new link, and the older one stops working. Changing or resetting your
   password also cancels the link.
 - If the new address already belongs to another account, confirming shows "This email address
-  can't be used" and your email stays the same.
+  can't be used" and your email stays the same. An account at that address that was never
+  confirmed doesn't block the change; it is deleted instead.
 - If you didn't ask for the change, close the page. Nothing changes.
 
 ![The Change email section of Your account](/help/img/members/change-email.png)
