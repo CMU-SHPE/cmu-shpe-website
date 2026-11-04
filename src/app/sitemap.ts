@@ -5,7 +5,7 @@ import { siteUrl } from '@/lib/site-url'
 // SITE_URL and the Vercel URLs are only known at runtime, not at build time.
 export const dynamic = 'force-dynamic'
 
-const PUBLIC_PATHS = [...navLinks.map((link) => link.href), '/join', '/privacy', '/terms']
+const PUBLIC_PATHS = [...navLinks.map((link) => link.href), '/join', '/help', '/privacy', '/terms']
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteUrl()
