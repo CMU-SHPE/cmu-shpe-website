@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EventFormState, EventFormValues } from '@/lib/event-form'
 import { MAX_TIME_SLOTS } from '@/lib/event-schema'
@@ -153,10 +153,14 @@ describe('EventForm time slots', () => {
     )
     renderForm(hackathon, action)
 
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    // The refusal renders in a transition after the action resolves, outside user-event's own act()
+    // calls. The mocked action resolves at once, so wrapping the click in act() has React finish that
+    // render and move focus before the test looks, instead of a findBy having to catch it within 1 s,
+    // which a busy machine can miss.
+    await act(() => user.click(screen.getByRole('button', { name: 'Save' })))
 
-    const summary = await screen.findByRole('group', { name: 'There is a problem' })
-    await waitFor(() => expect(summary).toHaveFocus())
+    const summary = screen.getByRole('group', { name: 'There is a problem' })
+    expect(summary).toHaveFocus()
     expect(within(summary).getByRole('link', { name: 'Time slot 2: This overlaps time slot 1 on the same day.' })).toBeInTheDocument()
 
     const endDate = screen.getByLabelText('End date (optional)')

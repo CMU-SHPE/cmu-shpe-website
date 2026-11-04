@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { getDb } from '@/db'
 import { eventRsvps, events, members } from '@/db/schema'
@@ -255,12 +255,24 @@ describe('RSVP reads', () => {
     expect(Object.fromEntries(await rsvpCounts([otherEvent.id, empty.id]))).toEqual({ [otherEvent.id]: 1 })
     expect((await rsvpCounts([])).size).toBe(0)
 
+    // created_at comes from Postgres's wall clock, which can step backwards between two transactions,
+    // so the test sets it instead of assuming the two inserts landed in clock order.
+    const setRsvpTime = (memberId: number, at: Date) =>
+      getDb()
+        .update(eventRsvps)
+        .set({ createdAt: at })
+        .where(and(eq(eventRsvps.eventId, event.id), eq(eventRsvps.memberId, memberId)))
+
+    await Promise.all([setRsvpTime(first.id, NOW), setRsvpTime(second.id, NOW)])
     const attendees = await listAttendees(event.id)
     expect(attendees.map(({ name, email }) => ({ name, email }))).toEqual([
       { name: 'Ana', email: first.email },
       { name: 'Ben', email: second.email },
     ])
-    expect(attendees[0].rsvpAt).toBeInstanceOf(Date)
+    expect(attendees[0].rsvpAt).toEqual(NOW)
+
+    await setRsvpTime(second.id, new Date(NOW.getTime() - 60_000))
+    expect((await listAttendees(event.id)).map(({ name }) => name)).toEqual(['Ben', 'Ana'])
     expect(await listAttendees(empty.id)).toEqual([])
   })
 })

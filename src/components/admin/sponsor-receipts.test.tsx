@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const mocks = vi.hoisted(() => ({
@@ -41,6 +41,16 @@ async function fillUpload(user: ReturnType<typeof userEvent.setup>) {
   file.removeAttribute('required')
 }
 
+/**
+ * Upload and delete results render in a transition after the action resolves, outside user-event's
+ * own act() calls. The mocked actions resolve at once, so wrapping the click in act() has React finish
+ * that render before the test looks. The status region is always in the page, so a findBy on it would
+ * return before the message arrived.
+ */
+async function clickAndSettle(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await act(() => user.click(screen.getByRole('button', { name })))
+}
+
 describe('AdminSponsorReceipts', () => {
   it('lists the listing’s receipts with admin download links', async () => {
     render(await AdminSponsorReceipts({ sponsorId: 3 }))
@@ -67,9 +77,9 @@ describe('AdminSponsorReceipts', () => {
     render(await AdminSponsorReceipts({ sponsorId: 3 }))
     await fillUpload(user)
 
-    await user.click(screen.getByRole('button', { name: 'Upload receipt' }))
+    await clickAndSettle(user, 'Upload receipt')
 
-    expect(await screen.findByText(/Receipt uploaded/)).toBe(screen.getByRole('status'))
+    expect(screen.getByRole('status')).toHaveTextContent(/^Receipt uploaded/)
     const [sponsorId, , formData] = mocks.uploadSponsorReceipt.mock.calls[0] as [number, unknown, FormData]
     expect(sponsorId).toBe(3)
     expect(formData.get('title')).toBe('Silver 2026')
@@ -82,9 +92,9 @@ describe('AdminSponsorReceipts', () => {
     render(await AdminSponsorReceipts({ sponsorId: 3 }))
     await fillUpload(user)
 
-    await user.click(screen.getByRole('button', { name: 'Upload receipt' }))
+    await clickAndSettle(user, 'Upload receipt')
 
-    expect(await screen.findByRole('status')).toHaveTextContent('That file is not a PDF.')
+    expect(screen.getByRole('status')).toHaveTextContent('That file is not a PDF.')
     expect(screen.getByLabelText('PDF file')).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByLabelText('Title')).toHaveValue('Silver 2026')
     expect(screen.getByLabelText('Receipt date')).toHaveValue('2026-10-01')
@@ -94,11 +104,11 @@ describe('AdminSponsorReceipts', () => {
     const user = userEvent.setup()
     render(await AdminSponsorReceipts({ sponsorId: 3 }))
 
-    await user.click(screen.getByRole('button', { name: 'Delete Gold 2026' }))
+    await clickAndSettle(user, 'Delete Gold 2026')
 
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('The sponsor will no longer be able to download it.'))
     expect(mocks.deleteSponsorReceipt).toHaveBeenCalledWith(3, 12)
-    expect(await screen.findByRole('status')).toHaveTextContent('Receipt deleted.')
+    expect(screen.getByRole('status')).toHaveTextContent('Receipt deleted.')
     expect(screen.getByRole('heading', { name: 'Receipts' })).toHaveFocus()
   })
 

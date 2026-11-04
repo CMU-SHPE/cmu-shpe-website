@@ -60,6 +60,13 @@ const OFFICER_DESCRIPTION = `Edited by an officer in the sponsor journey, run ${
 const RECEIPT_TITLE = `E2E receipt ${RUN_ID}`
 const RECEIPT_FILE_NAME = `e2e-receipt-${RUN_ID}.pdf`
 const RECEIPT_DATE = '2026-01-15'
+const RECEIPT_BYTES = Math.floor(3.9 * 1024 * 1024)
+/**
+ * The near-cap receipt is the only check that a 4 MB PDF fits through Vercel's request body limit, so
+ * it stays large and its wait covers the upload: 3.9 MB at a slow 1 Mbit/s uplink is about 33 s,
+ * plus the Blob write and the re-render. The default 5 s expect timeout only fit a fast connection.
+ */
+const RECEIPT_UPLOAD_WAIT_MS = 60_000
 const EVENT_TITLE = `E2E RSVP event ${RUN_ID}`
 
 const UI = {
@@ -155,8 +162,30 @@ async function newContext(browser: Browser, baseURL: string | undefined) {
   return context
 }
 
+/**
+ * The config sets no navigation timeout, so a page load or submit whose connection dropped would wait
+ * until the 10-minute test timeout with no hint of where it stopped. 60 s covers a cold serverless start
+ * plus a database round-trip on a preview with room to spare.
+ */
+const NAVIGATION_WAIT_MS = 60_000
+
+async function stalledAs<T>(page: Page, step: string, wait: Promise<T>): Promise<T> {
+  try {
+    return await wait
+  } catch (error) {
+    if (error instanceof Error && /Timeout \d+ms exceeded/.test(error.message)) {
+      throw new Error(`${step} stalled: nothing arrived within ${NAVIGATION_WAIT_MS / 1000}s (page was at ${page.url()})`)
+    }
+    throw error
+  }
+}
+
+async function waitForRedirect(page: Page, step: string, matches: Parameters<Page['waitForURL']>[0]) {
+  await stalledAs(page, step, page.waitForURL(matches, { timeout: NAVIGATION_WAIT_MS }))
+}
+
 async function open(page: Page, path: string) {
-  const response = await page.goto(path)
+  const response = await stalledAs(page, `Loading ${path}`, page.goto(path, { timeout: NAVIGATION_WAIT_MS }))
   expect(response?.status(), `${path} should load`).toBeLessThan(400)
 }
 
@@ -165,14 +194,18 @@ async function signIn(page: Page, email: string, password: string, who: string, 
   await page.getByLabel(UI.signIn.email, { exact: true }).fill(email)
   await page.getByLabel(UI.signIn.password, { exact: true }).fill(password)
   await page.getByRole('button', { name: UI.signIn.submit, exact: true }).click()
-  await page.waitForURL((url) => url.pathname === landing || url.searchParams.has('error'))
+  await waitForRedirect(page, `${who} sign-in`, (url) => url.pathname === landing || url.searchParams.has('error'))
   if (new URL(page.url()).pathname !== landing) throw new Error(`${who} sign-in failed (${UI.signIn.failed})`)
 }
 
 /** Waits for a form action's redirect and fails with the ?error= code when it was refused. */
 async function expectSaved(page: Page, pathname: string | RegExp, what: string) {
   const matchesPath = (path: string) => (typeof pathname === 'string' ? path === pathname : pathname.test(path))
-  await page.waitForURL((url) => matchesPath(url.pathname) && (url.searchParams.has('saved') || url.searchParams.has('error')))
+  await waitForRedirect(
+    page,
+    what,
+    (url) => matchesPath(url.pathname) && (url.searchParams.has('saved') || url.searchParams.has('error')),
+  )
   const error = new URL(page.url()).searchParams.get('error')
   expect(error, `${what} was refused`).toBeNull()
 }
@@ -193,7 +226,7 @@ async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: stri
   await page.getByLabel(UI.join.terms).check()
   created.members.push(member)
   await page.getByRole('button', { name: UI.join.submit }).click()
-  await page.waitForURL('**/join/check-email')
+  await waitForRedirect(page, `${member.label} sign-up`, '**/join/check-email')
 
   const email = await waitForConfirmationEmail(member.email)
   const link = `${email.text ?? ''}\n${email.html ?? ''}`.match(/https?:\/\/[^\s"<>]+\/join\/confirm\?token=[\w-]+/)?.[0]
@@ -202,7 +235,11 @@ async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: stri
   await open(page, previewPath(link!))
   await page.getByLabel(UI.confirm.password, { exact: true }).fill(member.password)
   await page.getByRole('button', { name: UI.confirm.submit }).click()
-  await page.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('confirmed') === '1')
+  await waitForRedirect(
+    page,
+    `${member.label} email confirmation`,
+    (url) => url.pathname === '/login' && url.searchParams.get('confirmed') === '1',
+  )
 }
 
 function formWithButton(page: Page, button: string) {
@@ -229,12 +266,41 @@ async function axeInBothThemes(page: Page, path: string) {
 
 /** A PDF by magic bytes, just under the 4 MB cap, with non-text bytes so any re-encoding shows up. */
 function generatedPdf(): Buffer {
-  const size = Math.floor(3.9 * 1024 * 1024)
+  const size = RECEIPT_BYTES
   const pdf = Buffer.alloc(size)
   for (let index = 0; index < size; index += 1) pdf[index] = (index * 131 + 17) & 0xff
   pdf.write('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 0, 'latin1')
   pdf.write('\n%%EOF\n', size - 7, 'latin1')
   return pdf
+}
+
+/** Leaves time inside the hook's own timeout to close the contexts and list what is left. */
+const CLEANUP_BUDGET_MS = 4 * 60_000
+/**
+ * One delete is a page load, a submit and its redirect. Without a bound, a submit whose connection
+ * dropped leaves Chromium on its error page and the redirect wait runs out the whole budget.
+ */
+const CLEANUP_STEP_TIMEOUT_MS = 60_000
+
+function firstLine(error: unknown) {
+  return error instanceof Error ? error.message.split('\n')[0] : String(error)
+}
+
+/** Chromium's net:: errors (e.g. ERR_NETWORK_CHANGED) and the stalled waits a dropped submit ends in. */
+function isInterruption(message: string) {
+  return /\bnet::ERR_|Timeout \d+ms exceeded| stalled: /.test(message)
+}
+
+/** Returns false when there was nothing to delete under that name. */
+async function deleteFrom(admin: Page, path: string, name: string, successPath: string) {
+  await open(admin, path)
+  const button = admin.getByRole('button', { name: UI.delete(name), exact: true })
+  if ((await button.count()) === 0) return false
+  await button.click()
+  await expectSaved(admin, successPath, `Deleting ${name}`)
+  await open(admin, path)
+  await expect(admin.getByRole('button', { name: UI.delete(name), exact: true })).toHaveCount(0)
+  return true
 }
 
 function dateInDays(days: number) {
@@ -380,7 +446,7 @@ test.describe('sponsor journey', () => {
           .getByLabel(UI.receipts.file, { exact: true })
           .setInputFiles({ name: RECEIPT_FILE_NAME, mimeType: 'application/pdf', buffer: pdf })
         await receipts.getByRole('button', { name: UI.receipts.upload, exact: true }).click()
-        await expect(receipts.getByRole('status')).toContainText(UI.receipts.uploaded)
+        await expect(receipts.getByRole('status')).toContainText(UI.receipts.uploaded, { timeout: RECEIPT_UPLOAD_WAIT_MS })
         await expect(receipts).toContainText(RECEIPT_TITLE)
       })
 
@@ -414,7 +480,7 @@ test.describe('sponsor journey', () => {
         expect(response.headers()['content-type'] ?? '').not.toContain('application/pdf')
         expect(response.headers()['content-disposition'] ?? '').not.toMatch(/attachment/i)
 
-        await supporter.goto(ROUTES.sponsorHome)
+        await stalledAs(supporter, 'Member B opening /sponsor', supporter.goto(ROUTES.sponsorHome, { timeout: NAVIGATION_WAIT_MS }))
         await expect(supporter).toHaveURL((url) => url.pathname === ROUTES.supporterHome)
       })
 
@@ -471,7 +537,7 @@ test.describe('sponsor journey', () => {
         await admin.getByRole('link', { name: UI.attendees.link, exact: true }).click()
         await expect(admin.locator('main')).toContainText(SUPPORTER_MEMBER.email)
         const [download] = await Promise.all([
-          admin.waitForEvent('download'),
+          stalledAs(admin, 'Attendee CSV download', admin.waitForEvent('download', { timeout: NAVIGATION_WAIT_MS })),
           admin.getByRole('link', { name: UI.attendees.csv, exact: true }).click(),
         ])
         expect(download.suggestedFilename()).toMatch(/^event-\d+-attendees\.csv$/)
@@ -490,63 +556,74 @@ test.describe('sponsor journey', () => {
     const baseURL = created.baseURL
     const anythingCreated = created.listing || created.event || created.members.length > 0
     if (missingEnv.length > 0 || !baseURL || !anythingCreated) return
-    test.setTimeout(3 * 60_000)
+    test.setTimeout(CLEANUP_BUDGET_MS + 60_000)
 
-    const context = await newContext(browser, baseURL)
-    const admin = await context.newPage()
-    admin.on('dialog', (dialog) => dialog.accept())
-    const problems: string[] = []
+    type Leftover = { row: string; remove: (admin: Page) => Promise<unknown> }
+    const leftovers: Leftover[] = []
+    const listing = created.listing
+    if (listing) {
+      leftovers.push({
+        row: `sponsor listing ${listing.id ? `#${listing.id} ` : ''}named "${listing.names.join('" or "')}" (Admin > Sponsors)`,
+        remove: async (admin) => {
+          for (const name of listing.names) if (await deleteFrom(admin, '/admin/sponsors', name, '/admin/sponsors')) return
+        },
+      })
+    }
+    if (created.event) {
+      leftovers.push({
+        row: `event "${EVENT_TITLE}" (Admin > Events)`,
+        remove: (admin) => deleteFrom(admin, '/admin/events', EVENT_TITLE, '/admin/events'),
+      })
+    }
+    for (const member of created.members) {
+      leftovers.push({
+        row: `member ${member.email} named "${member.name}" (Admin > Members)`,
+        remove: (admin) =>
+          deleteFrom(admin, `/admin/members?q=${encodeURIComponent(member.email)}`, member.name, '/admin/members'),
+      })
+    }
 
-    async function attempt(description: string, run: () => Promise<void>) {
+    const failures = new Map<Leftover, string>(leftovers.map((leftover) => [leftover, 'not attempted']))
+    const contexts: BrowserContext[] = []
+
+    /** Each pass starts from a fresh context and sign-in, so nothing half-loaded from a dropped connection carries over. */
+    async function cleanupPass() {
+      let admin: Page
       try {
-        assertWriteTarget(baseURL, description)
-        await run()
+        const context = await newContext(browser, baseURL)
+        contexts.push(context)
+        context.setDefaultTimeout(CLEANUP_STEP_TIMEOUT_MS)
+        admin = await context.newPage()
+        admin.on('dialog', (dialog) => dialog.accept())
+        await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
       } catch (error) {
-        problems.push(`${description}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
+        for (const leftover of failures.keys()) failures.set(leftover, `admin sign-in for cleanup: ${firstLine(error)}`)
+        return
+      }
+      for (const leftover of [...failures.keys()]) {
+        try {
+          assertWriteTarget(baseURL, `delete the ${leftover.row}`)
+          await leftover.remove(admin)
+          failures.delete(leftover)
+        } catch (error) {
+          failures.set(leftover, firstLine(error))
+        }
       }
     }
 
-    /** Returns false when there was nothing to delete under that name. */
-    async function deleteFrom(path: string, name: string, successPath: string) {
-      await open(admin, path)
-      const button = admin.getByRole('button', { name: UI.delete(name), exact: true })
-      if ((await button.count()) === 0) return false
-      await button.click()
-      await expectSaved(admin, successPath, `Deleting ${name}`)
-      await open(admin, path)
-      await expect(admin.getByRole('button', { name: UI.delete(name), exact: true })).toHaveCount(0)
-      return true
+    const passes = (async () => {
+      await cleanupPass()
+      if ([...failures.values()].some(isInterruption)) await cleanupPass()
+    })()
+    const outOfTime = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), CLEANUP_BUDGET_MS).unref())
+    if ((await Promise.race([passes, outOfTime])) === 'timeout') {
+      for (const leftover of failures.keys()) failures.set(leftover, `cleanup ran out of its ${CLEANUP_BUDGET_MS / 1000}s budget`)
     }
+    await Promise.allSettled(contexts.map((context) => context.close()))
 
-    try {
-      await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
-
-      const listing = created.listing
-      if (listing) {
-        await attempt(`delete the listing "${listing.names.join('" or "')}"`, async () => {
-          for (const name of listing.names) {
-            if (await deleteFrom('/admin/sponsors', name, '/admin/sponsors')) return
-          }
-        })
-      }
-      if (created.event) {
-        await attempt(`delete the event "${EVENT_TITLE}"`, async () => {
-          await deleteFrom('/admin/events', EVENT_TITLE, '/admin/events')
-        })
-      }
-      for (const member of created.members) {
-        await attempt(`delete the member ${member.email}`, async () => {
-          await deleteFrom(`/admin/members?q=${encodeURIComponent(member.email)}`, member.name, '/admin/members')
-        })
-      }
-    } catch (error) {
-      problems.push(`admin sign-in for cleanup: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
-    } finally {
-      await context.close()
-    }
-
-    if (problems.length > 0) {
-      throw new Error(`Sponsor journey cleanup left data on the preview; remove it by hand:\n- ${problems.join('\n- ')}`)
+    if (failures.size > 0) {
+      const rows = [...failures].map(([leftover, reason]) => `${leftover.row}: ${reason}`)
+      throw new Error(`Sponsor journey cleanup left data on ${baseURL}; delete these rows by hand:\n- ${rows.join('\n- ')}`)
     }
   })
 })
