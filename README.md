@@ -16,8 +16,9 @@ deployed on [Vercel](https://vercel.com).
 - **Running it locally:** [Getting started](#getting-started), with every environment
   variable described in [`.env.example`](.env.example).
 - **Checks:** [Testing](#testing) covers the unit, database and preview smoke tests and the
-  CI jobs; [Deployment](#deployment) covers Vercel, Neon, Resend and the production steps
-  for each release.
+  CI jobs; [Deployment](#deployment) covers Vercel, Neon and Resend. Each release's
+  production steps are under [Sponsor portal](#sponsor-portal) (stage 3 and UI clarity) or
+  [Deployment](#deployment) (the rest).
 
 ## What officers can do
 
@@ -184,8 +185,9 @@ public at `/help/members`) covers the same steps for members.
   unexpired link; there is no scheduled job, so this happens the next time anyone signs
   up or asks for a new link.
 - **Signing in:** members use the same **Sign in** page as admins and land on `/account`;
-  sponsors land on `/sponsor` instead. Failed sign-ins are limited per email and network
-  over 15 minutes, with a higher limit per email and per network. A successful sign-in or
+  sponsors land on `/sponsor` instead. Over any 15 minutes, sign-in attempts are limited to 5 for
+  one email from one network (an IP address, or an IPv6 /64), 50 for one email from all
+  networks, and 50 from one network across all emails. A successful sign-in or
   an emailed password reset sets a signed `__Host-known_device` cookie that lets that
   browser past the per-email limit, so a stranger guessing passwords can't lock the owner
   out. It lasts 180 days, survives sign-out, and stops working when the password changes.
@@ -354,7 +356,8 @@ The guides for members, sponsors and officers are Markdown files in
 [`docs/guides/`](docs/guides), rendered by the site at request time:
 
 - `/help` lists the member and sponsor guides (`/help/members`, `/help/sponsors`) and links a
-  PDF of both, `public/help/shpe-website-guide.pdf`. The footer links to it.
+  PDF of both, `public/help/shpe-website-guide.pdf`. The footer's **Help** link opens
+  `/help`.
 - `/admin/help` shows the officer guide to signed-in admins, with the officer handbook PDF
   (`docs/guides/pdf/officer-handbook.pdf`, served only to admins from
   `/admin/help/handbook.pdf`).
