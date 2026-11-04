@@ -162,8 +162,30 @@ async function newContext(browser: Browser, baseURL: string | undefined) {
   return context
 }
 
+/**
+ * The config sets no navigation timeout, so a page load or submit whose connection dropped would wait
+ * until the 10-minute test timeout with no hint of where it stopped. 60 s covers a cold serverless start
+ * plus a database round-trip on a preview with room to spare.
+ */
+const NAVIGATION_WAIT_MS = 60_000
+
+async function stalledAs<T>(page: Page, step: string, wait: Promise<T>): Promise<T> {
+  try {
+    return await wait
+  } catch (error) {
+    if (error instanceof Error && /Timeout \d+ms exceeded/.test(error.message)) {
+      throw new Error(`${step} stalled: nothing arrived within ${NAVIGATION_WAIT_MS / 1000}s (page was at ${page.url()})`)
+    }
+    throw error
+  }
+}
+
+async function waitForRedirect(page: Page, step: string, matches: Parameters<Page['waitForURL']>[0]) {
+  await stalledAs(page, step, page.waitForURL(matches, { timeout: NAVIGATION_WAIT_MS }))
+}
+
 async function open(page: Page, path: string) {
-  const response = await page.goto(path)
+  const response = await stalledAs(page, `Loading ${path}`, page.goto(path, { timeout: NAVIGATION_WAIT_MS }))
   expect(response?.status(), `${path} should load`).toBeLessThan(400)
 }
 
@@ -172,14 +194,18 @@ async function signIn(page: Page, email: string, password: string, who: string, 
   await page.getByLabel(UI.signIn.email, { exact: true }).fill(email)
   await page.getByLabel(UI.signIn.password, { exact: true }).fill(password)
   await page.getByRole('button', { name: UI.signIn.submit, exact: true }).click()
-  await page.waitForURL((url) => url.pathname === landing || url.searchParams.has('error'))
+  await waitForRedirect(page, `${who} sign-in`, (url) => url.pathname === landing || url.searchParams.has('error'))
   if (new URL(page.url()).pathname !== landing) throw new Error(`${who} sign-in failed (${UI.signIn.failed})`)
 }
 
 /** Waits for a form action's redirect and fails with the ?error= code when it was refused. */
 async function expectSaved(page: Page, pathname: string | RegExp, what: string) {
   const matchesPath = (path: string) => (typeof pathname === 'string' ? path === pathname : pathname.test(path))
-  await page.waitForURL((url) => matchesPath(url.pathname) && (url.searchParams.has('saved') || url.searchParams.has('error')))
+  await waitForRedirect(
+    page,
+    what,
+    (url) => matchesPath(url.pathname) && (url.searchParams.has('saved') || url.searchParams.has('error')),
+  )
   const error = new URL(page.url()).searchParams.get('error')
   expect(error, `${what} was refused`).toBeNull()
 }
@@ -200,7 +226,7 @@ async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: stri
   await page.getByLabel(UI.join.terms).check()
   created.members.push(member)
   await page.getByRole('button', { name: UI.join.submit }).click()
-  await page.waitForURL('**/join/check-email')
+  await waitForRedirect(page, `${member.label} sign-up`, '**/join/check-email')
 
   const email = await waitForConfirmationEmail(member.email)
   const link = `${email.text ?? ''}\n${email.html ?? ''}`.match(/https?:\/\/[^\s"<>]+\/join\/confirm\?token=[\w-]+/)?.[0]
@@ -209,7 +235,11 @@ async function signUpAndConfirm(page: Page, member: JourneyMember, baseURL: stri
   await open(page, previewPath(link!))
   await page.getByLabel(UI.confirm.password, { exact: true }).fill(member.password)
   await page.getByRole('button', { name: UI.confirm.submit }).click()
-  await page.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('confirmed') === '1')
+  await waitForRedirect(
+    page,
+    `${member.label} email confirmation`,
+    (url) => url.pathname === '/login' && url.searchParams.get('confirmed') === '1',
+  )
 }
 
 function formWithButton(page: Page, button: string) {
@@ -256,9 +286,9 @@ function firstLine(error: unknown) {
   return error instanceof Error ? error.message.split('\n')[0] : String(error)
 }
 
-/** Chromium's net:: errors (e.g. ERR_NETWORK_CHANGED) and the step timeouts a dropped submit ends in. */
+/** Chromium's net:: errors (e.g. ERR_NETWORK_CHANGED) and the stalled waits a dropped submit ends in. */
 function isInterruption(message: string) {
-  return /\bnet::ERR_|Timeout \d+ms exceeded/.test(message)
+  return /\bnet::ERR_|Timeout \d+ms exceeded| stalled: /.test(message)
 }
 
 /** Returns false when there was nothing to delete under that name. */
@@ -450,7 +480,7 @@ test.describe('sponsor journey', () => {
         expect(response.headers()['content-type'] ?? '').not.toContain('application/pdf')
         expect(response.headers()['content-disposition'] ?? '').not.toMatch(/attachment/i)
 
-        await supporter.goto(ROUTES.sponsorHome)
+        await stalledAs(supporter, 'Member B opening /sponsor', supporter.goto(ROUTES.sponsorHome, { timeout: NAVIGATION_WAIT_MS }))
         await expect(supporter).toHaveURL((url) => url.pathname === ROUTES.supporterHome)
       })
 
@@ -507,7 +537,7 @@ test.describe('sponsor journey', () => {
         await admin.getByRole('link', { name: UI.attendees.link, exact: true }).click()
         await expect(admin.locator('main')).toContainText(SUPPORTER_MEMBER.email)
         const [download] = await Promise.all([
-          admin.waitForEvent('download'),
+          stalledAs(admin, 'Attendee CSV download', admin.waitForEvent('download', { timeout: NAVIGATION_WAIT_MS })),
           admin.getByRole('link', { name: UI.attendees.csv, exact: true }).click(),
         ])
         expect(download.suggestedFilename()).toMatch(/^event-\d+-attendees\.csv$/)
