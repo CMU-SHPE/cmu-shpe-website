@@ -8,9 +8,19 @@ type MemberRow = {
   email: string
   name: string
   passwordHash: string
+  privacyPolicyVersion: string
+  ageConfirmedAt: Date
+  termsAcceptedAt: Date
   emailConfirmedAt: Date | null
 }
-type TokenRow = { memberId: number; purpose: string; tokenHash: string; expiresAt: Date }
+type SignUpFields = {
+  name: string | null
+  passwordHash: string | null
+  privacyPolicyVersion: string | null
+  ageConfirmedAt: Date | null
+  termsAcceptedAt: Date | null
+}
+type TokenRow = { memberId: number; purpose: string; tokenHash: string; expiresAt: Date } & SignUpFields
 type ThrottleRow = { action: string; email: string; ip: string | null; createdAt: Date }
 type Write = () => unknown
 
@@ -113,6 +123,9 @@ function createDb() {
             email: values.email as string,
             name: values.name as string,
             passwordHash: values.passwordHash as string,
+            privacyPolicyVersion: values.privacyPolicyVersion as string,
+            ageConfirmedAt: values.ageConfirmedAt as Date,
+            termsAcceptedAt: values.termsAcceptedAt as Date,
             emailConfirmedAt: null,
           })
         } else if (name === 'member_tokens') {
@@ -121,6 +134,11 @@ function createDb() {
             purpose: values.purpose as string,
             tokenHash: values.tokenHash as string,
             expiresAt: values.expiresAt as Date,
+            name: (values.name as string | undefined) ?? null,
+            passwordHash: (values.passwordHash as string | undefined) ?? null,
+            privacyPolicyVersion: (values.privacyPolicyVersion as string | undefined) ?? null,
+            ageConfirmedAt: (values.ageConfirmedAt as Date | undefined) ?? null,
+            termsAcceptedAt: (values.termsAcceptedAt as Date | undefined) ?? null,
           })
         } else {
           throw new Error(`unexpected insert into ${name}`)
@@ -135,14 +153,10 @@ function createDb() {
       where: (condition: SQL) => {
         const apply = () => {
           if (tableName(table) !== 'members') throw new Error('unexpected update')
-          const [id, passwordHash] = params(condition)
+          const [id] = params(condition)
           const onlyUnconfirmed = /"email_confirmed_at" is null/.test(sqlText(condition))
-          const onlySameHash = /"password_hash" = \$2/.test(sqlText(condition))
           const changed = state.members.filter(
-            (row) =>
-              row.id === id &&
-              (!onlyUnconfirmed || row.emailConfirmedAt === null) &&
-              (!onlySameHash || row.passwordHash === passwordHash),
+            (row) => row.id === id && (!onlyUnconfirmed || row.emailConfirmedAt === null),
           )
           for (const row of changed) Object.assign(row, values)
           return changed.map((row) => ({ id: row.id }))
@@ -206,7 +220,14 @@ function createDb() {
             limit: async () =>
               state.tokens
                 .filter((row) => row.tokenHash === tokenHash && row.purpose === purpose && row.expiresAt.getTime() > Date.now())
-                .map((row) => ({ memberId: row.memberId })),
+                .map(({ memberId, name, passwordHash, privacyPolicyVersion, ageConfirmedAt, termsAcceptedAt }) => ({
+                  memberId,
+                  name,
+                  passwordHash,
+                  privacyPolicyVersion,
+                  ageConfirmedAt,
+                  termsAcceptedAt,
+                })),
           }
         }
         if (table === 'members' && /"members"."id" = /.test(sqlText(condition))) {
@@ -234,17 +255,22 @@ function createDb() {
     execute: (statement: SQL) => {
       const apply: Write = () => {
         if (!/insert into member_tokens/.test(sqlText(statement))) return { rows: [] }
-        const [purpose, tokenHash, expiresAt, memberId] = params(statement)
+        const [purpose, tokenHash, expiresAt, name, passwordHash, privacyPolicyVersion, ageConfirmedAt, termsAcceptedAt, memberId] =
+          params(statement)
         const unconfirmed = state.members.some((row) => row.id === memberId && row.emailConfirmedAt === null)
-        if (unconfirmed) {
-          state.tokens.push({
-            memberId: memberId as number,
-            purpose: purpose as string,
-            tokenHash: tokenHash as string,
-            expiresAt: asDate(expiresAt),
-          })
-        }
-        return { rows: [] }
+        if (!unconfirmed) return { rows: [] }
+        state.tokens.push({
+          memberId: memberId as number,
+          purpose: purpose as string,
+          tokenHash: tokenHash as string,
+          expiresAt: asDate(expiresAt),
+          name: name as string,
+          passwordHash: passwordHash as string,
+          privacyPolicyVersion: privacyPolicyVersion as string,
+          ageConfirmedAt: asDate(ageConfirmedAt),
+          termsAcceptedAt: asDate(termsAcceptedAt),
+        })
+        return { rows: [{ member_id: memberId }] }
       }
       return Object.assign(apply, { then: (resolve: (value: unknown) => void) => resolve(apply()) })
     },
@@ -263,7 +289,7 @@ function createDb() {
 const PASSWORD = 'correct horse battery'
 const SECOND_PASSWORD = 'another long password'
 const PASSWORD_MISMATCH =
-  "That password doesn't match this sign-up. If you didn't make the most recent sign-up for this email, sign up again with the password you want."
+  "That password doesn't match the sign-up this link was sent for. If you signed up more than once, use the link from the email that followed the sign-up whose password you know, or sign up again."
 const SIGN_UP_TIME = new Date('2026-10-24T18:00:00.000Z')
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -339,6 +365,11 @@ describe('the confirmation link a sign-up emails', () => {
         purpose: 'confirm_email',
         tokenHash: hashToken(token),
         expiresAt: new Date(SIGN_UP_TIME.getTime() + DAY_MS),
+        name: 'Mia Lopez',
+        passwordHash: `$2b$12$hash-of:${PASSWORD}`,
+        privacyPolicyVersion: 'October 2026',
+        ageConfirmedAt: SIGN_UP_TIME,
+        termsAcceptedAt: SIGN_UP_TIME,
       },
     ])
     expect(JSON.stringify(fake.state)).not.toContain(token)
@@ -377,31 +408,45 @@ describe('the confirmation link a sign-up emails', () => {
     await expect(confirm(token)).resolves.toBe('REDIRECT /login?confirmed=1')
   })
 
-  it('is revoked by a later sign-up for the same unconfirmed address, whose own link then works', async () => {
+  it('keeps working after a later sign-up for the same address, which cannot change the owner\'s account', async () => {
     await submitSignUp()
-    const first = lastEmailedToken()
-    await submitSignUp({ name: 'Second Try', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
-    const second = lastEmailedToken()
+    const owners = lastEmailedToken()
+    await submitSignUp({ name: 'Stranger', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
+    const strangers = lastEmailedToken()
+    expect(fake.state.members).toEqual([expect.objectContaining({ name: 'Mia Lopez', passwordHash: `$2b$12$hash-of:${PASSWORD}` })])
 
-    await expect(confirm(first, SECOND_PASSWORD)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
-    await expect(confirm(second, SECOND_PASSWORD)).resolves.toBe('REDIRECT /login?confirmed=1')
+    await expect(confirm(owners, SECOND_PASSWORD)).resolves.toEqual({ formError: PASSWORD_MISMATCH })
+    await expect(confirm(owners)).resolves.toBe('REDIRECT /login?confirmed=1')
     expect(fake.state.members).toEqual([
-      expect.objectContaining({ id: 1, name: 'Second Try', passwordHash: `$2b$12$hash-of:${SECOND_PASSWORD}` }),
+      expect.objectContaining({ name: 'Mia Lopez', passwordHash: `$2b$12$hash-of:${PASSWORD}`, emailConfirmedAt: SIGN_UP_TIME }),
     ])
+    await expect(confirm(strangers, SECOND_PASSWORD)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
+    expect(fake.state.tokens).toEqual([])
   })
 
-  it('needs the password of the latest sign-up, so someone who overwrote the owner\'s sign-up is not activated by their click', async () => {
+  it('needs its own sign-up\'s password, and confirming it takes that sign-up\'s name and password', async () => {
+    await submitSignUp({ name: 'Stranger', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
+    const strangers = lastEmailedToken()
+    vi.setSystemTime(SIGN_UP_TIME.getTime() + 60_000)
     await submitSignUp()
-    await submitSignUp({ name: 'Second Try', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
-    const link = lastEmailedToken()
+    const owners = lastEmailedToken()
 
-    await expect(confirm(link, PASSWORD)).resolves.toEqual({ formError: PASSWORD_MISMATCH })
+    await expect(confirm(strangers, PASSWORD)).resolves.toEqual({ formError: PASSWORD_MISMATCH })
     expect(fake.state.members[0].emailConfirmedAt).toBeNull()
-    expect(fake.state.tokens).toEqual([expect.objectContaining({ tokenHash: hashToken(link) })])
+    expect(fake.state.tokens).toHaveLength(2)
 
-    await expect(confirm(link, SECOND_PASSWORD)).resolves.toBe('REDIRECT /login?confirmed=1')
-    expect(fake.state.members[0].emailConfirmedAt).toEqual(SIGN_UP_TIME)
-    expect(fake.state.tokens).toEqual([])
+    await expect(confirm(owners)).resolves.toBe('REDIRECT /login?confirmed=1')
+    const ownerSignUpTime = new Date(SIGN_UP_TIME.getTime() + 60_000)
+    expect(fake.state.members).toEqual([
+      expect.objectContaining({
+        name: 'Mia Lopez',
+        passwordHash: `$2b$12$hash-of:${PASSWORD}`,
+        ageConfirmedAt: ownerSignUpTime,
+        termsAcceptedAt: ownerSignUpTime,
+        emailConfirmedAt: ownerSignUpTime,
+      }),
+    ])
+    await expect(confirm(strangers, SECOND_PASSWORD)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
   })
 
   it('stays usable after a wrong password, and confirms with the right one', async () => {
@@ -461,36 +506,40 @@ describe('the confirmation link a sign-up emails', () => {
     expect(fake.state.members[0].emailConfirmedAt).toEqual(earlier)
   })
 
-  it('leaves a sign-up that lands just before the confirm write unconfirmed, with its own link still working', async () => {
+  it('revokes a sign-up that lands just before the confirm write, since the account is then taken', async () => {
     await submitSignUp()
     const first = lastEmailedToken()
     fake.state.afterConsume = () =>
       submitSignUp({ name: 'Second Try', password: SECOND_PASSWORD, confirmPassword: SECOND_PASSWORD })
 
-    await expect(confirm(first)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
-    expect(fake.state.members[0].emailConfirmedAt).toBeNull()
+    await expect(confirm(first)).resolves.toBe('REDIRECT /login?confirmed=1')
+    expect(fake.state.members[0]).toMatchObject({ name: 'Mia Lopez', emailConfirmedAt: SIGN_UP_TIME })
 
     const second = lastEmailedToken()
-    expect(fake.state.tokens).toEqual([expect.objectContaining({ tokenHash: hashToken(second) })])
-    await expect(confirm(second, SECOND_PASSWORD)).resolves.toBe('REDIRECT /login?confirmed=1')
+    expect(fake.state.tokens).toEqual([])
+    await expect(confirm(second, SECOND_PASSWORD)).resolves.toBe('REDIRECT /join/confirm?invalid=1')
   })
 })
 
 describe('sign-up looks the same whoever owns the address', () => {
+  const existingMember = (emailConfirmedAt: Date | null): MemberRow => ({
+    id: 9,
+    email: 'mia@example.com',
+    name: 'Old',
+    passwordHash: 'x',
+    privacyPolicyVersion: 'September 2026',
+    ageConfirmedAt: new Date('2026-09-01'),
+    termsAcceptedAt: new Date('2026-09-01'),
+    emailConfirmedAt,
+  })
   const branches: Record<string, () => void> = {
     'a new address': () => {},
     'an unconfirmed member': () => {
-      fake.state.members.push({ id: 9, email: 'mia@example.com', name: 'Old', passwordHash: 'x', emailConfirmedAt: null })
+      fake.state.members.push(existingMember(null))
       fake.state.nextMemberId = 10
     },
     'a confirmed member': () => {
-      fake.state.members.push({
-        id: 9,
-        email: 'mia@example.com',
-        name: 'Old',
-        passwordHash: 'x',
-        emailConfirmedAt: new Date('2026-10-01'),
-      })
+      fake.state.members.push(existingMember(new Date('2026-10-01')))
     },
     'an admin': () => {
       fake.state.admins.push({ email: 'mia@example.com', name: 'Admin Mia' })

@@ -235,8 +235,24 @@ export const memberTokens = pgTable(
     tokenHash: text('token_hash').notNull().unique(),
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    // The sign-up a confirmation link was sent for, copied onto the member when that link confirms the account.
+    // All null on reset links, on resent links and on links issued before sign-ups were kept per link.
+    name: text('name'),
+    passwordHash: text('password_hash'),
+    privacyPolicyVersion: text('privacy_policy_version'),
+    ageConfirmedAt: timestamp('age_confirmed_at', { withTimezone: true, mode: 'date' }),
+    termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true, mode: 'date' }),
   },
-  (table) => [index('member_tokens_member_purpose_idx').on(table.memberId, table.purpose)],
+  (table) => {
+    const missingSignUpFields = sql`num_nulls(${table.name}, ${table.passwordHash}, ${table.privacyPolicyVersion}, ${table.ageConfirmedAt}, ${table.termsAcceptedAt})`
+    return [
+      index('member_tokens_member_purpose_idx').on(table.memberId, table.purpose),
+      check(
+        'member_tokens_sign_up_complete',
+        sql`${missingSignUpFields} = 5 or (${table.purpose} = 'confirm_email' and ${missingSignUpFields} = 0)`,
+      ),
+    ]
+  },
 )
 
 // Only one pending change per member: a newer request replaces the row, so older links stop working.

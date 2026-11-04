@@ -2,14 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
 
-type Write = { kind: string; table: string; values?: Record<string, unknown>; where?: SQL }
-
 const mocks = vi.hoisted(() => {
   const state = {
     unconfirmed: null as { id: number; name: string } | null,
     memberWhere: null as SQL | null,
     ops: [] as string[],
-    batches: [] as Write[][],
+    inserts: [] as Record<string, unknown>[],
     throttled: false,
   }
   const tableName = (table: unknown) => (table as Record<symbol, string>)[Symbol.for('drizzle:Name')]
@@ -30,7 +28,15 @@ const mocks = vi.hoisted(() => {
         }
         return query
       },
-      insert: (table: unknown) => ({ values: (values: Record<string, unknown>) => ({ kind: 'insert', table: tableName(table), values }) }),
+      insert: (table: unknown) => ({
+        values: (values: Record<string, unknown>) => ({
+          then: (resolve: (value: unknown) => void) => {
+            state.ops.push(`insert ${tableName(table)}`)
+            state.inserts.push(values)
+            resolve(undefined)
+          },
+        }),
+      }),
       delete: (table: unknown) => ({
         where: (where: SQL) => ({
           kind: 'delete',
@@ -42,9 +48,6 @@ const mocks = vi.hoisted(() => {
           },
         }),
       }),
-      batch: async (writes: Write[]) => {
-        state.batches.push(writes)
-      },
     },
     sendEmail: vi.fn<(message: { to: string; subject: string; text: string }) => Promise<void>>(async () => {}),
     recordRequest: vi.fn(async () => ({ throttled: mocks.state.throttled })),
@@ -82,21 +85,21 @@ function form(email = 'Mia@Example.com') {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.afterCallbacks.length = 0
-  Object.assign(mocks.state, { unconfirmed: null, memberWhere: null, ops: [], batches: [], throttled: false })
+  Object.assign(mocks.state, { unconfirmed: null, memberWhere: null, ops: [], inserts: [], throttled: false })
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 describe('resendConfirmation', () => {
-  it('replaces an unconfirmed member’s links with a fresh one and emails it', async () => {
+  it('adds a fresh link for an unconfirmed member, leaving earlier links working, and emails it', async () => {
     mocks.state.unconfirmed = { id: 7, name: 'Mia' }
     await expect(resendConfirmation({}, form())).rejects.toThrow('REDIRECT /join/resend?sent=1')
     await runAfterResponse()
     expect(mocks.recordRequest).toHaveBeenCalledWith('resend_confirmation', 'mia@example.com', null)
-    expect(mocks.state.ops).toEqual(['purge members', 'find member'])
-    const [[revoke, insert]] = mocks.state.batches
-    expect(new PgDialect().sqlToQuery(revoke.where!).params).toEqual([7, 'confirm_email'])
-    expect(insert.values).toMatchObject({ memberId: 7, purpose: 'confirm_email' })
+    expect(mocks.state.ops).toEqual(['purge members', 'find member', 'insert member_tokens'])
+    expect(mocks.state.inserts).toEqual([
+      { memberId: 7, purpose: 'confirm_email', tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/), expiresAt: expect.any(Date) },
+    ])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
     expect(mocks.sendEmail.mock.calls[0][0].text).toMatch(/\/join\/confirm\?token=[A-Za-z0-9_-]{43}\n/)
     expect(mocks.sendEmail.mock.calls[0][0].text.startsWith('Hi,\n')).toBe(true)
@@ -107,17 +110,17 @@ describe('resendConfirmation', () => {
     mocks.state.unconfirmed = { id: 7, name: 'Mia' }
     await expect(resendConfirmation({}, form())).rejects.toThrow('REDIRECT /join/resend?sent=1')
     expect(mocks.state.ops).toEqual([])
-    expect(mocks.state.batches).toEqual([])
+    expect(mocks.state.inserts).toEqual([])
     expect(mocks.sendEmail).not.toHaveBeenCalled()
     await runAfterResponse()
-    expect(mocks.state.ops).toEqual(['purge members', 'find member'])
+    expect(mocks.state.ops).toEqual(['purge members', 'find member', 'insert member_tokens'])
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
 
     mocks.state.unconfirmed = null
     await expect(resendConfirmation({}, form('unknown@example.com'))).rejects.toThrow('REDIRECT /join/resend?sent=1')
     expect(mocks.afterCallbacks).toHaveLength(1)
     await runAfterResponse()
-    expect(mocks.state.batches).toHaveLength(1)
+    expect(mocks.state.inserts).toHaveLength(1)
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
   })
 
@@ -141,7 +144,7 @@ describe('resendConfirmation', () => {
     await expect(resendConfirmation({}, form())).rejects.toThrow('REDIRECT /join/resend?sent=1')
     await runAfterResponse()
     expect(mocks.sendEmail).not.toHaveBeenCalled()
-    expect(mocks.state.batches).toEqual([])
+    expect(mocks.state.inserts).toEqual([])
   })
 
   it('sends nothing when throttled, with the same response', async () => {

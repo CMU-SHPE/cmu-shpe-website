@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
   }
   return {
     state,
-    find: vi.fn<(token: string, purpose: string) => Promise<number | null>>(),
+    find: vi.fn<(token: string) => Promise<{ memberId: number; signUp: SignUpDetails | null } | null>>(),
     consume: vi.fn<(token: string, purpose: string) => Promise<number | null>>(),
     recordRequest: vi.fn<(action: string, email: string, ip: string | null) => Promise<{ throttled: boolean }>>(),
     compare: vi.fn<(password: string, hash: string) => Promise<boolean>>(),
@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/db', () => ({ getDb: () => mocks.db }))
 vi.mock('@/lib/member-tokens', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/member-tokens')>()),
-  findMemberToken: mocks.find,
+  findConfirmEmailLink: mocks.find,
   consumeMemberToken: mocks.consume,
 }))
 vi.mock('@/lib/request-throttle', () => ({ recordRequest: mocks.recordRequest }))
@@ -59,11 +59,19 @@ vi.mock('bcryptjs', () => ({ default: { compare: mocks.compare } }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ 'x-forwarded-for': '203.0.113.7' }) }))
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 
+import type { SignUpDetails } from '@/lib/member-tokens'
 import { confirmMemberEmail } from './actions'
 
 const TOKEN = 'A'.repeat(43)
 const MISMATCH =
-  "That password doesn't match this sign-up. If you didn't make the most recent sign-up for this email, sign up again with the password you want."
+  "That password doesn't match the sign-up this link was sent for. If you signed up more than once, use the link from the email that followed the sign-up whose password you know, or sign up again."
+const LINKED_SIGN_UP: SignUpDetails = {
+  name: 'Mia From The Link',
+  passwordHash: '$2b$12$this-link',
+  privacyPolicyVersion: 'October 2026',
+  ageConfirmedAt: new Date('2026-11-01T10:00:00Z'),
+  termsAcceptedAt: new Date('2026-11-01T10:00:00Z'),
+}
 
 function form(fields: { token?: string; password?: string }) {
   const formData = new FormData()
@@ -84,7 +92,7 @@ beforeEach(() => {
   mocks.state.ops = []
   mocks.state.writes = []
   mocks.state.updatedRows = 1
-  mocks.find.mockResolvedValue(7)
+  mocks.find.mockResolvedValue({ memberId: 7, signUp: LINKED_SIGN_UP })
   mocks.consume.mockImplementation(async () => {
     mocks.state.ops.push('consume')
     return 7
@@ -101,24 +109,35 @@ beforeEach(() => {
 })
 
 describe('confirmMemberEmail', () => {
-  it('checks the sign-up password, then consumes the token, confirms the account and revokes its other links', async () => {
+  it('checks the link’s own password, then consumes it, confirms the account with the link’s sign-up and revokes its other links', async () => {
+    mocks.compare.mockImplementation(async (password, hash) => {
+      mocks.state.ops.push('compare')
+      return password === 'the signed-up password' && hash === '$2b$12$this-link'
+    })
     await expect(confirm({ token: TOKEN, password: 'the signed-up password' })).resolves.toEqual({
       thrown: 'REDIRECT /login?confirmed=1',
     })
-    expect(mocks.find).toHaveBeenCalledWith(TOKEN, 'confirm_email')
+    expect(mocks.find).toHaveBeenCalledWith(TOKEN)
     expect(mocks.recordRequest).toHaveBeenCalledWith('confirm_email', 'mia@example.com', '203.0.113.7')
-    expect(mocks.compare).toHaveBeenCalledWith('the signed-up password', '$2b$12$signed-up')
+    expect(mocks.compare).toHaveBeenCalledWith('the signed-up password', '$2b$12$this-link')
     expect(mocks.consume).toHaveBeenCalledWith(TOKEN, 'confirm_email')
     expect(mocks.state.ops).toEqual(['throttle', 'compare', 'consume', 'update', 'revoke'])
 
     const [confirmWrite, revoke] = mocks.state.writes
-    expect(confirmWrite.values).toEqual({ emailConfirmedAt: expect.any(Date) })
+    expect(confirmWrite.values).toEqual({ ...LINKED_SIGN_UP, emailConfirmedAt: expect.any(Date) })
     const { sql, params } = new PgDialect().sqlToQuery(confirmWrite.where)
-    expect(sql).toBe(
-      '("members"."id" = $1 and "members"."email_confirmed_at" is null and "members"."password_hash" = $2)',
-    )
-    expect(params).toEqual([7, '$2b$12$signed-up'])
+    expect(sql).toBe('("members"."id" = $1 and "members"."email_confirmed_at" is null)')
+    expect(params).toEqual([7])
     expect(new PgDialect().sqlToQuery(revoke.where).params).toEqual([7, 'confirm_email'])
+  })
+
+  it('checks a link with no sign-up of its own against the member row, and only confirms the account', async () => {
+    mocks.find.mockResolvedValue({ memberId: 7, signUp: null })
+    await expect(confirm({ token: TOKEN, password: 'the signed-up password' })).resolves.toEqual({
+      thrown: 'REDIRECT /login?confirmed=1',
+    })
+    expect(mocks.compare).toHaveBeenCalledWith('the signed-up password', '$2b$12$signed-up')
+    expect(mocks.state.writes[0].values).toEqual({ emailConfirmedAt: expect.any(Date) })
   })
 
   it('refuses a wrong password with one generic message, leaving the link unused and the account unconfirmed', async () => {

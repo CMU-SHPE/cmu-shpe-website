@@ -18,14 +18,14 @@ import {
   safeValues,
   type FormState,
 } from '@/lib/member-accounts'
-import { confirmEmailLink, deleteMemberTokens, insertMemberToken, newMemberToken } from '@/lib/member-tokens'
+import { confirmEmailLink, insertMemberToken, newConfirmEmailToken, type SignUpDetails } from '@/lib/member-tokens'
 import { getPrivacyPolicyVersion } from '@/lib/queries'
 import { recordRequest } from '@/lib/request-throttle'
 import { siteUrl } from '@/lib/site-url'
 
 const CHECK_EMAIL_PATH = '/join/check-email'
 
-type MemberTokenRow = ReturnType<typeof newMemberToken>['row']
+type ConfirmEmailTokenRow = ReturnType<typeof newConfirmEmailToken>['row']
 
 type SignUp = {
   name: string
@@ -36,12 +36,18 @@ type SignUp = {
 }
 
 // A plain INSERT could not depend on the row: selecting from it adds nothing once it is confirmed.
-function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row: MemberTokenRow) {
-  return db.execute(sql`
-    insert into member_tokens (member_id, purpose, token_hash, expires_at)
-    select ${members.id}, ${row.purpose}::member_token_purpose, ${row.tokenHash}, ${row.expiresAt.toISOString()}::timestamptz
+function insertTokenIfUnconfirmed(db: Db, stillUnconfirmed: SQL | undefined, row: ConfirmEmailTokenRow) {
+  return db.execute<{ member_id: number }>(sql`
+    insert into member_tokens (
+      member_id, purpose, token_hash, expires_at,
+      name, password_hash, privacy_policy_version, age_confirmed_at, terms_accepted_at
+    )
+    select ${members.id}, ${row.purpose}::member_token_purpose, ${row.tokenHash}, ${row.expiresAt.toISOString()}::timestamptz,
+      ${row.name}, ${row.passwordHash}, ${row.privacyPolicyVersion},
+      ${row.ageConfirmedAt.toISOString()}::timestamptz, ${row.termsAcceptedAt.toISOString()}::timestamptz
     from ${members}
     where ${stillUnconfirmed}
+    returning member_id
   `)
 }
 
@@ -66,10 +72,10 @@ function undoIfAdminHolds(db: Db, email: string) {
 
 /**
  * Picks the one email this sign-up sends. An existing account is never changed or
- * revealed; an unconfirmed one is taken over by the newest sign-up, so registering
- * someone else's address first can't lock them out of it. Confirming then needs that
- * newest sign-up's password, so the owner clicking the link can't activate someone
- * else's.
+ * revealed. An unconfirmed one is left as it is too: this sign-up only gets a link of
+ * its own, carrying its name, password and consent, and earlier links keep working. So a
+ * stranger signing up with someone's address can't cancel the owner's link, and the
+ * owner clicking the stranger's link can't activate it without the stranger's password.
  */
 async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Promise<EmailContent> {
   const { name, email, passwordHash, privacyPolicyVersion, base } = signUp
@@ -92,23 +98,19 @@ async function prepareSignUpEmail(db: Db, signUp: SignUp, retried = false): Prom
   }
 
   const now = new Date()
-  const details = { name, passwordHash, privacyPolicyVersion, ageConfirmedAt: now, termsAcceptedAt: now }
+  const details: SignUpDetails = { name, passwordHash, privacyPolicyVersion, ageConfirmedAt: now, termsAcceptedAt: now }
 
   if (member) {
-    const { token, row } = newMemberToken(member.id, 'confirm_email')
-    // A confirmation landing since the lookup above must not let this sign-up replace the password or get a new link.
+    const { token, row } = newConfirmEmailToken(member.id, details)
+    // A confirmation landing since the lookup above must not get this sign-up a link.
     const stillUnconfirmed = and(eq(members.id, member.id), isNull(members.emailConfirmedAt))
-    const [takenOver] = await db.batch([
-      db.update(members).set(details).where(stillUnconfirmed).returning({ id: members.id }),
-      deleteMemberTokens(db, member.id, 'confirm_email'),
-      insertTokenIfUnconfirmed(db, stillUnconfirmed, row),
-    ])
-    if (takenOver.length === 0) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
+    const [linked] = await db.batch([insertTokenIfUnconfirmed(db, stillUnconfirmed, row)])
+    if (linked.rows.length === 0) return accountExists(member.name, `${base}/login`, `${base}/forgot-password`)
     return confirmEmail(confirmEmailLink(base, token))
   }
 
   const newMemberId = sql`(select ${members.id} from ${members} where ${members.email} = ${email})`
-  const { token, row } = newMemberToken(newMemberId, 'confirm_email')
+  const { token, row } = newConfirmEmailToken(newMemberId, details)
   let undone: { id: number }[]
   try {
     const results = await db.batch([

@@ -33,11 +33,28 @@ export function newMemberToken(memberId: number | SQL, purpose: MemberTokenPurpo
   }
 }
 
+/** What a sign-up chose, carried by its own confirmation link so a later sign-up can't change it. */
+export type SignUpDetails = {
+  name: string
+  passwordHash: string
+  privacyPolicyVersion: string
+  ageConfirmedAt: Date
+  termsAcceptedAt: Date
+}
+
+export function newConfirmEmailToken(memberId: number | SQL, signUp: SignUpDetails, now = Date.now()) {
+  const { token, row } = newMemberToken(memberId, 'confirm_email', now)
+  return { token, row: { ...row, ...signUp } }
+}
+
 export function confirmEmailLink(base: string, token: string): string {
   return `${base}/join/confirm?token=${token}`
 }
 
-export function insertMemberToken(db: Db, row: ReturnType<typeof newMemberToken>['row']) {
+export function insertMemberToken(
+  db: Db,
+  row: ReturnType<typeof newMemberToken>['row'] | ReturnType<typeof newConfirmEmailToken>['row'],
+) {
   return db.insert(memberTokens).values(row)
 }
 
@@ -65,6 +82,36 @@ export async function findMemberToken(token: string, purpose: MemberTokenPurpose
     .where(unexpiredTokenMatching(token, purpose))
     .limit(1)
   return row?.memberId ?? null
+}
+
+function linkedSignUp(row: { [Field in keyof SignUpDetails]: SignUpDetails[Field] | null }): SignUpDetails | null {
+  const { name, passwordHash, privacyPolicyVersion, ageConfirmedAt, termsAcceptedAt } = row
+  if (name === null || passwordHash === null || privacyPolicyVersion === null || ageConfirmedAt === null || termsAcceptedAt === null) {
+    return null
+  }
+  return { name, passwordHash, privacyPolicyVersion, ageConfirmedAt, termsAcceptedAt }
+}
+
+/**
+ * Like findMemberToken, with the sign-up the link was sent for. That is null for a resent link or one
+ * issued before sign-ups were kept per link, which stand for the sign-up already on the member row.
+ */
+export async function findConfirmEmailLink(token: string): Promise<{ memberId: number; signUp: SignUpDetails | null } | null> {
+  if (!memberTokenParam.safeParse(token).success) return null
+  const [row] = await getDb()
+    .select({
+      memberId: memberTokens.memberId,
+      name: memberTokens.name,
+      passwordHash: memberTokens.passwordHash,
+      privacyPolicyVersion: memberTokens.privacyPolicyVersion,
+      ageConfirmedAt: memberTokens.ageConfirmedAt,
+      termsAcceptedAt: memberTokens.termsAcceptedAt,
+    })
+    .from(memberTokens)
+    .where(unexpiredTokenMatching(token, 'confirm_email'))
+    .limit(1)
+  if (!row) return null
+  return { memberId: row.memberId, signUp: linkedSignUp(row) }
 }
 
 /** For a page that only shows a form, such as the hidden username password managers need. */

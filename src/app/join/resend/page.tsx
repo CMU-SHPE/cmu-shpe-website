@@ -20,7 +20,7 @@ export default async function ResendConfirmationPage(props: { searchParams: Prom
   return (
     <AccountShell
       title="Resend confirmation email"
-      intro={<p>Enter the email you signed up with and we&apos;ll send a new confirmation link. Older links stop working.</p>}
+      intro={<p>Enter the email you signed up with and we&apos;ll send a new confirmation link. It needs the password from the first sign-up for that email. Links we sent earlier keep working until they expire.</p>}
     >
       {sent && (
         <FocusOnMount key={`notice-${renderKey}`} id="request-sent">
