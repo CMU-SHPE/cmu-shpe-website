@@ -246,14 +246,19 @@ function generatedPdf(): Buffer {
 
 /** Leaves time inside the hook's own timeout to close the contexts and list what is left. */
 const CLEANUP_BUDGET_MS = 4 * 60_000
+/**
+ * One delete is a page load, a submit and its redirect. Without a bound, a submit whose connection
+ * dropped leaves Chromium on its error page and the redirect wait runs out the whole budget.
+ */
+const CLEANUP_STEP_TIMEOUT_MS = 60_000
 
 function firstLine(error: unknown) {
   return error instanceof Error ? error.message.split('\n')[0] : String(error)
 }
 
-/** Chromium's net:: errors, e.g. ERR_NETWORK_CHANGED when the runner's connection drops mid-request. */
-function isNetworkError(message: string) {
-  return /\bnet::ERR_/.test(message)
+/** Chromium's net:: errors (e.g. ERR_NETWORK_CHANGED) and the step timeouts a dropped submit ends in. */
+function isInterruption(message: string) {
+  return /\bnet::ERR_|Timeout \d+ms exceeded/.test(message)
 }
 
 /** Returns false when there was nothing to delete under that name. */
@@ -557,6 +562,7 @@ test.describe('sponsor journey', () => {
       try {
         const context = await newContext(browser, baseURL)
         contexts.push(context)
+        context.setDefaultTimeout(CLEANUP_STEP_TIMEOUT_MS)
         admin = await context.newPage()
         admin.on('dialog', (dialog) => dialog.accept())
         await signIn(admin, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'), 'Admin', ROUTES.adminHome)
@@ -577,7 +583,7 @@ test.describe('sponsor journey', () => {
 
     const passes = (async () => {
       await cleanupPass()
-      if ([...failures.values()].some(isNetworkError)) await cleanupPass()
+      if ([...failures.values()].some(isInterruption)) await cleanupPass()
     })()
     const outOfTime = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), CLEANUP_BUDGET_MS).unref())
     if ((await Promise.race([passes, outOfTime])) === 'timeout') {
