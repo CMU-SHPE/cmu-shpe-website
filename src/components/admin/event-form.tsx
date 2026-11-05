@@ -4,8 +4,8 @@ import { useActionState, useEffect, useId, useRef, useState } from 'react'
 import SubmitButton from '@/components/submit-button'
 import TimeSlotEditor, { errorTextClass, slotInputId } from '@/components/admin/time-slot-editor'
 import { focusRingClass, inputClass, labelClass, mutedTextClass, primaryButtonClass } from '@/components/admin/styles'
-import type { EventFormState, EventFormValues } from '@/lib/event-form'
-import { MAX_EVENT_CAPACITY, MAX_EVENT_DESCRIPTION_LENGTH } from '@/lib/event-schema'
+import { type EventFormState, type EventFormValues, seriesCreateSummary } from '@/lib/event-form'
+import { MAX_EVENT_CAPACITY, MAX_EVENT_DESCRIPTION_LENGTH, MAX_SERIES_EVENTS } from '@/lib/event-schema'
 import { EVENT_TYPES } from '@/lib/event-types'
 
 type AttemptState = EventFormState & { attempt: number }
@@ -24,7 +24,7 @@ const EMPTY_VALUES: EventFormValues = {
   slots: [],
 }
 
-const FIELD_ORDER = ['title', 'description', 'location', 'type', 'date', 'endDate', 'time', 'capacity'] as const
+const FIELD_ORDER = ['title', 'description', 'location', 'type', 'date', 'endDate', 'repeatUntil', 'time', 'capacity'] as const
 
 function orderedErrors(errors: Record<string, string>, idPrefix: string) {
   const fieldErrors = FIELD_ORDER.filter((field) => errors[field]).map((field) => ({
@@ -93,14 +93,109 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   )
 }
 
-function EventFields({
+function WeeklyRepeatFields({
   idPrefix,
   values,
   errors,
+  startDate,
 }: {
   idPrefix: string
   values: EventFormValues
   errors: Record<string, string>
+  startDate: string
+}) {
+  const [repeats, setRepeats] = useState(values.repeatsWeekly === 'on')
+  const [until, setUntil] = useState(values.repeatUntil ?? '')
+  const untilId = `${idPrefix}-repeatUntil`
+  const hintId = `${untilId}-hint`
+  const summary = seriesCreateSummary(startDate, until)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          id={`${idPrefix}-repeatsWeekly`}
+          name="repeatsWeekly"
+          type="checkbox"
+          checked={repeats}
+          onChange={(event) => setRepeats(event.target.checked)}
+          className={`h-4 w-4 rounded ${focusRingClass}`}
+        />
+        <label htmlFor={`${idPrefix}-repeatsWeekly`} className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Repeats weekly
+        </label>
+      </div>
+      {repeats && (
+        <div>
+          <label htmlFor={untilId} className={labelClass}>
+            Repeats weekly until
+          </label>
+          <input
+            id={untilId}
+            name="repeatUntil"
+            type="date"
+            required
+            value={until}
+            onChange={(event) => setUntil(event.target.value)}
+            aria-invalid={errors.repeatUntil ? true : undefined}
+            aria-describedby={[errors.repeatUntil && `${untilId}-error`, hintId].filter(Boolean).join(' ')}
+            className={inputClass}
+          />
+          <FieldError id={`${untilId}-error`} message={errors.repeatUntil} />
+          <p id={hintId} className={`mt-1 ${mutedTextClass}`}>
+            Saving creates one event for each week, on the same weekday as the start date, up to {MAX_SERIES_EVENTS}{' '}
+            events. Each week gets its own RSVPs.
+          </p>
+          <p role="status" className="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {summary}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SeriesScopeFields({ idPrefix, values, later }: { idPrefix: string; values: EventFormValues; later: number }) {
+  const hintId = `${idPrefix}-scope-hint`
+  const options = [
+    { value: 'event', label: 'This event' },
+    { value: 'later', label: 'This and later events in the series' },
+  ]
+  return (
+    <fieldset className="space-y-2" aria-describedby={hintId}>
+      <legend className={labelClass}>Apply changes to</legend>
+      {options.map((option) => (
+        <div key={option.value} className="flex items-center gap-2">
+          <input
+            id={`${idPrefix}-scope-${option.value}`}
+            name="scope"
+            type="radio"
+            value={option.value}
+            defaultChecked={(values.scope === 'later' ? 'later' : 'event') === option.value}
+            className={`h-4 w-4 ${focusRingClass}`}
+          />
+          <label htmlFor={`${idPrefix}-scope-${option.value}`} className="text-sm text-gray-700 dark:text-gray-300">
+            {option.label}
+          </label>
+        </div>
+      ))}
+      <p id={hintId} className={mutedTextClass}>
+        {`The series has ${later} later ${later === 1 ? 'event' : 'events'}. They keep their own weeks and RSVPs. Events that have already happened are never changed.`}
+      </p>
+    </fieldset>
+  )
+}
+
+function EventFields({
+  idPrefix,
+  values,
+  errors,
+  repeatable,
+}: {
+  idPrefix: string
+  values: EventFormValues
+  errors: Record<string, string>
+  repeatable: boolean
 }) {
   const [startDate, setStartDate] = useState(values.date)
   const [endDate, setEndDate] = useState(values.endDate)
@@ -224,6 +319,8 @@ function EventFields({
         Leave the end date blank for a one-day event.
       </p>
 
+      {repeatable && <WeeklyRepeatFields idPrefix={idPrefix} values={values} errors={errors} startDate={startDate} />}
+
       <fieldset className="space-y-3">
         <legend className={labelClass}>Time slots</legend>
         <TimeSlotEditor
@@ -293,11 +390,15 @@ export default function EventForm({
   initialValues = EMPTY_VALUES,
   submitLabel,
   pendingLabel,
+  repeatable = false,
+  laterInSeries = 0,
 }: {
   action: (state: EventFormState, formData: FormData) => Promise<EventFormState>
   initialValues?: EventFormValues
   submitLabel: string
   pendingLabel: string
+  repeatable?: boolean
+  laterInSeries?: number
 }) {
   const idPrefix = useId()
   const [state, formAction] = useActionState<AttemptState, FormData>(
@@ -310,7 +411,15 @@ export default function EventForm({
     <div className="mt-4 max-w-md space-y-4">
       <ErrorSummary errors={errors} idPrefix={idPrefix} attempt={state.attempt} />
       <form key={state.attempt} action={formAction} className="space-y-4">
-        <EventFields idPrefix={idPrefix} values={state.values ?? initialValues} errors={errors} />
+        <EventFields
+          idPrefix={idPrefix}
+          values={state.values ?? initialValues}
+          errors={errors}
+          repeatable={repeatable}
+        />
+        {laterInSeries > 0 && (
+          <SeriesScopeFields idPrefix={idPrefix} values={state.values ?? initialValues} later={laterInSeries} />
+        )}
         <SubmitButton pendingLabel={pendingLabel} className={primaryButtonClass}>
           {submitLabel}
         </SubmitButton>

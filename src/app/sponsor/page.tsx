@@ -16,7 +16,8 @@ import {
 } from '@/components/admin/styles'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { eventSchedule, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { eventSchedule, todayInDenver } from '@/lib/event-dates'
+import { publicEventListings } from '@/lib/event-series'
 import { getEvents, getSiteContentWithDefaults } from '@/lib/queries'
 import { type RsvpState, getRsvpStates, rsvpCounts } from '@/lib/rsvp'
 import { requireSponsor } from '@/lib/sponsor-portal'
@@ -55,7 +56,7 @@ export default async function SponsorPortalPage(props: {
     getSiteContentWithDefaults(contentKeysFor('sponsor')),
     getEvents(),
   ])
-  const { upcoming } = splitEvents(events, todayInDenver(new Date()))
+  const { upcoming } = publicEventListings(events, todayInDenver(new Date()))
   const memberId = access ? Number(access.member.user.id) : null
   const [states, counts] = await Promise.all([
     memberId ? getRsvpStates(memberId, upcoming.map((event) => event.id)) : new Map<number, RsvpState>(),

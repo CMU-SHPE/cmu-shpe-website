@@ -174,3 +174,97 @@ describe('EventForm time slots', () => {
     expect(within(slot(1)).getByLabelText('Start time')).not.toHaveAttribute('aria-invalid')
   })
 })
+
+describe('EventForm weekly repeat', () => {
+  function renderRepeatable(action = vi.fn<Action>(async () => ({}))) {
+    render(<EventForm action={action} submitLabel="Add event" pendingLabel="Adding…" repeatable />)
+    return action
+  }
+
+  it('is offered only on a form that can repeat', () => {
+    renderForm(hackathon)
+    expect(screen.queryByLabelText('Repeats weekly')).not.toBeInTheDocument()
+  })
+
+  it('asks for the until date once ticked and says how many events saving creates', async () => {
+    const user = userEvent.setup()
+    const action = renderRepeatable()
+    expect(screen.queryByLabelText('Repeats weekly until')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Start date'), '2026-01-15')
+    await user.click(screen.getByLabelText('Repeats weekly'))
+    const until = screen.getByLabelText('Repeats weekly until')
+    expect(until).toBeRequired()
+    expect(until).toHaveAccessibleDescription(/one event for each week, on the same weekday as the start date, up to 52/)
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+
+    await user.type(until, '2026-04-25')
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'This creates 15 events, every Thursday from January 15, 2026 to April 23, 2026.',
+    )
+
+    await user.type(screen.getByLabelText('Title'), 'Chapter meeting')
+    await user.type(screen.getByLabelText('Location'), 'Lab')
+    await act(() => user.click(screen.getByRole('button', { name: 'Add event' })))
+    const formData = action.mock.calls[0][1]
+    expect(formData.get('repeatsWeekly')).toBe('on')
+    expect(formData.get('repeatUntil')).toBe('2026-04-25')
+  })
+
+  it('keeps the repeat after a refused save and links its error from the summary', async () => {
+    const user = userEvent.setup()
+    renderRepeatable(
+      vi.fn<Action>(async () => ({
+        errors: { repeatUntil: 'A weekly event can repeat at most 52 times. Choose a date on or before January 7, 2027.' },
+        values: { ...hackathon, endDate: '', slots: [], date: '2026-01-15', repeatsWeekly: 'on', repeatUntil: '2027-06-01' },
+      })),
+    )
+    await user.type(screen.getByLabelText('Title'), 'Chapter meeting')
+    await user.type(screen.getByLabelText('Location'), 'Lab')
+    await user.type(screen.getByLabelText('Start date'), '2026-01-15')
+    await user.click(screen.getByLabelText('Repeats weekly'))
+    await user.type(screen.getByLabelText('Repeats weekly until'), '2027-06-01')
+    await act(() => user.click(screen.getByRole('button', { name: 'Add event' })))
+
+    const summary = screen.getByRole('group', { name: 'There is a problem' })
+    const link = within(summary).getByRole('link', { name: /can repeat at most 52 times/ })
+    const until = screen.getByLabelText('Repeats weekly until')
+    expect(link).toHaveAttribute('href', `#${until.id}`)
+    expect(until).toHaveValue('2027-06-01')
+    expect(until).toHaveAttribute('aria-invalid', 'true')
+    expect(until).toHaveAccessibleDescription(/can repeat at most 52 times/)
+    expect(screen.getByLabelText('Repeats weekly')).toBeChecked()
+  })
+})
+
+describe('EventForm series scope', () => {
+  it('is offered only when the series has later events, and defaults to this event', () => {
+    const { unmount } = render(
+      <EventForm action={vi.fn()} initialValues={hackathon} submitLabel="Save" pendingLabel="Saving…" />,
+    )
+    expect(screen.queryByRole('group', { name: 'Apply changes to' })).not.toBeInTheDocument()
+    unmount()
+
+    render(<EventForm action={vi.fn()} initialValues={hackathon} submitLabel="Save" pendingLabel="Saving…" laterInSeries={9} />)
+    const scope = screen.getByRole('group', { name: 'Apply changes to' })
+    expect(scope).toHaveAccessibleDescription(/The series has 9 later events\..*never changed\./)
+    expect(within(scope).getByLabelText('This event')).toBeChecked()
+    expect(within(scope).getByLabelText('This and later events in the series')).not.toBeChecked()
+  })
+
+  it('sends the chosen scope and keeps it after a refused save', async () => {
+    const user = userEvent.setup()
+    const action = vi.fn<Action>(async (_state, formData) => ({
+      errors: { capacity: "The November 12, 2026 event already has 3 RSVPs, so the capacity can't be lower than 3." },
+      values: { ...hackathon, scope: String(formData.get('scope')) },
+    }))
+    render(<EventForm action={action} initialValues={hackathon} submitLabel="Save" pendingLabel="Saving…" laterInSeries={2} />)
+
+    await user.click(screen.getByLabelText('This and later events in the series'))
+    await act(() => user.click(screen.getByRole('button', { name: 'Save' })))
+
+    expect(action.mock.calls[0][1].get('scope')).toBe('later')
+    expect(screen.getByLabelText('This and later events in the series')).toBeChecked()
+    expect(screen.getByLabelText(/^Capacity/)).toHaveAccessibleDescription(/The November 12, 2026 event already has 3 RSVPs/)
+  })
+})
