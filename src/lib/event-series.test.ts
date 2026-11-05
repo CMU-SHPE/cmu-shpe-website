@@ -17,12 +17,18 @@ describe('laterInSeries', () => {
   })
 
   it('leaves out weeks that have already ended', () => {
-    expect(laterInSeries(thursdays, thursdays[0], '2026-11-13').map((e) => e.id)).toEqual([4])
+    const running = { ...thursdays[0], endDate: '2026-11-13' }
+    expect(laterInSeries(thursdays, running, '2026-11-13').map((e) => e.id)).toEqual([4])
   })
 
   it('keeps a later week that is still running today', () => {
+    const chosen = { ...thursdays[1], endDate: '2026-11-13' }
     const running = { ...week(5, '2026-11-11'), endDate: '2026-11-13' }
-    expect(laterInSeries([...thursdays, running], thursdays[0], '2026-11-13').map((e) => e.id)).toEqual([5, 4])
+    expect(laterInSeries([...thursdays, running], chosen, '2026-11-13').map((e) => e.id)).toEqual([5, 4])
+  })
+
+  it('is empty for a chosen week that has ended', () => {
+    expect(laterInSeries(thursdays, thursdays[0], '2026-11-01')).toEqual([])
   })
 
   it('is empty for an event outside any series', () => {

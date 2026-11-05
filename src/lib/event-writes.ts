@@ -54,7 +54,8 @@ export const THIS_EVENT_ONLY: SeriesScope = { later: false, today: '' }
 
 /**
  * The chosen event, plus with `later` every event after it in its series that hasn't ended by `today`,
- * each with its distance in days from the chosen one. Mirrors laterInSeries in event-series.ts.
+ * each with its distance in days from the chosen one. A chosen event that has ended reaches no other
+ * week. Mirrors laterInSeries in event-series.ts.
  */
 function seriesTargets(eventId: number, { later, today }: SeriesScope): SQL {
   if (!later) return sql`select id, 0 as shift from events where id = ${eventId}`
@@ -63,6 +64,7 @@ function seriesTargets(eventId: number, { later, today }: SeriesScope): SQL {
     from events chosen
     join events e on e.id = chosen.id or (
       e.series_id = chosen.series_id
+      and coalesce(chosen.end_date, chosen.date) >= ${today}::date
       and (e.date, e.id) > (chosen.date, chosen.id)
       and coalesce(e.end_date, e.date) >= ${today}::date
     )

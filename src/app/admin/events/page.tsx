@@ -12,7 +12,7 @@ import {
   sectionHeadingClass,
 } from '@/components/admin/styles'
 import { requireAdmin } from '@/lib/admin'
-import { eventSchedule, lastEventDay, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { eventSchedule, formatEventDate, splitEvents, todayInDenver } from '@/lib/event-dates'
 import { eventDeleteWarning, seriesDeleteWarning, storedEventFormValues } from '@/lib/event-form'
 import { laterInSeries, seriesLabel, seriesPositions } from '@/lib/event-series'
 import { type EventWithSlots, getEvents } from '@/lib/queries'
@@ -22,6 +22,11 @@ import { createEvent, deleteEvent, updateEvent } from './actions'
 const errorMessages: Record<string, string> = {
   invalid: 'That event could not be found. Reload the page and try again.',
   missing: 'That event no longer exists.',
+}
+
+// Every week of a series shares its title, so screen readers need the date to tell the controls apart.
+function controlName(event: EventWithSlots) {
+  return event.seriesId ? `${event.title} on ${formatEventDate(event.date)}` : event.title
 }
 
 function RsvpSummary({ event, going }: { event: EventWithSlots; going: number }) {
@@ -35,7 +40,7 @@ function RsvpSummary({ event, going }: { event: EventWithSlots; going: number })
         className={`rounded text-shpe-red dark:text-shpe-gold hover:underline ${focusRingClass}`}
       >
         {'Attendees '}
-        <span className="sr-only">for {event.title}</span>
+        <span className="sr-only">for {controlName(event)}</span>
       </Link>
     </p>
   )
@@ -63,7 +68,7 @@ function EventList({
       {events.map((event) => {
         const { dates, times } = eventSchedule(event)
         const position = positions.get(event.id)
-        const later = lastEventDay(event) >= today ? laterInSeries(allEvents, event, today) : []
+        const later = laterInSeries(allEvents, event, today)
         const thisAndLaterGoing = later.reduce((total, week) => total + going(week), going(event))
         return (
           <li key={event.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -87,17 +92,17 @@ function EventList({
               {later.length > 0 ? (
                 <SeriesDeleteForm
                   action={deleteEvent.bind(null, event.id)}
-                  name={event.title}
+                  name={controlName(event)}
                   eventWarning={eventDeleteWarning(going(event))}
                   laterWarning={seriesDeleteWarning(later.length, thisAndLaterGoing)}
                 />
               ) : (
                 <form action={deleteEvent.bind(null, event.id)}>
-                  <DeleteButton name={event.title} warning={eventDeleteWarning(going(event))} />
+                  <DeleteButton name={controlName(event)} warning={eventDeleteWarning(going(event))} />
                 </form>
               )}
             </div>
-            <EditDetails name={event.title}>
+            <EditDetails name={controlName(event)}>
               <EventForm
                 action={updateEvent.bind(null, event.id)}
                 initialValues={storedEventFormValues(event)}

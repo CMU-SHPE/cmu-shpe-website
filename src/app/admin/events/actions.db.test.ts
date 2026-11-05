@@ -207,7 +207,7 @@ describe('deleteEvent', () => {
 
 describe('weekly series actions', () => {
   const today = todayInDenver(new Date())
-  const weeks = [-7, 0, 7, 14].map((days) => addDays(today, days))
+  const weeks = [-7, 7, 14, 21].map((days) => addDays(today, days))
 
   function seriesForm(overrides: Record<string, string> = {}) {
     return eventForm({ date: weeks[1], endDate: '', capacity: '20', ...overrides }, [])

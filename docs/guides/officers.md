@@ -121,8 +121,7 @@ Time slots are optional. Without any, you can type the time as you want it shown
 ### Recurring events
 
 Use a recurring event for something that happens every week, such as the chapter meeting. Each
-week becomes its own event, with its own RSVPs, capacity and attendee list, so members RSVP to one
-week at a time.
+week becomes its own event, with its own RSVPs, capacity and attendee list.
 
 To add one:
 
@@ -140,9 +139,10 @@ date, and an event in a series must end within 6 days of its start date, before 
 begins.
 
 In the admin events list, each week shows where it falls in its series, for example
-"Weekly · 3 of 15". On the Events page, **Upcoming** shows only the next week of each series,
-marked with its repeat, for example "Every Thursday". Past weeks are listed under past events like
-any other event.
+"Weekly · 3 of 15". On the Events page, the list of upcoming events shows only the next week of
+each series, marked with its repeat, for example "Every Thursday", so members RSVP to one week at a
+time. The home page and the Sponsor portal also show only the next week. Weeks that have ended are
+listed with the past events like any other event.
 
 To change or delete weeks of a series:
 
@@ -157,7 +157,8 @@ To change or delete weeks of a series:
    confirmation counts every week and every RSVP removed, for example "This deletes this event and
    the 9 later events in the series. This also removes their 34 RSVPs."
 
-Weeks that have already happened are never changed or deleted by a series edit or delete. If a
+Weeks that have already happened are never changed or deleted by a series edit or delete, and
+past weeks offer only the usual **Edit** and **Delete** for that one week. If a
 new capacity is lower than the RSVPs of any week it would change, nothing is saved and the form
 names the week with the most RSVPs, for example "The March 12, 2026 event already has 12 RSVPs, so
 the capacity can't be lower than 12."

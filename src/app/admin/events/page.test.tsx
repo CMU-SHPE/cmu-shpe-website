@@ -73,16 +73,21 @@ describe('AdminEventsPage series', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(await AdminEventsPage({ searchParams: Promise.resolve({}) }))
 
-    const first = screen.getAllByRole('group', { name: 'Delete Chapter meeting' })[0]
+    expect(screen.getByRole('link', { name: 'Attendees for Chapter meeting on January 1, 2099' })).toBeInTheDocument()
+    const first = screen.getByRole('group', { name: 'Delete Chapter meeting on January 1, 2099' })
+    const deleteFirst = () =>
+      within(first.parentElement as HTMLElement).getByRole('button', { name: 'Delete Chapter meeting on January 1, 2099' })
     fireEvent.click(within(first).getByLabelText('This and later events in the series'))
-    fireEvent.click(within(first.parentElement as HTMLElement).getByRole('button', { name: 'Delete Chapter meeting' }))
+    fireEvent.click(deleteFirst())
     expect(confirm).toHaveBeenLastCalledWith(
-      "Delete Chapter meeting? This deletes this event and the 2 later events in the series. This also removes their 6 RSVPs. This can't be undone.",
+      "Delete Chapter meeting on January 1, 2099? This deletes this event and the 2 later events in the series. This also removes their 6 RSVPs. This can't be undone.",
     )
 
     fireEvent.click(within(first).getByLabelText('This event'))
-    fireEvent.click(within(first.parentElement as HTMLElement).getByRole('button', { name: 'Delete Chapter meeting' }))
-    expect(confirm).toHaveBeenLastCalledWith("Delete Chapter meeting? This also removes its 3 RSVPs. This can't be undone.")
+    fireEvent.click(deleteFirst())
+    expect(confirm).toHaveBeenLastCalledWith(
+      "Delete Chapter meeting on January 1, 2099? This also removes its 3 RSVPs. This can't be undone.",
+    )
   })
 
   it('offers no series choice on the last week or on a past week', async () => {
@@ -90,8 +95,9 @@ describe('AdminEventsPage series', () => {
     mocks.counts = new Map()
     render(await AdminEventsPage({ searchParams: Promise.resolve({}) }))
 
-    expect(screen.queryByRole('group', { name: 'Delete Chapter meeting' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: /^Delete / })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Apply changes to' })).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Delete Chapter meeting' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Delete Chapter meeting on January 6, 2000' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Chapter meeting on January 1, 2099' })).toBeInTheDocument()
   })
 })

@@ -10,11 +10,11 @@ function byDate(a: SeriesEvent, b: SeriesEvent) {
 
 /**
  * The weeks a "this and later events" edit or delete reaches besides the chosen one. Weeks that have
- * already ended are left out, so a series change never rewrites the past. Mirrors seriesTargets in
- * event-writes.ts, which applies the same rule inside the write.
+ * already ended are left out, and a chosen week that has ended reaches none, so a series change never
+ * rewrites the past. Mirrors seriesTargets in event-writes.ts, which applies the same rule inside the write.
  */
 export function laterInSeries<T extends SeriesEvent>(events: readonly T[], chosen: SeriesEvent, today: string): T[] {
-  if (!chosen.seriesId) return []
+  if (!chosen.seriesId || lastEventDay(chosen) < today) return []
   return events
     .filter(
       (event) =>

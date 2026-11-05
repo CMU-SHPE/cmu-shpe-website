@@ -298,7 +298,7 @@ describe('weekly series', () => {
     expect(await slotsOf(ids[3])).toEqual([])
   })
 
-  it('skips past weeks after a chosen past week, changing only the chosen one and the weeks still to come', async () => {
+  it('treats a chosen week that has ended as this event only, so no other week changes', async () => {
     const ids = await createEventSeries({ ...meeting, endDate: null, slots: [] }, weeks)
 
     expect(
@@ -307,13 +307,13 @@ describe('weekly series', () => {
     expect((await seriesRows()).map((row) => row.title)).toEqual([
       'Renamed',
       'Chapter meeting',
-      'Renamed',
-      'Renamed',
-      'Renamed',
+      'Chapter meeting',
+      'Chapter meeting',
+      'Chapter meeting',
     ])
 
-    expect(await deleteEvents(ids[0], later)).toBe(4)
-    expect((await seriesRows()).map((row) => row.id)).toEqual([ids[1]])
+    expect(await deleteEvents(ids[0], later)).toBe(1)
+    expect((await seriesRows()).map((row) => row.id)).toEqual(ids.slice(1))
   })
 
   it('lists only the next week of each series as upcoming and every ended week as past', async () => {
