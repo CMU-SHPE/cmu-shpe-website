@@ -1,4 +1,4 @@
-import { lastEventDay, splitEvents, weekdayName } from './event-dates'
+import { addDays, daysBetween, lastEventDay, splitEvents, weekdayName } from './event-dates'
 
 type SeriesEvent = { id: number; date: string; endDate?: string | null; seriesId?: string | null }
 
@@ -21,6 +21,32 @@ export function laterInSeries<T extends SeriesEvent>(events: readonly T[], chose
         event.seriesId === chosen.seriesId && byDate(event, chosen) > 0 && lastEventDay(event) >= today,
     )
     .sort(byDate)
+}
+
+export type SeriesMoveClash<T> = { moved: T; movedTo: string; onto: T }
+
+/**
+ * A "this and later" edit moves every week it reaches by the same days as the chosen one, keeping each
+ * week's length the same as the chosen one's new length. This finds the first moved week that would land
+ * on or across a week of the series the edit leaves in place.
+ */
+export function seriesMoveClash<T extends SeriesEvent>(
+  series: readonly T[],
+  chosen: T,
+  move: { date: string; endDate: string | null },
+  today: string,
+): SeriesMoveClash<T> | null {
+  const moving = [chosen, ...laterInSeries(series, chosen, today)]
+  const movingIds = new Set(moving.map((event) => event.id))
+  const staying = series.filter((event) => event.seriesId === chosen.seriesId && !movingIds.has(event.id))
+  const length = daysBetween(move.date, move.endDate ?? move.date)
+  for (const week of moving) {
+    const start = addDays(move.date, daysBetween(chosen.date, week.date))
+    const end = addDays(start, length)
+    const onto = staying.find((other) => other.date <= end && start <= lastEventDay(other))
+    if (onto) return { moved: week, movedTo: start, onto }
+  }
+  return null
 }
 
 export function seriesPositions(events: readonly SeriesEvent[]): Map<number, SeriesPosition> {

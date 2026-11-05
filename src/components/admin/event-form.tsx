@@ -10,6 +10,9 @@ import { EVENT_TYPES } from '@/lib/event-types'
 
 type AttemptState = EventFormState & { attempt: number }
 
+// The count is a live region; waiting for typing to pause keeps it from announcing every keystroke.
+const SUMMARY_DELAY_MS = 500
+
 const SLOT_FIELD_ORDER = ['startDate', 'endDate', 'startTime', 'endTime'] as const
 
 const EMPTY_VALUES: EventFormValues = {
@@ -108,7 +111,12 @@ function WeeklyRepeatFields({
   const [until, setUntil] = useState(values.repeatUntil ?? '')
   const untilId = `${idPrefix}-repeatUntil`
   const hintId = `${untilId}-hint`
-  const summary = seriesCreateSummary(startDate, until)
+  const [summary, setSummary] = useState(() => seriesCreateSummary(startDate, until))
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSummary(seriesCreateSummary(startDate, until)), SUMMARY_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [startDate, until])
 
   return (
     <div className="space-y-3">

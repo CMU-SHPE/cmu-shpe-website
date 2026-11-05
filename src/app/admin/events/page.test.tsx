@@ -74,9 +74,9 @@ describe('AdminEventsPage series', () => {
     render(await AdminEventsPage({ searchParams: Promise.resolve({}) }))
 
     expect(screen.getByRole('link', { name: 'Attendees for Chapter meeting on January 1, 2099' })).toBeInTheDocument()
-    const first = screen.getByRole('group', { name: 'Delete Chapter meeting on January 1, 2099' })
-    const deleteFirst = () =>
-      within(first.parentElement as HTMLElement).getByRole('button', { name: 'Delete Chapter meeting on January 1, 2099' })
+    const deleteFirst = () => screen.getByRole('button', { name: 'Delete Chapter meeting on January 1, 2099' })
+    const first = within(deleteFirst().closest('form') as HTMLElement).getByRole('group', { name: 'Delete which events?' })
+    expect(within(first).queryByText(/Chapter meeting/)).not.toBeInTheDocument()
     fireEvent.click(within(first).getByLabelText('This and later events in the series'))
     fireEvent.click(deleteFirst())
     expect(confirm).toHaveBeenLastCalledWith(
@@ -95,7 +95,7 @@ describe('AdminEventsPage series', () => {
     mocks.counts = new Map()
     render(await AdminEventsPage({ searchParams: Promise.resolve({}) }))
 
-    expect(screen.queryByRole('group', { name: /^Delete / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Delete which events?' })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Apply changes to' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete Chapter meeting on January 6, 2000' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete Chapter meeting on January 1, 2099' })).toBeInTheDocument()

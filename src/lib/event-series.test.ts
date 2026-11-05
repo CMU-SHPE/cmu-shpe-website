@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { laterInSeries, publicEventListings, repeatLabel, seriesLabel, seriesPositions } from './event-series'
+import {
+  laterInSeries,
+  publicEventListings,
+  repeatLabel,
+  seriesLabel,
+  seriesMoveClash,
+  seriesPositions,
+} from './event-series'
 
 const week = (id: number, date: string, seriesId: string | null = 'thursdays') => ({ id, date, endDate: null, seriesId })
 
@@ -66,5 +73,37 @@ describe('publicEventListings', () => {
   it('treats events without a series id as one-off events', () => {
     const { upcoming } = publicEventListings([{ id: 1, date: '2099-01-01' }, { id: 2, date: '2099-01-02' }], '2026-01-01')
     expect(upcoming).toHaveLength(2)
+  })
+})
+
+describe('seriesMoveClash', () => {
+  const today = '2026-11-01'
+
+  it('allows moving this and later weeks by up to six days into the gap before an unmoved week', () => {
+    expect(seriesMoveClash(thursdays, thursdays[2], { date: '2026-11-06', endDate: null }, '2026-11-06')).toBeNull()
+    expect(seriesMoveClash(thursdays, thursdays[1], { date: '2026-11-11', endDate: null }, today)).toBeNull()
+  })
+
+  it('finds a moved week landing on an unmoved earlier week', () => {
+    expect(seriesMoveClash(thursdays, thursdays[1], { date: '2026-10-29', endDate: null }, today)).toEqual({
+      moved: thursdays[1],
+      movedTo: '2026-10-29',
+      onto: thursdays[0],
+    })
+  })
+
+  it('finds a moved week whose new length runs across an unmoved week', () => {
+    expect(
+      seriesMoveClash(thursdays, thursdays[1], { date: '2026-10-30', endDate: '2026-11-02' }, today),
+    ).toBeNull()
+    const longFirst = [{ ...thursdays[0], endDate: '2026-11-01' }, ...thursdays.slice(1)]
+    expect(
+      seriesMoveClash(longFirst, longFirst[1], { date: '2026-11-01', endDate: null }, today)?.onto.id,
+    ).toBe(1)
+  })
+
+  it('never compares weeks of another series', () => {
+    const other = week(9, '2026-11-04', 'mondays')
+    expect(seriesMoveClash([...thursdays, other], thursdays[1], { date: '2026-11-04', endDate: null }, today)).toBeNull()
   })
 })

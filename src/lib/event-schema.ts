@@ -175,6 +175,17 @@ export function eventFieldErrors(error: z.ZodError): EventFieldErrors {
 
 export type WeeklyRepeat = { dates: string[] | null; errors: EventFieldErrors }
 
+export function seriesLimitMessage(start: string) {
+  const lastAllowed = formatEventDate(addDays(start, (MAX_SERIES_EVENTS - 1) * 7))
+  return `A weekly event can repeat at most ${MAX_SERIES_EVENTS} times. Choose a date on or before ${lastAllowed}.`
+}
+
+export const SERIES_SPAN_MESSAGE = 'A weekly event must end within 6 days of its start date, before the next week begins.'
+
+export function endsTooLateForSeries(date: string, endDate: string | null) {
+  return Boolean(endDate && isRealDate(date) && isRealDate(endDate) && daysBetween(date, endDate) >= 7)
+}
+
 /**
  * Checked apart from eventSchema so its errors can be shown alongside the event's own. Only a valid
  * start date is checked against, since a broken one already has its own error.
@@ -190,11 +201,8 @@ export function parseWeeklyRepeat(formData: FormData, event: { date: string; end
   if (count < 2) {
     errors.repeatUntil = `Choose a date on or after ${formatEventDate(addDays(event.date, 7))}, one week after the start date.`
   } else if (count > MAX_SERIES_EVENTS) {
-    const lastAllowed = formatEventDate(addDays(event.date, (MAX_SERIES_EVENTS - 1) * 7))
-    errors.repeatUntil = `A weekly event can repeat at most ${MAX_SERIES_EVENTS} times. Choose a date on or before ${lastAllowed}.`
+    errors.repeatUntil = seriesLimitMessage(event.date)
   }
-  if (event.endDate && isRealDate(event.endDate) && daysBetween(event.date, event.endDate) >= 7) {
-    errors.endDate = 'A weekly event must end within 6 days of its start date, before the next week begins.'
-  }
+  if (endsTooLateForSeries(event.date, event.endDate)) errors.endDate = SERIES_SPAN_MESSAGE
   return Object.keys(errors).length > 0 ? { dates: null, errors } : { dates: weeklyDates(event.date, until), errors }
 }

@@ -71,6 +71,10 @@ function seriesTargets(eventId: number, { later, today }: SeriesScope): SQL {
     where chosen.id = ${eventId}`
 }
 
+function lockTargets(targets: SQL) {
+  return sql`select id from events where id in (select id from (${targets}) as targets) order by id for update`
+}
+
 export type EventUpdateOutcome =
   | { status: 'saved' }
   | { status: 'missing' }
@@ -100,7 +104,7 @@ export async function updateEventWithSlots(
         )`
   const slotRows = JSON.stringify(slots.map((slot, sortOrder) => ({ ...slot, sortOrder })))
   const [, written, standing] = await db.batch([
-    db.execute(sql`select id from events where id in (select id from (${targets}) as targets) order by id for update`),
+    db.execute(lockTargets(targets)),
     db.execute<{ id: number }>(sql`
       with targets as (${targets}), updated as (
         update events
@@ -134,10 +138,18 @@ export async function updateEventWithSlots(
   return busiest ? { status: 'over-capacity', going: busiest.going, date: busiest.date } : { status: 'missing' }
 }
 
-/** Returns how many events were deleted; their slots and RSVPs go with them. */
+/**
+ * Returns how many events were deleted; their slots and RSVPs go with them. The rows are locked first
+ * in id order, the same order as updateEventWithSlots, so a series delete and a series edit can't deadlock.
+ */
 export async function deleteEvents(eventId: number, scope: SeriesScope = THIS_EVENT_ONLY): Promise<number> {
-  const { rows } = await getDb().execute<{ id: number }>(
-    sql`delete from events where id in (select id from (${seriesTargets(eventId, scope)}) as targets) returning id`,
-  )
-  return rows.length
+  const db = getDb()
+  const targets = seriesTargets(eventId, scope)
+  const [, deleted] = await db.batch([
+    db.execute(lockTargets(targets)),
+    db.execute<{ id: number }>(
+      sql`delete from events where id in (select id from (${targets}) as targets) returning id`,
+    ),
+  ])
+  return deleted.rows.length
 }

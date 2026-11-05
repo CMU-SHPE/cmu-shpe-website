@@ -4,7 +4,10 @@ import { useId, useState } from 'react'
 import DeleteButton from '@/components/admin/delete-button'
 import { focusRingClass, labelClass } from '@/components/admin/styles'
 
-/** The confirmation names exactly what the chosen option removes, so it changes with the choice. */
+/**
+ * The confirmation names exactly what the chosen option removes, so it changes with the choice. Only the
+ * button carries the event's name, so a screen reader hears it once.
+ */
 export default function SeriesDeleteForm({
   action,
   name,
@@ -26,10 +29,7 @@ export default function SeriesDeleteForm({
   return (
     <form action={action} className="space-y-2">
       <fieldset className="space-y-1">
-        <legend className={labelClass}>
-          {'Delete '}
-          <span className="sr-only">{name}</span>
-        </legend>
+        <legend className={labelClass}>Delete which events?</legend>
         {options.map((option) => (
           <div key={option.value} className="flex items-center gap-2">
             <input

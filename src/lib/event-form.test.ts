@@ -6,6 +6,7 @@ import {
   seriesCapacityBelowRsvpsMessage,
   seriesCreateSummary,
   seriesDeleteWarning,
+  seriesMoveClashMessage,
 } from './event-form'
 
 describe('eventDeleteWarning', () => {
@@ -49,6 +50,13 @@ describe('seriesCreateSummary', () => {
     )
   })
 
+  it('gives the server limit message past 52 events instead of a count', () => {
+    expect(seriesCreateSummary('2026-01-01', '2026-12-24')).toMatch(/^This creates 52 events/)
+    expect(seriesCreateSummary('2026-01-01', '2027-02-25')).toBe(
+      'A weekly event can repeat at most 52 times. Choose a date on or before December 24, 2026.',
+    )
+  })
+
   it('says nothing until both dates are real and a week apart', () => {
     expect(seriesCreateSummary('', '2026-04-25')).toBeNull()
     expect(seriesCreateSummary('2026-01-15', '')).toBeNull()
@@ -65,5 +73,13 @@ describe('appliesToLaterEvents', () => {
     expect(appliesToLaterEvents(form)).toBe(false)
     form.set('scope', 'later')
     expect(appliesToLaterEvents(form)).toBe(true)
+  })
+})
+
+describe('seriesMoveClashMessage', () => {
+  it('names the moved week, where it would go and the week it would land on', () => {
+    expect(seriesMoveClashMessage('2026-11-12', '2026-11-05', '2026-11-05')).toBe(
+      'This moves the November 12, 2026 event to November 5, 2026, on or across the November 5, 2026 event in the same series, which this change leaves where it is. Choose another start date.',
+    )
   })
 })

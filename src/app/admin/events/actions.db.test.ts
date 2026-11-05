@@ -266,7 +266,7 @@ describe('weekly series actions', () => {
     expect(await redirectOf(updateEvent(chosen.id, {}, single))).toBe('/admin/events?saved=1')
     expect((await allEvents()).map((row) => row.title)).toEqual(['Chapter meeting', 'Just this one', 'Chapter meeting', 'Chapter meeting'])
 
-    const series = seriesForm({ title: 'Renamed', scope: 'later' })
+    const series = seriesForm({ title: 'Renamed', date: addDays(weeks[2], 1), scope: 'later' })
     expect(await redirectOf(updateEvent(next.id, {}, series))).toBe('/admin/events?saved=1')
     const rows = await allEvents()
     expect(rows.map((row) => [row.id, row.title])).toEqual([
@@ -275,7 +275,7 @@ describe('weekly series actions', () => {
       [next.id, 'Renamed'],
       [last.id, 'Renamed'],
     ])
-    expect(rows.map((row) => row.date)).toEqual([weeks[0], weeks[1], weeks[1], addDays(weeks[1], 7)])
+    expect(rows.map((row) => row.date)).toEqual([weeks[0], weeks[1], addDays(weeks[2], 1), addDays(weeks[3], 1)])
   })
 
   it('refuses a series capacity below a later week’s RSVPs, naming that week', async () => {
@@ -290,6 +290,46 @@ describe('weekly series actions', () => {
     })
     expect(state.values).toMatchObject({ scope: 'later', capacity: '3' })
     expect(await allEvents()).toEqual(before)
+  })
+
+  it('refuses a series week that would end a week or more after it starts, for either choice', async () => {
+    const [, chosen] = await seriesOf(...weeks)
+    const before = await allEvents()
+
+    for (const scope of ['event', 'later']) {
+      const state = await updateEvent(chosen.id, {}, seriesForm({ endDate: addDays(weeks[1], 7), scope }))
+      expect(state.errors).toEqual({
+        endDate: 'A weekly event must end within 6 days of its start date, before the next week begins.',
+      })
+    }
+    expect(await allEvents()).toEqual(before)
+  })
+
+  it('still lets a one-off event run longer than a week', async () => {
+    const { id } = await createEventRow({ date: weeks[1] })
+    expect(await redirectOf(updateEvent(id, {}, seriesForm({ endDate: addDays(weeks[1], 9) })))).toBe(
+      '/admin/events?saved=1',
+    )
+  })
+
+  it('refuses a this-and-later move onto a week it leaves in place, naming both weeks', async () => {
+    const [, chosen, next] = await seriesOf(...weeks)
+    const before = await allEvents()
+
+    const state = await updateEvent(next.id, {}, seriesForm({ date: addDays(weeks[2], -7), scope: 'later' }))
+
+    expect(state.errors).toEqual({
+      date: `This moves the ${formatEventDate(next.date)} event to ${formatEventDate(chosen.date)}, on or across the ${formatEventDate(chosen.date)} event in the same series, which this change leaves where it is. Choose another start date.`,
+    })
+    expect(state.values).toMatchObject({ scope: 'later' })
+    expect(await allEvents()).toEqual(before)
+  })
+
+  it('lets this event alone move into another week, as before', async () => {
+    const [, chosen, next] = await seriesOf(...weeks)
+    expect(await redirectOf(updateEvent(next.id, {}, seriesForm({ date: chosen.date, scope: 'event' })))).toBe(
+      '/admin/events?saved=1',
+    )
   })
 
   it('deletes this and later weeks with their RSVPs and keeps past weeks', async () => {

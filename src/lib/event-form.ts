@@ -1,6 +1,12 @@
 import type { ClubEvent, EventTimeSlot } from '@/db/schema'
 import { addDays, formatEventDate, isRealDate, weekdayName, weeklyOccurrenceCount } from '@/lib/event-dates'
-import { type EventFieldErrors, type SlotFormValues, slotsFromForm } from '@/lib/event-schema'
+import {
+  type EventFieldErrors,
+  MAX_SERIES_EVENTS,
+  type SlotFormValues,
+  seriesLimitMessage,
+  slotsFromForm,
+} from '@/lib/event-schema'
 
 const TEXT_FIELDS = ['title', 'description', 'location', 'type', 'date', 'endDate', 'time', 'capacity'] as const
 
@@ -40,6 +46,10 @@ export function seriesCapacityBelowRsvpsMessage(date: string, going: number) {
   return `The ${formatEventDate(date)} event already has ${going} RSVPs, so the capacity can't be lower than ${going}.`
 }
 
+export function seriesMoveClashMessage(moved: string, movedTo: string, onto: string) {
+  return `This moves the ${formatEventDate(moved)} event to ${formatEventDate(movedTo)}, on or across the ${formatEventDate(onto)} event in the same series, which this change leaves where it is. Choose another start date.`
+}
+
 const rsvpCount = (going: number) => `${going} ${going === 1 ? 'RSVP' : 'RSVPs'}`
 
 export function eventDeleteWarning(going: number) {
@@ -52,11 +62,15 @@ export function seriesDeleteWarning(later: number, going: number) {
   return going === 0 ? `${events} They have no RSVPs to remove.` : `${events} This also removes their ${rsvpCount(going)}.`
 }
 
-/** Null until both dates are real and at least a week apart, the same as the server accepts. */
+/**
+ * Null until both dates are real and at least a week apart. Past the series limit it gives the
+ * server's own refusal, so it never promises more events than saving creates.
+ */
 export function seriesCreateSummary(start: string, until: string) {
   if (!isRealDate(start) || !isRealDate(until)) return null
   const count = weeklyOccurrenceCount(start, until)
   if (count < 2) return null
+  if (count > MAX_SERIES_EVENTS) return seriesLimitMessage(start)
   const last = addDays(start, (count - 1) * 7)
   return `This creates ${count} events, every ${weekdayName(start)} from ${formatEventDate(start)} to ${formatEventDate(last)}.`
 }

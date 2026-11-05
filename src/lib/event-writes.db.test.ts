@@ -316,6 +316,30 @@ describe('weekly series', () => {
     expect((await seriesRows()).map((row) => row.id)).toEqual(ids.slice(1))
   })
 
+  it('leaves out a later week that has ended while the chosen week is still running', async () => {
+    const seriesId = crypto.randomUUID()
+    const running = await createEvent({ seriesId, date: '2099-01-01', endDate: '2099-01-06', title: 'Running' })
+    const ended = await createEvent({ seriesId, date: '2099-01-02', title: 'Ended' })
+    const coming = await createEvent({ seriesId, date: '2099-01-08', title: 'Coming' })
+    const scope = { later: true, today: '2099-01-04' }
+
+    expect(
+      await updateEventWithSlots(
+        running.id,
+        { ...meeting, date: '2099-01-01', endDate: '2099-01-06', slots: [], title: 'Renamed' },
+        scope,
+      ),
+    ).toEqual({ status: 'saved' })
+    expect((await seriesRows()).map((row) => [row.id, row.title])).toEqual([
+      [running.id, 'Renamed'],
+      [ended.id, 'Ended'],
+      [coming.id, 'Renamed'],
+    ])
+
+    expect(await deleteEvents(running.id, scope)).toBe(2)
+    expect((await seriesRows()).map((row) => row.id)).toEqual([ended.id])
+  })
+
   it('lists only the next week of each series as upcoming and every ended week as past', async () => {
     const ids = await createEventSeries({ ...meeting, endDate: null, slots: [] }, weeks)
     const study = await createEventSeries({ ...meeting, title: 'Study hall', endDate: null, slots: [] }, weeks.slice(3))

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EventFormState, EventFormValues } from '@/lib/event-form'
 import { MAX_TIME_SLOTS } from '@/lib/event-schema'
@@ -199,8 +199,10 @@ describe('EventForm weekly repeat', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
 
     await user.type(until, '2026-04-25')
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'This creates 15 events, every Thursday from January 15, 2026 to April 23, 2026.',
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'This creates 15 events, every Thursday from January 15, 2026 to April 23, 2026.',
+      ),
     )
 
     await user.type(screen.getByLabelText('Title'), 'Chapter meeting')
@@ -209,6 +211,28 @@ describe('EventForm weekly repeat', () => {
     const formData = action.mock.calls[0][1]
     expect(formData.get('repeatsWeekly')).toBe('on')
     expect(formData.get('repeatUntil')).toBe('2026-04-25')
+  })
+
+  it('waits for typing to pause before updating the count, and states the 52-event limit past it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderRepeatable()
+      await user.type(screen.getByLabelText('Start date'), '2026-01-15')
+      await user.click(screen.getByLabelText('Repeats weekly'))
+      const status = screen.getByRole('status')
+
+      await user.type(screen.getByLabelText('Repeats weekly until'), '2027-06-01')
+      expect(status).toBeEmptyDOMElement()
+
+      await act(() => vi.advanceTimersByTimeAsync(500))
+      expect(status).toHaveTextContent(
+        'A weekly event can repeat at most 52 times. Choose a date on or before January 7, 2027.',
+      )
+      expect(status).not.toHaveTextContent(/This creates/)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps the repeat after a refused save and links its error from the summary', async () => {

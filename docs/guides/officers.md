@@ -136,7 +136,7 @@ To add one:
 
 A series can have at most 52 events. The until date must be at least a week after the start
 date, and an event in a series must end within 6 days of its start date, before the next week
-begins.
+begins. That last rule also applies when you edit a week later.
 
 In the admin events list, each week shows where it falls in its series, for example
 "Weekly · 3 of 15". On the Events page, the list of upcoming events shows only the next week of
@@ -148,11 +148,12 @@ To change or delete weeks of a series:
 
 1. Find the week under **Upcoming events** and choose **Edit** or **Delete**.
 2. If later weeks of the series haven't happened yet, choose either **This event** or **This and
-   later events in the series**. Edit shows the choice under **Apply changes to**, and Delete shows
-   it above the **Delete** button.
+   later events in the series**. Edit shows the choice under **Apply changes to**, and Delete
+   under **Delete which events?**.
 3. For an edit, make your changes and choose **Save changes**. With **This and later events in the
    series**, every later week gets the same changes. If you move the date, each later week moves by
-   the same number of days.
+   the same number of days. A move that would put a week on or across a week it doesn't move is
+   refused, and the form names both weeks.
 4. For a delete, confirm with **OK**. With **This and later events in the series**, the
    confirmation counts every week and every RSVP removed, for example "This deletes this event and
    the 9 later events in the series. This also removes their 34 RSVPs."
