@@ -152,7 +152,7 @@ To change or delete weeks of a series:
    under **Delete which events?**.
 3. For an edit, make your changes and choose **Save changes**. With **This and later events in the
    series**, every later week gets the same changes. If you move the date, each later week moves by
-   the same number of days. A move that would put a week on or across a week it doesn't move is
+   the same number of days. A move that would put a week on, across or past a week it doesn't move is
    refused, and the form names both weeks.
 4. For a delete, confirm with **OK**. With **This and later events in the series**, the
    confirmation counts every week and every RSVP removed, for example "This deletes this event and

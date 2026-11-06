@@ -47,7 +47,7 @@ export function seriesCapacityBelowRsvpsMessage(date: string, going: number) {
 }
 
 export function seriesMoveClashMessage(moved: string, movedTo: string, onto: string) {
-  return `This moves the ${formatEventDate(moved)} event to ${formatEventDate(movedTo)}, on or across the ${formatEventDate(onto)} event in the same series, which this change leaves where it is. Choose another start date.`
+  return `This moves the ${formatEventDate(moved)} event to ${formatEventDate(movedTo)}, on, across or past the ${formatEventDate(onto)} event in the same series, which this change leaves where it is. Choose another start date.`
 }
 
 const rsvpCount = (going: number) => `${going} ${going === 1 ? 'RSVP' : 'RSVPs'}`

@@ -319,7 +319,7 @@ describe('weekly series actions', () => {
     const state = await updateEvent(next.id, {}, seriesForm({ date: addDays(weeks[2], -7), scope: 'later' }))
 
     expect(state.errors).toEqual({
-      date: `This moves the ${formatEventDate(next.date)} event to ${formatEventDate(chosen.date)}, on or across the ${formatEventDate(chosen.date)} event in the same series, which this change leaves where it is. Choose another start date.`,
+      date: `This moves the ${formatEventDate(next.date)} event to ${formatEventDate(chosen.date)}, on, across or past the ${formatEventDate(chosen.date)} event in the same series, which this change leaves where it is. Choose another start date.`,
     })
     expect(state.values).toMatchObject({ scope: 'later' })
     expect(await allEvents()).toEqual(before)

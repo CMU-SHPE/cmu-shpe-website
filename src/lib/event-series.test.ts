@@ -102,6 +102,27 @@ describe('seriesMoveClash', () => {
     ).toBe(1)
   })
 
+  it('finds a week moved back past an unmoved week, even when it lands in an empty gap', () => {
+    const fives = ['2099-01-01', '2099-01-08', '2099-01-15', '2099-01-22', '2099-01-29'].map((date, index) =>
+      week(index + 1, date),
+    )
+    expect(seriesMoveClash(fives, fives[3], { date: '2099-01-12', endDate: null }, '2099-01-01')).toEqual({
+      moved: fives[3],
+      movedTo: '2099-01-12',
+      onto: fives[2],
+    })
+  })
+
+  it('finds a week moved forward past an unmoved week', () => {
+    const running = { ...week(1, '2099-01-01'), endDate: '2099-01-06' }
+    const ended = week(2, '2099-01-02')
+    expect(seriesMoveClash([running, ended], running, { date: '2099-01-05', endDate: null }, '2099-01-04')).toEqual({
+      moved: running,
+      movedTo: '2099-01-05',
+      onto: ended,
+    })
+  })
+
   it('never compares weeks of another series', () => {
     const other = week(9, '2026-11-04', 'mondays')
     expect(seriesMoveClash([...thursdays, other], thursdays[1], { date: '2026-11-04', endDate: null }, today)).toBeNull()

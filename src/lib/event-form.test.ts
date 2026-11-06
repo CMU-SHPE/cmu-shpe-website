@@ -79,7 +79,7 @@ describe('appliesToLaterEvents', () => {
 describe('seriesMoveClashMessage', () => {
   it('names the moved week, where it would go and the week it would land on', () => {
     expect(seriesMoveClashMessage('2026-11-12', '2026-11-05', '2026-11-05')).toBe(
-      'This moves the November 12, 2026 event to November 5, 2026, on or across the November 5, 2026 event in the same series, which this change leaves where it is. Choose another start date.',
+      'This moves the November 12, 2026 event to November 5, 2026, on, across or past the November 5, 2026 event in the same series, which this change leaves where it is. Choose another start date.',
     )
   })
 })

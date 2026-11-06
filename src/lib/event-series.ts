@@ -28,7 +28,8 @@ export type SeriesMoveClash<T> = { moved: T; movedTo: string; onto: T }
 /**
  * A "this and later" edit moves every week it reaches by the same days as the chosen one, keeping each
  * week's length the same as the chosen one's new length. This finds the first moved week that would land
- * on or across a week of the series the edit leaves in place.
+ * on, across or past a week of the series the edit leaves in place: anywhere from where the week starts
+ * now to where it would end, so no week can jump over another and change their order.
  */
 export function seriesMoveClash<T extends SeriesEvent>(
   series: readonly T[],
@@ -43,7 +44,9 @@ export function seriesMoveClash<T extends SeriesEvent>(
   for (const week of moving) {
     const start = addDays(move.date, daysBetween(chosen.date, week.date))
     const end = addDays(start, length)
-    const onto = staying.find((other) => other.date <= end && start <= lastEventDay(other))
+    const from = start < week.date ? start : week.date
+    const to = end > lastEventDay(week) ? end : lastEventDay(week)
+    const onto = staying.find((other) => other.date <= to && from <= lastEventDay(other))
     if (onto) return { moved: week, movedTo: start, onto }
   }
   return null
