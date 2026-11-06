@@ -14,6 +14,7 @@ import {
   time,
   timestamp,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core'
 
 export const adminRole = pgEnum('admin_role', ['admin', 'master'])
@@ -143,10 +144,13 @@ export const events = pgTable(
     // Free text from before time slots existed; shown only for events that have no slots.
     time: text('time'),
     capacity: integer('capacity'),
+    // Shared by every week of a weekly repeating event; null for a one-off event.
+    seriesId: uuid('series_id'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (table) => [
     index('events_date_idx').on(table.date),
+    index('events_series_idx').on(table.seriesId),
     check('events_capacity_positive', sql`${table.capacity} > 0`),
     check('events_end_date_after_start', sql`${table.endDate} >= ${table.date}`),
   ],

@@ -6,7 +6,8 @@ export default function EditDetails({ name, children }: { name: string; children
       <summary
         className={`cursor-pointer rounded text-sm font-medium text-shpe-red dark:text-shpe-gold ${focusRingClass}`}
       >
-        Edit<span className="sr-only"> {name}</span>
+        {'Edit '}
+        <span className="sr-only">{name}</span>
       </summary>
       {children}
     </details>

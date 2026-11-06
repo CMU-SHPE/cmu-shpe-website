@@ -76,7 +76,8 @@ again. If it says your logo change wasn't kept, choose your logo again before sa
 ## Events and RSVPs
 
 **Upcoming events** in the portal lists the chapter's upcoming events with their date, time and
-location.
+location. For an event that repeats every week, such as the chapter meeting, only the next week is
+listed. Once that week has passed, the week after it takes its place.
 
 - Choose **RSVP** to say you're coming. You see "You’re going. See you there!"
 - If an event has a limit, it shows how many spots are left. A full event shows **Full**.

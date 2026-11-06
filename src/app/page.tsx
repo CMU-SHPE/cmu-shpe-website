@@ -5,7 +5,8 @@ import SponsorLogo from '@/components/SponsorLogo'
 import { LocationIcon } from '@/components/icons'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { formatEventDateRange, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { formatEventDateRange, todayInDenver } from '@/lib/event-dates'
+import { publicEventListings } from '@/lib/event-series'
 import { eventTypeColor } from '@/lib/event-types'
 import {
   getEvents,
@@ -29,7 +30,7 @@ export default async function Home() {
     getGalleryPhotos(),
   ])
   const editable = Boolean(admin)
-  const upcomingEvents = splitEvents(events, todayInDenver(new Date())).upcoming.slice(0, 3)
+  const upcomingEvents = publicEventListings(events, todayInDenver(new Date())).upcoming.slice(0, 3)
 
   return (
     <div>

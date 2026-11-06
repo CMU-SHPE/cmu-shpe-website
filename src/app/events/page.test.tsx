@@ -42,6 +42,7 @@ function event(id: number, overrides: Partial<EventWithSlots> = {}): EventWithSl
     endDate: null,
     time: null,
     capacity: null,
+    seriesId: null,
     createdAt: new Date(),
     slots: [],
     ...overrides,
@@ -100,5 +101,29 @@ describe('events page RSVPs', () => {
     expect(card('Event 2').getByText('7 spots left')).toBeInTheDocument()
     expect(screen.queryByText(/RSVP button/)).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Sign in to RSVP/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('events page weekly series', () => {
+  it('shows only the next week of a series in Upcoming, labelled with its repeat, and past weeks in Past', async () => {
+    mocks.events = [
+      event(10, { title: 'Chapter meeting', date: '2000-01-06', seriesId: 'thursdays' }),
+      event(11, { title: 'Chapter meeting', date: '2099-01-01', seriesId: 'thursdays' }),
+      event(12, { title: 'Chapter meeting', date: '2099-01-08', seriesId: 'thursdays' }),
+      event(13, { title: 'Mixer', date: '2099-01-02' }),
+    ]
+    mocks.currentMember.mockResolvedValue({ user: { id: '7', kind: 'member' } })
+    render(await Events())
+
+    const meetings = screen.getAllByRole('heading', { name: 'Chapter meeting' })
+    expect(meetings).toHaveLength(2)
+    const [next, past] = meetings.map((heading) => within(heading.parentElement as HTMLElement))
+    expect(next.getByText('Every Thursday')).toBeInTheDocument()
+    expect(next.getByText('January 1, 2099')).toBeInTheDocument()
+    expect(next.getByText('RSVP button 11 open')).toBeInTheDocument()
+    expect(past.getByText('January 6, 2000')).toBeInTheDocument()
+    expect(past.queryByText(/^Every /)).not.toBeInTheDocument()
+    expect(card('Mixer').queryByText(/^Every /)).not.toBeInTheDocument()
+    expect(mocks.getRsvpStates).toHaveBeenCalledWith(7, [11, 13])
   })
 })

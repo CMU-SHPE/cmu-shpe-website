@@ -654,6 +654,24 @@ There is no policy text step: links store the same kinds of information as the a
 name, a hashed password and consent), and they are deleted when the account is confirmed or
 when an unconfirmed account is removed.
 
+### Production steps for the recurring events release
+
+Do these in order, all *before* merging to `main`, after the sign-up links release's steps.
+The new code selects `events.series_id`, so on the old schema every page that lists events
+(`/`, `/events`, `/sponsor` and `/admin/events`) fails. The push must happen before the merge.
+The old code on the new schema is safe: it never reads the new column, which stays empty for
+events it creates.
+
+1. **Backup:** take a backup of the production database.
+2. **Schema:** with Node.js 24, apply the additive `events.series_id` column and its index
+   (reviewed in `drizzle/0011_windy_piledriver.sql`; it only adds, and existing events stay
+   one-off events) to production with `npm run db:push`, as described under
+   [Preview databases](#preview-databases).
+3. **Merge** to `main`.
+
+There is no policy text step: a series id links events together and holds no personal
+information.
+
 ### Releasing a change to the Privacy Policy or Terms
 
 New default text in `src/db/seed-data/content.ts` never reaches production on its own:

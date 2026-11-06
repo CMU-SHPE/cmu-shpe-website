@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_TIME_SLOTS, eventFieldErrors, parseEventForm } from './event-schema'
+import { MAX_SERIES_EVENTS, MAX_TIME_SLOTS, eventFieldErrors, parseEventForm, parseWeeklyRepeat } from './event-schema'
 import { EVENT_TYPES, eventTypeColor, typeColors } from './event-types'
 
 function eventForm(overrides: Record<string, string> = {}) {
@@ -215,5 +215,55 @@ describe('event types', () => {
     expect(eventTypeColor('Workshop')).toBe('bg-green-100 text-green-800')
     expect(eventTypeColor('Party')).toBe('')
     expect(eventTypeColor('constructor')).toBe('')
+  })
+})
+
+describe('parseWeeklyRepeat', () => {
+  const thursday = { date: '2026-01-15', endDate: null }
+  const repeatForm = (until: string, repeats = 'on') => eventForm({ repeatsWeekly: repeats, repeatUntil: until })
+
+  it('creates no series when Repeats weekly is not ticked, whatever the until date says', () => {
+    expect(parseWeeklyRepeat(repeatForm('2026-01-01', ''), thursday)).toEqual({ dates: null, errors: {} })
+  })
+
+  it('returns one date a week up to and including an until date on the same weekday', () => {
+    const { dates, errors } = parseWeeklyRepeat(repeatForm('2026-02-05'), thursday)
+    expect(errors).toEqual({})
+    expect(dates).toEqual(['2026-01-15', '2026-01-22', '2026-01-29', '2026-02-05'])
+  })
+
+  it('asks for an until date when it is missing or not a real date', () => {
+    for (const until of ['', '2026-02-30']) {
+      expect(parseWeeklyRepeat(repeatForm(until), thursday).errors).toEqual({
+        repeatUntil: 'Choose the date the event repeats until.',
+      })
+    }
+  })
+
+  it('refuses an until date less than a week after the start', () => {
+    expect(parseWeeklyRepeat(repeatForm('2026-01-21'), thursday).errors).toEqual({
+      repeatUntil: 'Choose a date on or after January 22, 2026, one week after the start date.',
+    })
+  })
+
+  it(`accepts ${MAX_SERIES_EVENTS} weeks and refuses one more, naming the last date allowed`, () => {
+    expect(parseWeeklyRepeat(repeatForm('2027-01-07'), thursday).dates).toHaveLength(MAX_SERIES_EVENTS)
+    expect(parseWeeklyRepeat(repeatForm('2027-01-14'), thursday)).toEqual({
+      dates: null,
+      errors: {
+        repeatUntil: 'A weekly event can repeat at most 52 times. Choose a date on or before January 7, 2027.',
+      },
+    })
+  })
+
+  it('refuses an event that lasts into the next week', () => {
+    expect(parseWeeklyRepeat(repeatForm('2026-03-01'), { date: '2026-01-15', endDate: '2026-01-22' }).errors).toEqual({
+      endDate: 'A weekly event must end within 6 days of its start date, before the next week begins.',
+    })
+    expect(parseWeeklyRepeat(repeatForm('2026-03-01'), { date: '2026-01-15', endDate: '2026-01-21' }).errors).toEqual({})
+  })
+
+  it('leaves a broken start date to its own error', () => {
+    expect(parseWeeklyRepeat(repeatForm('2026-03-01'), { date: '', endDate: null })).toEqual({ dates: null, errors: {} })
   })
 })

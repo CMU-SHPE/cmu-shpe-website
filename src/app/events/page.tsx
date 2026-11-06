@@ -5,7 +5,8 @@ import { focusRingClass } from '@/components/admin/styles'
 import RsvpButton from '@/components/rsvp/rsvp-button'
 import { currentAdmin } from '@/lib/admin'
 import { contentKeysFor } from '@/lib/content-keys'
-import { eventSchedule, splitEvents, todayInDenver } from '@/lib/event-dates'
+import { eventSchedule, todayInDenver } from '@/lib/event-dates'
+import { publicEventListings, repeatLabel } from '@/lib/event-series'
 import { eventTypeColor } from '@/lib/event-types'
 import { currentMember } from '@/lib/member'
 import { type EventWithSlots, getEvents, getSiteContent, getSiteSettings } from '@/lib/queries'
@@ -22,7 +23,7 @@ export default async function Events() {
     getEvents(),
   ])
   const editable = Boolean(admin)
-  const { upcoming, past } = splitEvents(events, todayInDenver(new Date()))
+  const { upcoming, past } = publicEventListings(events, todayInDenver(new Date()))
   const upcomingIds = upcoming.map((event) => event.id)
   const [states, counts] = await Promise.all([
     member ? getRsvpStates(Number(member.user.id), upcomingIds) : new Map<number, RsvpState>(),
@@ -87,7 +88,7 @@ export default async function Events() {
           ) : (
             <div className="grid md:grid-cols-2 gap-6">
               {upcoming.map((event) => (
-                <EventCard key={event.id} event={event}>
+                <EventCard key={event.id} event={event} repeats>
                   <EventRsvp
                     event={event}
                     viewer={viewer}
@@ -187,7 +188,15 @@ function EventRsvp({
   )
 }
 
-function EventCard({ event, children }: { event: EventWithSlots; children?: React.ReactNode }) {
+function EventCard({
+  event,
+  repeats = false,
+  children,
+}: {
+  event: EventWithSlots
+  repeats?: boolean
+  children?: React.ReactNode
+}) {
   const schedule = eventSchedule(event)
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200 flex">
@@ -201,6 +210,9 @@ function EventCard({ event, children }: { event: EventWithSlots; children?: Reac
             {event.type}
           </span>
           <div className="text-right">
+            {repeats && event.seriesId !== null && (
+              <div className="text-shpe-red dark:text-shpe-gold text-xs font-semibold">{repeatLabel(event.date)}</div>
+            )}
             <div className="text-gray-700 dark:text-gray-300 text-sm font-medium">{schedule.dates}</div>
             {schedule.times.map((line) => (
               <div key={line} className="text-gray-500 dark:text-gray-400 text-xs">
