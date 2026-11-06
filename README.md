@@ -424,7 +424,8 @@ npm test
 
 Runs in `.github/workflows/ci.yml` on every push to `main` and every pull request
 (lint, test, build), alongside two more jobs that use no secrets: `db-tests` runs
-`npm run test:db`, and `migrations` runs `npm run db:check`, which fails if
+`npm run test:db` split across four parallel shards, each with its own database, and passes
+only if every shard does; `migrations` runs `npm run db:check`, which fails if
 `src/db/schema.ts` has changes that no migration in `drizzle/` covers.
 
 `npm test` also compares the Privacy Policy and Terms of Use defaults in
