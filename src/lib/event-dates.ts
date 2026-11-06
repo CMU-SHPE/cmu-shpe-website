@@ -60,6 +60,29 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
 }
 
+export function daysBetween(from: string, to: string): number {
+  const [fromYear, fromMonth, fromDay] = dateParts(from)
+  const [toYear, toMonth, toDay] = dateParts(to)
+  return Math.round((Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)) / 86_400_000)
+}
+
+/** Counted from the day difference, so an until date years away costs nothing before it is refused. */
+export function weeklyOccurrenceCount(start: string, until: string): number {
+  const days = daysBetween(start, until)
+  return days < 0 ? 0 : Math.floor(days / 7) + 1
+}
+
+export function weeklyDates(start: string, until: string): string[] {
+  return Array.from({ length: weeklyOccurrenceCount(start, until) }, (_, week) => addDays(start, week * 7))
+}
+
+const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long' })
+
+export function weekdayName(date: string): string {
+  const [year, month, day] = dateParts(date)
+  return weekday.format(new Date(Date.UTC(year, month - 1, day)))
+}
+
 export function lastEventDay(event: { date: string; endDate?: string | null }): string {
   return event.endDate ?? event.date
 }

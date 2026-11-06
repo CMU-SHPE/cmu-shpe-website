@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { csvField } from './csv'
 import {
   addDays,
+  daysBetween,
   eventSchedule,
   formatClockTime,
   formatDenverTimestamp,
@@ -11,6 +12,9 @@ import {
   isRealDate,
   splitEvents,
   todayInDenver,
+  weekdayName,
+  weeklyDates,
+  weeklyOccurrenceCount,
 } from './event-dates'
 
 describe('todayInDenver', () => {
@@ -211,5 +215,44 @@ describe('addDays', () => {
   it('crosses month and year ends', () => {
     expect(addDays('2026-10-31', 1)).toBe('2026-11-01')
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+})
+
+describe('weeklyDates', () => {
+  it('steps a week at a time across the spring daylight saving change', () => {
+    expect(weeklyDates('2026-03-05', '2026-03-19')).toEqual(['2026-03-05', '2026-03-12', '2026-03-19'])
+  })
+
+  it('steps a week at a time across the autumn daylight saving change', () => {
+    expect(weeklyDates('2026-10-29', '2026-11-05')).toEqual(['2026-10-29', '2026-11-05'])
+    expect(weeklyDates('2026-10-29', '2026-11-05').map(weekdayName)).toEqual(['Thursday', 'Thursday'])
+  })
+
+  it('includes an until date on the same weekday and stops before one that falls short', () => {
+    expect(weeklyDates('2026-01-15', '2026-01-29')).toHaveLength(3)
+    expect(weeklyDates('2026-01-15', '2026-01-28')).toEqual(['2026-01-15', '2026-01-22'])
+  })
+
+  it('crosses the end of a year and a leap day', () => {
+    expect(weeklyDates('2027-12-30', '2028-01-06')).toEqual(['2027-12-30', '2028-01-06'])
+    expect(weeklyDates('2028-02-24', '2028-03-02')).toEqual(['2028-02-24', '2028-03-02'])
+  })
+
+  it('is empty when the until date is before the start', () => {
+    expect(weeklyDates('2026-01-15', '2026-01-14')).toEqual([])
+  })
+})
+
+describe('weeklyOccurrenceCount and daysBetween', () => {
+  it('counts 52 Thursdays across a year without generating them', () => {
+    expect(weeklyOccurrenceCount('2026-01-01', '2026-12-24')).toBe(52)
+    expect(weeklyOccurrenceCount('2026-01-01', '2026-12-31')).toBe(53)
+    expect(weeklyOccurrenceCount('2026-01-01', '9999-12-31')).toBeGreaterThan(400_000)
+  })
+
+  it('counts whole days across both daylight saving changes', () => {
+    expect(daysBetween('2026-03-07', '2026-03-09')).toBe(2)
+    expect(daysBetween('2026-10-31', '2026-11-02')).toBe(2)
+    expect(daysBetween('2026-11-02', '2026-10-31')).toBe(-2)
   })
 })

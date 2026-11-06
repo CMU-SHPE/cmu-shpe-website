@@ -118,6 +118,52 @@ Time slots are optional. Without any, you can type the time as you want it shown
    are removed with it, for example "This also removes its 12 RSVPs.", or "It has no RSVPs to
    remove." This can't be undone.
 
+### Recurring events
+
+Use a recurring event for something that happens every week, such as the chapter meeting. Each
+week becomes its own event, with its own RSVPs, capacity and attendee list.
+
+To add one:
+
+1. Fill in the **Add event** form as above. The **Start date** is the first week, and the event
+   repeats on that weekday.
+2. Tick **Repeats weekly**.
+3. Set **Repeats weekly until** to the last day it can happen, for example the last day of
+   classes. Below the field, the form says how many events it will create, for example "This
+   creates 15 events, every Thursday from January 15, 2026 to April 23, 2026."
+4. Choose **Add event**. Every week gets the same title, description, location, type, capacity and
+   times.
+
+A series can have at most 52 events. The until date must be at least a week after the start
+date, and an event in a series must end within 6 days of its start date, before the next week
+begins. That last rule also applies when you edit a week later.
+
+In the admin events list, each week shows where it falls in its series, for example
+"Weekly · 3 of 15". On the Events page, the list of upcoming events shows only the next week of
+each series, marked with its repeat, for example "Every Thursday", so members RSVP to one week at a
+time. The home page and the Sponsor portal also show only the next week. Weeks that have ended are
+listed with the past events like any other event.
+
+To change or delete weeks of a series:
+
+1. Find the week under **Upcoming events** and choose **Edit** or **Delete**.
+2. If later weeks of the series haven't happened yet, choose either **This event** or **This and
+   later events in the series**. Edit shows the choice under **Apply changes to**, and Delete
+   under **Delete which events?**.
+3. For an edit, make your changes and choose **Save changes**. With **This and later events in the
+   series**, every later week gets the same changes. If you move the date, each later week moves by
+   the same number of days. A move that would put a week on, across or past a week it doesn't move is
+   refused, and the form names both weeks.
+4. For a delete, confirm with **OK**. With **This and later events in the series**, the
+   confirmation counts every week and every RSVP removed, for example "This deletes this event and
+   the 9 later events in the series. This also removes their 34 RSVPs."
+
+Weeks that have already happened are never changed or deleted by a series edit or delete, and
+past weeks offer only the usual **Edit** and **Delete** for that one week. If a
+new capacity is lower than the RSVPs of any week it would change, nothing is saved and the form
+names the week with the most RSVPs, for example "The March 12, 2026 event already has 12 RSVPs, so
+the capacity can't be lower than 12."
+
 ### How capacity works
 
 - Members can RSVP until the event is full. Two people can never take the last place at the

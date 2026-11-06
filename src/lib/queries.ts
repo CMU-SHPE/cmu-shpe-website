@@ -1,4 +1,4 @@
-import { asc, inArray } from 'drizzle-orm'
+import { asc, eq, inArray, or, sql } from 'drizzle-orm'
 import { getDb } from '@/db'
 import {
   type ClubEvent,
@@ -93,6 +93,16 @@ export async function getEventTimeSlots(eventIds: number[]): Promise<Map<number,
     .orderBy(asc(eventTimeSlots.sortOrder), asc(eventTimeSlots.id))
   for (const row of rows) slots.set(row.eventId, [...(slots.get(row.eventId) ?? []), row])
   return slots
+}
+
+/** The event and every other week of its series, or just the event when it isn't in one. */
+export async function getSeriesWeeks(eventId: number) {
+  return getDb()
+    .select({ id: events.id, date: events.date, endDate: events.endDate, seriesId: events.seriesId })
+    .from(events)
+    .where(
+      or(eq(events.id, eventId), sql`${events.seriesId} = (select series_id from events where id = ${eventId})`),
+    )
 }
 
 export async function getEvents(): Promise<EventWithSlots[]> {

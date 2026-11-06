@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import { formatEventDate, isRealDate } from './event-dates'
+import { addDays, daysBetween, formatEventDate, isRealDate, weeklyDates, weeklyOccurrenceCount } from './event-dates'
 import { EVENT_TYPES } from './event-types'
 import { optional, optionalText, requiredText } from './form-fields'
 
 export const MAX_EVENT_DESCRIPTION_LENGTH = 2000
 export const MAX_EVENT_CAPACITY = 10000
 export const MAX_TIME_SLOTS = 14
+export const MAX_SERIES_EVENTS = 52
 
 // zod's own wording ("Too big: expected string to have <=200 characters") isn't written for officers.
 const FIELD_MESSAGES: Record<string, string> = {
@@ -170,4 +171,38 @@ export function eventFieldErrors(error: z.ZodError): EventFieldErrors {
     errors[key] = issue.code !== 'custom' && FIELD_MESSAGES[key] ? FIELD_MESSAGES[key] : issue.message
   }
   return errors
+}
+
+export type WeeklyRepeat = { dates: string[] | null; errors: EventFieldErrors }
+
+export function seriesLimitMessage(start: string) {
+  const lastAllowed = formatEventDate(addDays(start, (MAX_SERIES_EVENTS - 1) * 7))
+  return `A weekly event can repeat at most ${MAX_SERIES_EVENTS} times. Choose a date on or before ${lastAllowed}.`
+}
+
+export const SERIES_SPAN_MESSAGE = 'A weekly event must end within 6 days of its start date, before the next week begins.'
+
+export function endsTooLateForSeries(date: string, endDate: string | null) {
+  return Boolean(endDate && isRealDate(date) && isRealDate(endDate) && daysBetween(date, endDate) >= 7)
+}
+
+/**
+ * Checked apart from eventSchema so its errors can be shown alongside the event's own. Only a valid
+ * start date is checked against, since a broken one already has its own error.
+ */
+export function parseWeeklyRepeat(formData: FormData, event: { date: string; endDate: string | null }): WeeklyRepeat {
+  if (formData.get('repeatsWeekly') !== 'on') return { dates: null, errors: {} }
+  const until = String(formData.get('repeatUntil') ?? '').trim()
+  if (!isRealDate(until)) return { dates: null, errors: { repeatUntil: 'Choose the date the event repeats until.' } }
+  if (!isRealDate(event.date)) return { dates: null, errors: {} }
+
+  const errors: EventFieldErrors = {}
+  const count = weeklyOccurrenceCount(event.date, until)
+  if (count < 2) {
+    errors.repeatUntil = `Choose a date on or after ${formatEventDate(addDays(event.date, 7))}, one week after the start date.`
+  } else if (count > MAX_SERIES_EVENTS) {
+    errors.repeatUntil = seriesLimitMessage(event.date)
+  }
+  if (endsTooLateForSeries(event.date, event.endDate)) errors.endDate = SERIES_SPAN_MESSAGE
+  return Object.keys(errors).length > 0 ? { dates: null, errors } : { dates: weeklyDates(event.date, until), errors }
 }
